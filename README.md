@@ -2,7 +2,7 @@
 
 Aplicación web en Django para registrar la gestión territorial de los funcionarios municipales: actividades diarias con evidencia fotográfica, compromisos del Tubo de Trabajo, gestión social, verificación de evidencias, metas trimestrales con semáforo de cumplimiento y auditoría de cambios.
 
-Asignatura: Programación Back End (TI3041), Evaluación Sumativa 2.
+Asignatura: Programación Back End (TI3041).
 
 ## Tecnologías
 
