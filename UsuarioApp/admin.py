@@ -15,6 +15,7 @@ class UsuarioAdmin(UserAdmin):
     list_filter = ("is_active", "delegacion", "cargo")
     ordering = ("first_name", "last_name")
     inlines = [UsuarioRolInline]
+    # Se agregan cargo y delegación a las secciones del admin de usuarios de Django
     fieldsets = UserAdmin.fieldsets + (("Datos SGR", {"fields": ("cargo", "delegacion")}),)
 
 
@@ -44,3 +45,11 @@ class CatalogoAdmin(admin.ModelAdmin):
     list_display = ("id", "tipo", "nombre", "valor", "area", "padre", "estado")
     search_fields = ("nombre",)
     list_filter = ("tipo", "estado")
+
+
+admin.site.register(Usuario, UsuarioAdmin)
+admin.site.register(Rol, RolAdmin)
+admin.site.register(UsuarioRol, UsuarioRolAdmin)
+admin.site.register(Cargo, CargoAdmin)
+admin.site.register(Delegacion, DelegacionAdmin)
+admin.site.register(Catalogo, CatalogoAdmin)
