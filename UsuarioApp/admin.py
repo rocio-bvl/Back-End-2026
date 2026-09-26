@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion, Catalogo, CodigoOTP
+from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion, Catalogo
 
 
 class UsuarioRolInline(admin.TabularInline):
@@ -44,18 +44,3 @@ class CatalogoAdmin(admin.ModelAdmin):
     list_display = ("id", "tipo", "nombre", "valor", "area", "padre", "estado")
     search_fields = ("nombre",)
     list_filter = ("tipo", "estado")
-
-
-class CodigoOTPAdmin(admin.ModelAdmin):
-    list_display = ("usuario", "proposito", "creado", "expira", "usado", "intentos")
-    search_fields = ("usuario__username", "usuario__first_name", "usuario__last_name", "proposito")
-    list_filter = ("proposito", "usado")
-
-
-admin.site.register(Usuario, UsuarioAdmin)
-admin.site.register(Rol, RolAdmin)
-admin.site.register(UsuarioRol, UsuarioRolAdmin)
-admin.site.register(Cargo, CargoAdmin)
-admin.site.register(Delegacion, DelegacionAdmin)
-admin.site.register(Catalogo, CatalogoAdmin)
-admin.site.register(CodigoOTP, CodigoOTPAdmin)

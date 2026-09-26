@@ -1,11 +1,8 @@
-import random
-from datetime import timedelta
-
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 
-from UsuarioApp.choices import (roles, orden_roles, estados_registro, delegaciones, tipos_catalogo, propositos_otp)
+from UsuarioApp.choices import (roles, orden_roles, estados_registro, delegaciones, tipos_catalogo)
 
 
 class Catalogo(models.Model):
@@ -160,41 +157,3 @@ class UsuarioRol(models.Model):
         db_table = "usuario_rol"
         verbose_name = "Rol de usuario"
         verbose_name_plural = "Roles de usuario"
-
-
-class CodigoOTP(models.Model):
-    usuario = models.ForeignKey(Usuario, on_delete=models.CASCADE, related_name='codigos_otp', verbose_name="Usuario")
-    proposito = models.CharField(max_length=15, choices=propositos_otp, verbose_name="Propósito")
-    codigo = models.CharField(max_length=6, verbose_name="Código")
-    creado = models.DateTimeField(default=timezone.now, verbose_name="Creado")
-    expira = models.DateTimeField(verbose_name="Expira")
-    usado = models.BooleanField(default=False, verbose_name="Usado")
-    intentos = models.PositiveSmallIntegerField(default=0, verbose_name="Intentos")
-
-    def __str__(self):
-        return f"OTP {self.proposito} de {self.usuario}"
-
-    def esta_vigente(self):
-        return not self.usado and self.intentos < 3 and timezone.now() < self.expira
-
-    def verificar(self, codigo):
-        if not self.esta_vigente():
-            return False
-        if self.codigo == codigo:
-            self.usado = True
-            self.save()
-            return True
-        self.intentos = self.intentos + 1
-        self.save()
-        return False
-
-    class Meta:
-        db_table = "codigo_otp"
-        verbose_name = "Código OTP"
-        verbose_name_plural = "Códigos OTP"
-
-
-def generar_otp(usuario, proposito):
-    codigo = str(random.randint(0, 999999)).zfill(6)
-    CodigoOTP.objects.create(usuario=usuario, proposito=proposito, codigo=codigo, expira=timezone.now() + timedelta(minutes=10))
-    return codigo

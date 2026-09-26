@@ -38,9 +38,3 @@ tipos_catalogo = (
     ('SUBTIPO_ATENCION', 'Subtipo de atención'),
     ('TIPO_AJUSTE', 'Tipo de ajuste'),
 )
-
-# «enumeration» PropositoOTP
-propositos_otp = (
-    ('LOGIN', 'Inicio de sesión'),
-    ('RECUPERACION', 'Recuperación de contraseña'),
-)
