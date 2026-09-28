@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+
+{% block title %}Gestión Social — Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+<main class="container-fluid p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold text-danger m-0"><i class="bi bi-people-fill me-2"></i>Pestaña Personal - Área Social</h4>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="badge bg-muni-v3 text-white">Servicios Especializados de Múltiple Gestión</span>
+            {% url 'admin:ActividadesApp_atencionsocial_add' as url_agregar %}
+            {% url 'admin:ActividadesApp_atencionsocial_changelist' as url_buscar %}
+            {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Atención" %}
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle mb-0" style="font-size: 0.75rem;">
+                <thead class="bg-muni-b5 text-white text-center align-middle">
+                    <tr>
+                        <th rowspan="2">N°</th>
+                        <th rowspan="2">FECHA INGRESO</th>
+                        <th rowspan="2">TIPO ATENCIÓN</th>
+                        <th rowspan="2">SUB ATENCIÓN</th>
+                        <th rowspan="2">USUARIO / RUT / FONO</th>
+                        <th rowspan="2">REQ. VISITA</th>
+                        <th rowspan="2">TUBO</th>
+                        <th colspan="2" class="bg-muni-b1">1RA GESTIÓN</th>
+                        <th colspan="2" class="bg-muni-b3">2DA GESTIÓN</th>
+                        <th colspan="2" class="bg-muni-v1">3RA GESTIÓN</th>
+                        <th rowspan="2">CÓDIGO</th>
+                        <th rowspan="2">VERIF.</th>
+                        <th rowspan="2">ACCIONES</th>
+                    </tr>
+                    <tr>
+                        <th class="bg-muni-b1 text-white">ACCIÓN</th>
+                        <th class="bg-muni-b1 text-white">FECHA VISITA</th>
+                        <th class="bg-muni-b3 text-white">ACCIÓN</th>
+                        <th class="bg-muni-b3 text-white">FECHA INFORME</th>
+                        <th class="bg-muni-v1 text-white">ACCIÓN</th>
+                        <th class="bg-muni-v1 text-white">FECHA BENEFICIO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for atencion in atenciones %}
+                    <tr>
+                        <td class="text-center" data-cell="col-1">{{ forloop.counter }}</td>
+                        <td data-cell="col-2">{{ atencion.fecha_atencion|date:"d/m/Y" }}</td>
+                        <td data-cell="col-3"><span class="badge bg-gris-10 text-dark border">{{ atencion.tipo_atencion }}</span></td>
+                        <td data-cell="col-4">{{ atencion.sub_atencion }}</td>
+                        <td data-cell="col-5">{{ atencion.nombre_usuario }}<br><small class="text-muted">{{ atencion.rut_usuario }} | {{ atencion.fono }}</small></td>
+                        <td class="text-center" data-cell="col-6">{% if atencion.requiere_visita %}SI{% else %}NO{% endif %}</td>
+                        <td class="text-center" data-cell="col-7">{% if atencion.ingreso_tubo %}SI{% else %}NO{% endif %}</td>
+                        <td data-cell="col-8">{{ atencion.accion_1|default:"-" }}</td>
+                        <td data-cell="col-9">{{ atencion.fecha_visita|date:"d/m/Y"|default:"-" }}</td>
+                        <td data-cell="col-10">{{ atencion.accion_2|default:"-" }}</td>
+                        <td data-cell="col-11">{{ atencion.fecha_informe|date:"d/m/Y"|default:"-" }}</td>
+                        <td data-cell="col-12">{{ atencion.accion_3|default:"-" }}</td>
+                        <td>{{ atencion.fecha_beneficio|date:"d/m/Y"|default:"-" }}</td>
+                        <td class="fw-bold text-danger">{{ atencion.codigo }}</td>
+                        <td class="{% if atencion.verificado %}bg-muni-a1 text-dark{% endif %} text-center">
+                            {% if atencion.verificado %}SI{% else %}NO{% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% url 'admin:ActividadesApp_atencionsocial_change' atencion.id as url_modificar %}
+                            {% url 'admin:ActividadesApp_atencionsocial_delete' atencion.id as url_eliminar %}
+                            {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="16" class="text-center text-muted py-3">No existen prestaciones registradas.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+{% endblock %}
