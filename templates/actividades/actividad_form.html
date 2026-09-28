@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block title %}Registrar Actividad — SGR{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-9">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni text-white fw-bold py-3 d-flex align-items-center">
+                    <i class="bi bi-journal-plus me-2 fs-5"></i>
+                    <span>Ingreso Diario de Actividad Territorial</span>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Descripción de la Actividad / Solicitud / Problema</label>
+                                <textarea name="solicitud_problema" class="form-control" rows="3" placeholder="Detalle los requerimientos o la labor realizada en terreno..." required></textarea>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Acción Realizada</label>
+                                <input type="text" name="accion" class="form-control" placeholder="Ej: Gestión terreno, Inspección, Reunión..." required>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Item / Comisión a Medir</label>
+                                <select name="item_comision" class="form-select" required>
+                                    <option value="" selected disabled>Seleccione una opción...</option>
+                                    <option value="1">Atención de Usuario Teléfono y Presencial</option>
+                                    <option value="2">Visitas, Reuniones con Organizaciones</option>
+                                    <option value="3">Fiscalizaciones de Terreno</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Nombre de Contacto / Solicitante</label>
+                                <input type="text" name="contacto" class="form-control" placeholder="Nombre completo del dirigente o usuario">
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Teléfono de Contacto</label>
+                                <input type="text" name="telefono" class="form-control" placeholder="Ej: 912345678">
+                            </div>
+
+                            <div class="col-12">
+                                <div class="form-check form-switch bg-light p-3 border rounded">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="ingreso_agenda_colectiva" id="id_tubo">
+                                    <label class="form-check-label fw-semibold" for="id_tubo">
+                                        ¿Ingresa al Tubo de Trabajo? (Agenda Colectiva de Compromisos)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-semibold"><i class="bi bi-camera me-1"></i> Fotografías / Adjuntar Evidencia</label>
+                                <input type="file" name="evidencia_imagen" class="form-control" accept="image/*">
+                                <small class="text-muted">Formatos permitidos: JPG, PNG. Máximo 5MB.</small>
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'actividades:mi_gestion' %}" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-muni-v2 fw-bold px-4">
+                                <i class="bi bi-check-circle me-1"></i> Guardar Actividad
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

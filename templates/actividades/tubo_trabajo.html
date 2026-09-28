@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}Tubo de Trabajo — Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+<main class="container-fluid p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="m-0 fw-bold"><i class="bi bi-kanban text-danger me-2"></i>Tubo de Trabajo y Compromisos Territoriales</h3>
+        {% url 'actividades:compromiso_crear' as url_agregar %}
+        {% url 'admin:ActividadesApp_compromiso_changelist' as url_buscar %}
+        {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Compromiso" %}
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-gris-0 fw-bold d-flex justify-content-between align-items-center py-3">
+            <span><i class="bi bi-calendar-event me-2 text-danger"></i>Agenda Colectiva y Estado de Compromisos</span>
+            <span class="badge bg-muni-b2">{{ delegacion_actual|default:"Delegación Las Compañías" }}</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle mb-0" style="font-size: 0.85rem;">
+                <thead class="bg-gris-10 text-center">
+                    <tr>
+                        <th>CÓDIGO</th>
+                        <th>FECHA INGRESO</th>
+                        <th>SOLICITANTE / ORGANIZACIÓN</th>
+                        <th>DESCRIPCIÓN DEL REQUERIMIENTO</th>
+                        <th>RESPONSABLE</th>
+                        <th>ESTADO</th>
+                        <th>ACCIONES</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for compromiso in compromisos %}
+                    <tr>
+                        <td class="fw-bold text-center" data-cell="CÓDIGO">{{ compromiso.id_compromiso }}</td>
+                        <td class="text-center" data-cell="FECHA">{{ compromiso.fecha_registro|date:"d/m/Y" }}</td>
+                        <td data-cell="SOLICITANTE">{{ compromiso.origen }}</td>
+                        <td data-cell="DESCRIPCIÓN">{{ compromiso.observacion }}</td>
+                        <td data-cell="RESPONSABLE">{{ compromiso.funcionario.get_full_name }}</td>
+                        <td class="text-center" data-cell="ESTADO">
+                            {% if compromiso.estado == 'EN_PROCESO' %}
+                            <span class="badge bg-muni-v2">EN PROCESO</span>
+                            {% elif compromiso.estado == 'PENDIENTE' %}
+                            <span class="badge bg-muni">PENDIENTE</span>
+                            {% elif compromiso.estado == 'INGRESADO' %}
+                            <span class="badge bg-secondary">INGRESADO</span>
+                            {% else %}
+                            <span class="badge bg-success">REALIZADO</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center" data-cell="ACCIONES">
+                            <div class="d-flex gap-1 justify-content-center">
+                                <a href="{% url 'actividades:compromiso_detalle' compromiso.pk %}" class="btn btn-sm btn-outline-dark" title="Ver detalle">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% url 'admin:ActividadesApp_compromiso_change' compromiso.pk as url_modificar %}
+                                {% url 'admin:ActividadesApp_compromiso_delete' compromiso.pk as url_eliminar %}
+                                {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-3">No existen compromisos registrados en esta delegación.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+{% endblock %}

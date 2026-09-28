@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block title %}Detalle Compromiso {{ object.id_compromiso }} — SGR{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{% url 'actividades:tubo_trabajo' %}" class="btn btn-sm btn-outline-dark mb-2">
+                <i class="bi bi-arrow-left me-1"></i> Volver al Tubo de Trabajo
+            </a>
+            <h3 class="fw-bold m-0">Compromiso: {{ object.id_compromiso|default:"COM1761" }}</h3>
+        </div>
+        <div>
+            {% if object.estado == 'EN_PROCESO' %}
+            <span class="badge bg-muni-v2 fs-6 px-3 py-2">EN PROCESO</span>
+            {% elif object.estado == 'PENDIENTE' %}
+            <span class="badge bg-muni fs-6 px-3 py-2">PENDIENTE</span>
+            {% elif object.estado == 'INGRESADO' %}
+            <span class="badge bg-secondary fs-6 px-3 py-2">INGRESADO</span>
+            {% else %}
+            <span class="badge bg-success fs-6 px-3 py-2">REALIZADO</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Tarjeta Principal de Información -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-muni-b1 text-white fw-bold py-3">
+                    Requerimiento Institucional
+                </div>
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold mb-1">Solicitante / Organización:</h6>
+                    <p class="fs-5 fw-semibold text-dark">{{ object.origen }}</p>
+
+                    <h6 class="text-muted fw-bold mb-1">Descripción del Requerimiento:</h6>
+                    <p class="bg-light p-3 rounded text-dark border">{{ object.observacion }}</p>
+
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <small class="text-muted d-block">Funcionario Responsable:</small>
+                            <span class="fw-bold text-dark">{{ object.funcionario.get_full_name }}</span>
+                        </div>
+                        <div class="col-md-6">
+                            <small class="text-muted d-block">Territorio:</small>
+                            <span class="fw-bold text-dark">{{ object.territorio|default:"Las Compañías" }}</span>
+                        </div>
+                        <div class="col-md-6">
+                            <small class="text-muted d-block">Fecha Ingreso:</small>
+                            <span>{{ object.fecha_registro|date:"d/m/Y"|default:"06/07/2026" }}</span>
+                        </div>
+                        <div class="col-md-6">
+                            <small class="text-muted d-block">Fecha Limite Comprometida:</small>
+                            <span class="fw-bold text-danger">{{ object.fecha_comprometida|date:"d/m/Y" }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel Lateral de Control y Gestión -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-gris-90 text-white fw-bold py-3">
+                    Acciones de Gestión
+                </div>
+                <div class="card-body p-3">
+                    <form method="post" action="#">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Cambiar Estado</label>
+                            <select name="estado" class="form-select">
+                                <option value="PENDIENTE" {% if object.estado == 'PENDIENTE' %}selected{% endif %}>PENDIENTE</option>
+                                <option value="EN_PROCESO" {% if object.estado == 'EN_PROCESO' %}selected{% endif %}>EN PROCESO</option>
+                                <option value="REALIZADO" {% if object.estado == 'REALIZADO' %}selected{% endif %}>REALIZADO</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Observación</label>
+                            <textarea name="observacion" class="form-control" rows="2" placeholder="Motivo del cambio de estado..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-muni w-100 fw-bold mb-2">
+                            Actualizar Estado
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

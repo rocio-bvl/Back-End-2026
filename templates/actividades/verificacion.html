@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+
+{% block title %}Verificación — Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <h3 class="m-0 fw-bold"><i class="bi bi-shield-check text-danger me-2"></i>Auditoría y Verificación de Evidencias</h3>
+        {% url 'admin:ActividadesApp_evidencia_add' as url_agregar %}
+        {% url 'admin:ActividadesApp_evidencia_changelist' as url_buscar %}
+        {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Evidencia" %}
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-5">
+            <div class="list-group shadow-sm border-0">
+                {% for evidencia in evidencias_pendientes %}
+                <a href="?evidencia_id={{ evidencia.id }}" class="list-group-item list-group-item-action {% if evidencia.id == evidencia_seleccionada.id %}bg-muni text-white active{% endif %} p-3">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1 fw-bold">Código: {{ evidencia.codigo }}</h6>
+                        <small>{{ evidencia.fecha_registro|timesince }}</small>
+                    </div>
+                    <p class="mb-1 text-truncate">Funcionario: {{ evidencia.funcionario.get_full_name }}</p>
+                    <small class="{% if evidencia.id == evidencia_seleccionada.id %}text-white-50{% else %}text-muted{% endif %}">Item: {{ evidencia.item }}</small>
+                </a>
+                {% empty %}
+                <div class="list-group-item p-3 text-muted text-center">No hay evidencias pendientes por auditar.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="col-md-7">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni-b1 text-white font-weight-bold">
+                    Detalle del Registro {{ evidencia_seleccionada.codigo|default:"..." }}
+                </div>
+                <div class="card-body">
+                    {% if evidencia_seleccionada %}
+                    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                        <p class="mb-0"><strong>Descripción:</strong> {{ evidencia_seleccionada.descripcion }}</p>
+                        {% url 'admin:ActividadesApp_evidencia_change' evidencia_seleccionada.id as url_modificar %}
+                        {% url 'admin:ActividadesApp_evidencia_delete' evidencia_seleccionada.id as url_eliminar %}
+                        {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                    </div>
+
+                    <div class="bg-gris-90 text-white text-center p-4 rounded mb-3">
+                        {% if evidencia_seleccionada.imagen %}
+                        <img src="{{ evidencia_seleccionada.imagen.url }}" class="img-fluid rounded" alt="Evidencia">
+                        {% else %}
+                        <i class="bi bi-file-earmark-image display-4 d-block mb-2"></i>
+                        <span>[ Vista Previa de Fotografía ]</span>
+                        {% endif %}
+                    </div>
+
+                    <form method="post" action="{% url 'actividades:validar_evidencia' evidencia_seleccionada.id %}">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label class="form-label">Observaciones de Verificación</label>
+                            <textarea name="observacion" class="form-control" rows="2" placeholder="Ingrese el motivo de revisión o rechazo..."></textarea>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="submit" name="decision" value="APROBAR" class="btn btn-muni flex-fill">
+                                <i class="bi bi-check-circle me-1"></i> Aprobar
+                            </button>
+                            <button type="submit" name="decision" value="CORREGIR" class="btn btn-muni-v2 flex-fill">
+                                <i class="bi bi-exclamation-triangle me-1"></i> Corregir
+                            </button>
+                            <button type="submit" name="decision" value="RECHAZAR" class="btn btn-muni-b5 flex-fill">
+                                <i class="bi bi-x-circle me-1"></i> Rechazar
+                            </button>
+                        </div>
+                    </form>
+                    {% else %}
+                    <p class="text-muted text-center my-4">Seleccione una evidencia del listado lateral.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
