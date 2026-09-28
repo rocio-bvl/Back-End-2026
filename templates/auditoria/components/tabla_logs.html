@@ -1,0 +1,58 @@
+<div class="card shadow-sm border-0 p-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="m-0 fw-bold"><i class="bi bi-clock-history me-2 text-danger"></i>Registros de Auditoría y Cambios</h5>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="badge bg-muni-b5">Trazabilidad Total</span>
+            {% comment %} Los registros de auditoría no se crean, editan ni borran a mano: Agregar, Modificar y Eliminar quedan deshabilitados. {% endcomment %}
+            {% url 'admin:AuditoriaApp_auditoria_changelist' as url_buscar %}
+            {% include 'components/barra_crud.html' with url_buscar=url_buscar deshabilitado=True %}
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover align-middle mb-0" style="font-size: 0.8rem;">
+            <thead class="bg-gris-90 text-white text-center">
+                <tr>
+                    <th>FECHA / HORA</th>
+                    <th>USUARIO</th>
+                    <th>EVENTO</th>
+                    <th>ENTIDAD</th>
+                    <th>ID RECURSO</th>
+                    <th>VALOR ANTERIOR</th>
+                    <th>VALOR NUEVO</th>
+                    <th>ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs_auditoria %}
+                <tr>
+                    <td class="text-center" data-cell="FECHA">{{ log.fecha|date:"d/m/Y H:i" }}</td>
+                    <td class="fw-bold" data-cell="USUARIO">{{ log.usuario.get_full_name|default:log.usuario.username }}</td>
+                    <td class="text-center" data-cell="EVENTO">
+                        {% if log.evento == 'CREACION' %}
+                        <span class="badge bg-success">CREACIÓN</span>
+                        {% elif log.evento == 'MODIFICACION' %}
+                        <span class="badge bg-muni-v2">MODIFICACIÓN</span>
+                        {% elif log.evento == 'ACCESO_DENEGADO' %}
+                        <span class="badge bg-secondary">ACCESO DENEGADO</span>
+                        {% else %}
+                        <span class="badge bg-muni">ELIMINACIÓN</span>
+                        {% endif %}
+                    </td>
+                    <td data-cell="ENTIDAD">{{ log.entidad }}</td>
+                    <td class="text-center fw-bold" data-cell="ID">{{ log.id_entidad }}</td>
+                    <td class="text-muted text-truncate" style="max-width: 180px;" data-cell="ANTERIOR">{{ log.valor_anterior|default:"-" }}</td>
+                    <td class="fw-semibold text-truncate" style="max-width: 180px;" data-cell="NUEVO">{{ log.valor_nuevo|default:"-" }}</td>
+                    <td class="text-center" data-cell="ACCIONES">
+                        {% include 'components/acciones_fila.html' with deshabilitado=True %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-3">No hay registros de auditoría almacenados.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
