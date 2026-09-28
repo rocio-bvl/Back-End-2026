@@ -1,0 +1,60 @@
+/* Estilos propios del SGR: paleta municipal (antes estaban dentro de base.html) */
+
+/* Colores Municipales */
+.bg-muni-a1 { background-color: #f9dcdc !important; }
+.bg-muni-a2 { background-color: #f2b5b5 !important; }
+.bg-muni-a3 { background-color: #e08080 !important; }
+.bg-muni-a4 { background-color: #cc6666 !important; }
+.bg-muni-a5 { background-color: #b33d3d !important; }
+.bg-muni    { background-color: #AD0000 !important; }
+.bg-muni-b1 { background-color: #7a0000 !important; }
+.bg-muni-b2 { background-color: #660000 !important; }
+.bg-muni-b3 { background-color: #4d0000 !important; }
+.bg-muni-b4 { background-color: #330000 !important; }
+.bg-muni-b5 { background-color: #1a0000 !important; }
+
+/* Variaciones Complementarias */
+.bg-muni-v1 { background-color: #b33d00 !important; }
+.bg-muni-v2 { background-color: #cc6600 !important; }
+.bg-muni-v3 { background-color: #e08000 !important; }
+.bg-muni-v4 { background-color: #f2b500 !important; }
+
+/* Grises */
+.bg-gris-0   { background-color: #ffffff !important; }
+.bg-gris-10  { background-color: #e6e6e6 !important; }
+.bg-gris-20  { background-color: #cccccc !important; }
+.bg-gris-30  { background-color: #b3b3b3 !important; }
+.bg-gris-40  { background-color: #999999 !important; }
+.bg-gris-50  { background-color: #808080 !important; }
+.bg-gris-60  { background-color: #666666 !important; }
+.bg-gris-70  { background-color: #4d4d4d !important; }
+.bg-gris-80  { background-color: #333333 !important; }
+.bg-gris-90  { background-color: #1a1a1a !important; }
+.bg-gris-100 { background-color: #000000 !important; }
+
+/* Botones */
+.btn-muni { background-color: #AD0000; color: #ffffff !important; border: none; }
+.btn-muni:hover { background-color: #7a0000; color: #ffffff !important; }
+.btn-muni-v2 { background-color: #cc6600; color: #ffffff !important; border: none; }
+.btn-muni-v2:hover { background-color: #b33d00; color: #ffffff !important; }
+.btn-muni-v3 { background-color: #e08000; color: #ffffff !important; border: none; }
+.btn-muni-v3:hover { background-color: #cc6600; color: #ffffff !important; }
+.btn-importante { background-color: #AD0000; color: #ffffff !important; border: 2px solid #e08000; }
+
+/* Tipografía y Utilidades */
+.tx-1 { font-size: 0.7rem; }
+.tx-2 { font-size: 0.8rem; }
+.tx-8 { font-size: 1.2rem; }
+
+.ls-nav-tabs .nav-link.active {
+    color: #AD0000 !important;
+    border-bottom: 4px solid #AD0000 !important;
+    font-weight: bold;
+    background-color: #ffffff !important;
+}
+
+body { background-color: #f8f9fa; }
+
+/* Botón usado en verificacion.html (Rechazar) que no tenía estilo definido */
+.btn-muni-b5 { background-color: #1a0000; color: #ffffff !important; border: none; }
+.btn-muni-b5:hover { background-color: #4d0000; color: #ffffff !important; }
