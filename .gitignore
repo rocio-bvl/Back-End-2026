@@ -1,0 +1,17 @@
+# Entorno virtual
+venv/
+
+# Configuración sensible (usar .env.example como plantilla)
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Archivos subidos por los usuarios (fotografías de evidencia)
+media/
+
+# Otros
+db.sqlite3
+.vscode/
+.idea/

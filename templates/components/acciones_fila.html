@@ -1,7 +1,4 @@
-{% comment %}
-Botones Modificar y Eliminar de una fila.
-Parámetros: url_modificar, url_eliminar, deshabilitado (opcional).
-{% endcomment %}
+
 <div class="btn-group btn-group-sm" role="group" aria-label="Acciones">
     <a href="{{ url_modificar|default:'#' }}" class="btn btn-outline-warning text-nowrap {% if deshabilitado %}disabled{% endif %}" title="Modificar" {% if deshabilitado %}aria-disabled="true"{% endif %}>
         <i class="bi bi-pencil-square me-1"></i>Modificar

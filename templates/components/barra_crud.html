@@ -1,7 +1,5 @@
 {% comment %}
 Barra de acciones de un listado: Buscar + Agregar.
-Parámetros: url_buscar, url_agregar, texto_agregar (opcional), deshabilitado (opcional).
-El buscador envía ?q= a la ruta indicada (el buscador de Django Admin).
 {% endcomment %}
 <div class="d-flex flex-wrap gap-2 align-items-center">
     <form method="get" action="{{ url_buscar|default:'#' }}" class="d-flex" role="search">
