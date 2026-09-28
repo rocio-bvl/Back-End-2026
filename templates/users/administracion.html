@@ -1,0 +1,170 @@
+{% extends 'base.html' %}
+
+{% block title %}Administración — Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fw-bold m-0">Administración del Sistema SGR</h3>
+    </div>
+
+    <!-- Bloque de Mensajes y Alertas -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow-sm" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <ul class="nav nav-tabs mb-4 ls-nav-tabs" id="adminTab" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button">Gestión de Usuarios</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="goals-tab" data-bs-toggle="tab" data-bs-target="#goals" type="button">Parametrización de Metas</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#audit" type="button">Logs de Trazabilidad</button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="adminTabContent">
+        <!-- Tab 1: Usuarios -->
+        <div class="tab-pane fade show active" id="users">
+            <div class="card shadow-sm border-0 p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="m-0 fw-bold">Listado de Usuarios</h5>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <form method="get" action="{% url 'admin:UsuarioApp_usuario_changelist' %}" class="d-flex" role="search">
+                            <input type="search" name="q" class="form-control form-control-sm" placeholder="Buscar..." aria-label="Buscar">
+                            <button type="submit" class="btn btn-sm btn-outline-dark ms-1 text-nowrap"><i class="bi bi-search me-1"></i>Buscar</button>
+                        </form>
+                        <!-- Botón para abrir Modal o navegar a vista independiente -->
+                        <button type="button" class="btn btn-muni btn-sm" data-bs-toggle="modal" data-bs-target="#modalCrearUsuario">
+                            <i class="bi bi-person-plus me-1"></i>Agregar Usuario
+                        </button>
+                    </div>
+                </div>
+
+                <ul class="list-group list-group-flush">
+                    {% for usr in lista_usuarios %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center py-3">
+                        <div>
+                            <span class="fw-bold fs-6 text-dark">{{ usr.get_full_name|default:usr.username }}</span>
+                            {% if usr.rut %}
+                                <span class="badge bg-secondary ms-2">{{ usr.rut }}</span>
+                            {% endif %}
+                            <br>
+                            <small class="text-muted">
+                                <i class="bi bi-envelope me-1"></i>{{ usr.email|default:"Sin correo" }} | 
+                                <strong>Rol:</strong> {{ usr.rol|default:"Funcionario" }} | 
+                                <strong>Delegación:</strong> {{ usr.delegacion|default:"General" }}
+                            </small>
+                        </div>
+                        {% url 'users:usuario_editar' usr.pk as url_modificar %}
+                        {% url 'admin:UsuarioApp_usuario_delete' usr.pk as url_eliminar %}
+                        {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                    </li>
+                    {% empty %}
+                    <li class="list-group-item text-center py-4 text-muted">
+                        No hay usuarios registrados en el sistema.
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Tab 2: Metas -->
+        <div class="tab-pane fade" id="goals">
+            <div class="card shadow-sm border-0 p-3">
+                <h5 class="fw-bold">Configuración de Ponderadores Trimestrales</h5>
+                <form method="post" action="{% url 'indicadores:guardar_metas' %}" class="mt-3">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Periodo Trimestral</label>
+                            <input type="text" class="form-control" value="{{ periodo_activo.nombre|default:'T3 - 2026' }}" readonly>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Cargo Destino</label>
+                            <select name="cargo" class="form-select">
+                                {% for cargo in cargos %}
+                                <option value="{{ cargo.id }}">{{ cargo.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Tab 3: Componente de Auditoría Integrado -->
+        <div class="tab-pane fade" id="audit">
+            {% include 'auditoria/components/tabla_logs.html' %}
+        </div>
+    </div>
+</main>
+
+<!-- MODAL PARA CREAR USUARIO (EVITA REDIRECCIÓN DIRECTA Y ERRORES 403) -->
+<div class="modal fade" id="modalCrearUsuario" tabindex="-1" aria-labelledby="modalCrearUsuarioLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-muni text-white">
+                <h5 class="modal-title fw-bold" id="modalCrearUsuarioLabel"><i class="bi bi-person-plus me-2"></i>Registrar Nuevo Usuario SGR</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="{% url 'users:usuario_crear' %}">
+                {% csrf_token %}
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">RUT</label>
+                            <input type="text" name="rut" class="form-control" placeholder="12345678-K" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Correo Electrónico</label>
+                            <input type="email" name="email" class="form-control" placeholder="ejemplo@laserena.cl" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Nombres</label>
+                            <input type="text" name="first_name" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Apellidos</label>
+                            <input type="text" name="last_name" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Rol del Sistema</label>
+                            <select name="rol" class="form-select" required>
+                                <option value="Funcionario" selected>Funcionario</option>
+                                <option value="Delegado">Delegado</option>
+                                <option value="Coordinador">Coordinador</option>
+                                <option value="Verificador">Verificador</option>
+                                <option value="Admin">Administrador</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Cargo Municipal</label>
+                            <input type="text" name="cargo" class="form-control" placeholder="Ej: Inspector Territorial">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Contraseña</label>
+                            <input type="password" name="password1" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Confirmar Contraseña</label>
+                            <input type="password" name="password2" class="form-control" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-muni"><i class="bi bi-check-lg me-1"></i>Guardar Usuario</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

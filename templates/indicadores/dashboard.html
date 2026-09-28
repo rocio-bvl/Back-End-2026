@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard Territorial — Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+<main class="container-fluid px-md-4 py-4">
+    <h2 class="mb-4">Resumen Territorial - {{ delegacion_actual|default:"Delegación La Antena" }}</h2>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm border-start border-4 border-danger p-3">
+                <span class="text-muted small">Compromisos Pendientes</span>
+                <h3 class="fw-bold mb-0 text-danger">{{ compromisos_pendientes_count|default:0 }}</h3>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm border-start border-4 border-success p-3">
+                <span class="text-muted small">Avance del Periodo</span>
+                <h3 class="fw-bold mb-0 text-success">{{ avance_periodo_porcentaje|default:"0%" }}</h3>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm border-start border-4 border-warning p-3">
+                <span class="text-muted small">Estado del Semáforo</span>
+                <h3 class="fw-bold text-warning mb-0"><i class="bi bi-circle-fill"></i> {{ semaforo_estado|default:"Ámbar" }}</h3>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

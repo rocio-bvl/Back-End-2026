@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if object %}Editar{% else %}Crear{% endif %} Usuario — SGR{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni-b1 text-white fw-bold py-3 d-flex align-items-center">
+                    <i class="bi bi-person-gear me-2 fs-5"></i>
+                    <span>{% if object %}Editar Usuario: {{ object.get_full_name }}{% else %}Crear Nuevo Usuario{% endif %}</span>
+                </div>
+                <div class="card-body p-4">
+
+                    <!-- Muestra de errores globales si falla la validación -->
+                    {% if form.errors %}
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <strong>Ocurrió un error al guardar:</strong> Por favor revisa los campos e intenta nuevamente.
+                            <ul class="mb-0 mt-2">
+                                {% for field, errors in form.errors.items %}
+                                    <li><strong>{{ field }}:</strong> {{ errors|striptags }}</li>
+                                {% endfor %}
+                            </ul>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endif %}
+
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            
+                            <!-- RUT / Username (FIJO en Edición) -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">RUT (Identificador)</label>
+                                <input type="text" name="username" class="form-control {% if object %}bg-light{% endif %}"
+                                    value="{{ form.username.value|default:object.username|default:'' }}" {% if object %}readonly{% else %}required{%endif %}>
+                                {% if object %}
+                                    <small class="text-muted">El RUT es un identificador fijo y no se puede modificar.</small>
+                                {% endif %}
+                            </div>
+
+                            <!-- Correo Electrónico -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Correo Electrónico</label>
+                                <input type="email" name="email" class="form-control" value="{{ form.email.value|default:'' }}" required>
+                            </div>
+
+                            <!-- Nombres -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Nombres</label>
+                                <input type="text" name="first_name" class="form-control" value="{{ form.first_name.value|default:'' }}" required>
+                            </div>
+
+                            <!-- Apellidos -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Apellidos</label>
+                                <input type="text" name="last_name" class="form-control" value="{{ form.last_name.value|default:'' }}" required>
+                            </div>
+
+                            <!-- Rol de Sistema -->
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Rol de Sistema</label>
+                                <select name="rol" class="form-select" required>
+                                    <option value="Funcionario" {% if form.rol.value == 'Funcionario' or form.rol.value == 'FUNCIONARIO' or object.rol == 'Funcionario' %}selected{% endif %}>Funcionario</option>
+                                    <option value="Delegado" {% if form.rol.value == 'Delegado' or form.rol.value == 'DELEGADO' or object.rol == 'Delegado' %}selected{% endif %}>Delegado</option>
+                                    <option value="Coordinador" {% if form.rol.value == 'Coordinador' or form.rol.value == 'COORDINADOR' or object.rol == 'Coordinador' %}selected{% endif %}>Coordinador</option>
+                                    <option value="Verificador" {% if form.rol.value == 'Verificador' or form.rol.value == 'VERIFICADOR' or object.rol == 'Verificador' %}selected{% endif %}>Verificador</option>
+                                    <option value="Admin" {% if form.rol.value == 'Admin' or form.rol.value == 'ADMINISTRADOR' or object.rol == 'Admin' %}selected{% endif %}>Administrador</option>
+                                </select>
+                            </div>
+
+                            <!-- Cargo Municipal -->
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Cargo</label>
+                                {% if cargos %}
+                                    <select name="cargo" class="form-select">
+                                        <option value="">-- Seleccionar Cargo --</option>
+                                        {% for cargo_item in cargos %}
+                                            <option value="{{ cargo_item.id }}" {% if form.cargo.value == cargo_item.id or object.cargo_id == cargo_item.id %}selected{% endif %}>
+                                                {{ cargo_item.nombre }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                {% else %}
+                                    <input type="text" name="cargo" class="form-control" value="{{ form.cargo.value|default:'' }}" placeholder="Ej: Inspector Territorial">
+                                {% endif %}
+                            </div>
+
+                            <!-- Delegación Asignada -->
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold">Delegación Asignada</label>
+                                <select name="delegacion" class="form-select">
+                                    <option value="GENERAL" {% if form.delegacion.value == 'GENERAL' or not form.delegacion.value %}selected{% endif %}>General (Toda la Municipalidad)</option>
+                                    <option value="LAS_COMPANIAS" {% if form.delegacion.value == 'LAS_COMPANIAS' %}selected{% endif %}>Las Compañías</option>
+                                    <option value="LA_ANTENA" {% if form.delegacion.value == 'LA_ANTENA' %}selected{% endif %}>La Antena</option>
+                                    <option value="LA_PAMPA" {% if form.delegacion.value == 'LA_PAMPA' %}selected{% endif %}>La Pampa</option>
+                                    <option value="CENTRO" {% if form.delegacion.value == 'CENTRO' %}selected{% endif %}>Centro</option>
+                                    <option value="RURAL" {% if form.delegacion.value == 'RURAL' %}selected{% endif %}>Rural</option>
+                                </select>
+                            </div>
+
+                            <!-- Usuario Activo Switch -->
+                            {% if object %}
+                            <div class="col-12 mt-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="is_active" id="id_is_active" {% if form.is_active.value or object.is_active %}checked{% endif %}>
+                                    <label class="form-check-label fw-semibold" for="id_is_active">Usuario Activo en el Sistema</label>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <hr class="my-4">
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'users:administracion' %}" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-primary px-4 fw-bold">
+                                <i class="bi bi-save me-1"></i> Guardar Cambios
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

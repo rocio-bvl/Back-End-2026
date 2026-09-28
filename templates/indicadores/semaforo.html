@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block title %}Semáforo Institucional — Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+<main class="container-fluid p-4">
+    <h3 class="fw-bold mb-3"><i class="bi bi-traffic-light me-2 text-danger"></i>Semáforo: Seguimiento de Avance al Día</h3>
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni text-white fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <span>Monitoreo por Responsable de Área</span>
+                    <div class="bg-white rounded p-1">
+                        {% url 'admin:IndicadoresApp_ajustedesempeno_add' as url_agregar %}
+                        {% url 'admin:IndicadoresApp_indicadordesempeno_changelist' as url_buscar %}
+                        {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Ajuste" %}
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered align-middle text-center mb-0" style="font-size: 0.82rem;">
+                        <thead class="bg-gris-10">
+                            <tr>
+                                <th>ÁREA</th>
+                                <th>RESPONSABLE</th>
+                                <th>OBJETIVO HOY</th>
+                                <th>MÍNIMO (60%)</th>
+                                <th>AVANCE LOGRADO</th>
+                                <th>SEMÁFORO</th>
+                                <th>ACCIONES</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in seguimiento %}
+                            <tr>
+                                <td class="text-start" data-cell="ÁREA">{{ item.area }}</td>
+                                <td data-cell="RESPONSABLE">{{ item.responsable }}</td>
+                                <td data-cell="OBJETIVO">{{ item.objetivo_hoy }}%</td>
+                                <td data-cell="MÍNIMO">{{ item.minimo }}%</td>
+                                <td class="fw-bold" data-cell="AVANCE">{{ item.avance_logrado }}%</td>
+                                <td data-cell="SEMÁFORO">
+                                    {% if item.color == 'VERDE' %}
+                                    <span class="badge bg-success px-3 py-2"><i class="bi bi-circle-fill me-1"></i> VERDE</span>
+                                    {% elif item.color == 'AMBAR' %}
+                                    <span class="badge bg-muni-v4 text-dark px-3 py-2"><i class="bi bi-circle-fill me-1"></i> ÁMBAR</span>
+                                    {% else %}
+                                    <span class="badge bg-muni px-3 py-2"><i class="bi bi-circle-fill me-1"></i> ROJO</span>
+                                    {% endif %}
+                                </td>
+                                <td data-cell="ACCIONES">
+                                    {% url 'admin:UsuarioApp_usuario_change' item.id as url_modificar %}
+                                    {% url 'admin:UsuarioApp_usuario_delete' item.id as url_eliminar %}
+                                    {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-3">No hay métricas registradas para la fecha.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="card-header bg-muni-b2 text-white fw-bold text-center">META SEGÚN AVANCE DEL DÍA</div>
+                <div class="card-body text-center bg-gris-10">
+                    <h2 class="display-6 fw-bold text-danger">{{ dias_transcurridos }} / {{ porcentaje_esperado }}%</h2>
+                    <hr>
+                    <div class="d-flex justify-content-between text-muted small">
+                        <span>Fecha Evaluación:</span>
+                        <strong>{% now "d M Y" %}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-gris-90 text-white fw-bold text-center">PARÁMETROS DEL TRIMESTRE</div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush small">
+                        <li class="list-group-item d-flex justify-content-between"><span>FECHA INICIO:</span> <strong>{{ periodo.fecha_inicio|date:"d/m/Y" }}</strong></li>
+                        <li class="list-group-item d-flex justify-content-between"><span>FECHA TÉRMINO:</span> <strong>{{ periodo.fecha_termino|date:"d/m/Y" }}</strong></li>
+                        <li class="list-group-item d-flex justify-content-between"><span>DÍAS TOTALES:</span> <strong>{{ periodo.dias_computables }} días</strong></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
