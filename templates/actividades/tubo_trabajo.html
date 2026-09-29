@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Tubo de Trabajo — Ilustre Municipalidad de La Serena{% endblock %}
+{% block title %}Tubo de Trabajo | Ilustre Municipalidad de La Serena{% endblock %}
 
 {% block content %}
 <main class="container-fluid p-4">
@@ -9,6 +9,57 @@
         {% url 'actividades:compromiso_crear' as url_agregar %}
         {% url 'admin:ActividadesApp_compromiso_changelist' as url_buscar %}
         {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Compromiso" %}
+    </div>
+
+    <!-- Filtros de la agenda colectiva (HU-12) -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end" style="font-size: 0.85rem;">
+                {% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}
+                <input type="hidden" name="delegacion" value="{{ codigo_delegacion }}">
+                {% endif %}
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold mb-1" for="f_responsable">Responsable</label>
+                    <select name="responsable" id="f_responsable" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for usuario in responsables %}
+                        <option value="{{ usuario.pk }}" {% if filtros.responsable == usuario.pk|stringformat:"s" %}selected{% endif %}>{{ usuario.get_full_name|default:usuario.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold mb-1" for="f_estado">Estado</label>
+                    <select name="estado" id="f_estado" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for valor, texto in estados_filtro %}
+                        <option value="{{ valor }}" {% if filtros.estado == valor %}selected{% endif %}>{{ texto }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold mb-1" for="f_territorio">Territorio</label>
+                    <input type="text" name="territorio" id="f_territorio" value="{{ filtros.territorio }}" class="form-control form-control-sm" placeholder="Ej: Sector Alto">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold mb-1" for="f_desde">Comprometido desde</label>
+                    <input type="date" name="desde" id="f_desde" value="{{ filtros.desde }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold mb-1" for="f_hasta">Hasta</label>
+                    <input type="date" name="hasta" id="f_hasta" value="{{ filtros.hasta }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md-1">
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" name="mios" value="1" id="f_mios" {% if filtros.mios == '1' %}checked{% endif %}>
+                        <label class="form-check-label" for="f_mios">Solo míos</label>
+                    </div>
+                </div>
+                <div class="col-12 d-flex gap-2 justify-content-end">
+                    <a href="{% url 'actividades:tubo_trabajo' %}{% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}?delegacion={{ codigo_delegacion }}{% endif %}" class="btn btn-sm btn-outline-secondary">Limpiar</a>
+                    <button type="submit" class="btn btn-sm btn-muni"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <div class="card shadow-sm border-0 mb-4">
@@ -24,6 +75,7 @@
                         <th>FECHA INGRESO</th>
                         <th>SOLICITANTE / ORGANIZACIÓN</th>
                         <th>DESCRIPCIÓN DEL REQUERIMIENTO</th>
+                        <th>FECHA COMPROMETIDA</th>
                         <th>RESPONSABLE</th>
                         <th>ESTADO</th>
                         <th>ACCIONES</th>
@@ -36,7 +88,20 @@
                         <td class="text-center" data-cell="FECHA">{{ compromiso.fecha_registro|date:"d/m/Y" }}</td>
                         <td data-cell="SOLICITANTE">{{ compromiso.origen }}</td>
                         <td data-cell="DESCRIPCIÓN">{{ compromiso.observacion }}</td>
-                        <td data-cell="RESPONSABLE">{{ compromiso.funcionario.get_full_name }}</td>
+                        <td class="text-center" data-cell="FECHA COMPROMETIDA">
+                            {{ compromiso.fecha_comprometida|date:"d/m/Y" }}
+                            {% if compromiso.vencido %}
+                            <span class="badge bg-danger d-block mt-1">VENCIDO</span>
+                            {% elif compromiso.proximo_a_vencer %}
+                            <span class="badge bg-warning text-dark d-block mt-1">POR VENCER</span>
+                            {% endif %}
+                        </td>
+                        <td data-cell="RESPONSABLE">
+                            {{ compromiso.funcionario.get_full_name }}
+                            {% if compromiso.responsable_id == request.user.pk %}
+                            <span class="badge bg-muni-b2 d-block mt-1">ASIGNADO A USTED</span>
+                            {% endif %}
+                        </td>
                         <td class="text-center" data-cell="ESTADO">
                             {% if compromiso.estado == 'EN_PROCESO' %}
                             <span class="badge bg-muni-v2">EN PROCESO</span>
@@ -61,7 +126,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="7" class="text-center text-muted py-3">No existen compromisos registrados en esta delegación.</td>
+                        <td colspan="8" class="text-center text-muted py-3">No existen compromisos que cumplan los filtros en esta delegación.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

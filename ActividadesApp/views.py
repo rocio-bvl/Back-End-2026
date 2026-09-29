@@ -92,12 +92,29 @@ def actividad_crear(request):
     if not request.user.tiene_rol(['Admin', 'Coordinador', 'Delegado', 'Funcionario']):
         return acceso_denegado(request, 'Registrar Actividad')
 
+    # Actividad que responde a un compromiso del Tubo (viene de ?compromiso=ID o del campo oculto)
+    compromiso_origen = None
+    id_compromiso = request.POST.get('compromiso') or request.GET.get('compromiso')
+    if id_compromiso:
+        compromiso_origen = Compromiso.objects.filter(pk=id_compromiso if str(id_compromiso).isdigit() else 0).first()
+        if compromiso_origen is None:
+            messages.error(request, "El compromiso indicado no existe.")
+            return redirect('actividades:tubo_trabajo')
+        if compromiso_origen.responsable_id != request.user.pk:
+            messages.error(request, "Solo el funcionario responsable puede registrar actividades de este compromiso.")
+            return redirect('actividades:compromiso_detalle', pk=compromiso_origen.pk)
+        if compromiso_origen.estado == 'REALIZADO':
+            messages.error(request, "El compromiso ya está realizado; no admite nuevas actividades.")
+            return redirect('actividades:compromiso_detalle', pk=compromiso_origen.pk)
+    data_form = {'compromiso': compromiso_a_diccionario(compromiso_origen) if compromiso_origen else None}
+
     if request.method == 'POST':
         solicitud = request.POST.get('solicitud_problema', '').strip()
         accion = request.POST.get('accion', '').strip()
         contacto = request.POST.get('contacto', '').strip()
         telefono = request.POST.get('telefono', '').strip()
-        ingresa_tubo = request.POST.get('ingreso_agenda_colectiva') == 'on'
+        # Si la actividad responde a un compromiso existente no se crea otro
+        ingresa_tubo = compromiso_origen is None and request.POST.get('ingreso_agenda_colectiva') == 'on'
         imagen = request.FILES.get('evidencia_imagen')
         item = Catalogo.objects.filter(pk=request.POST.get('item_comision') or 0, tipo='ITEM_GESTION', estado='ACTIVO').first()
         periodo = periodo_vigente()
@@ -128,14 +145,16 @@ def actividad_crear(request):
         if errores:
             for error in errores:
                 messages.error(request, error)
-            return render(request, 'actividades/actividad_form.html')
+            return render(request, 'actividades/actividad_form.html', data_form)
 
+        # ingreso_agenda_colectiva solo queda en True cuando la actividad queda enlazada a un compromiso
         actividad = Actividad.objects.create(
             solicitud_problema=solicitud,
             accion=accion,
             contacto=contacto,
             telefono=telefono,
-            ingreso_agenda_colectiva=ingresa_tubo,
+            ingreso_agenda_colectiva=compromiso_origen is not None,
+            compromiso=compromiso_origen,
             item=item,
             periodo=periodo,
             usuario=request.user,
@@ -167,10 +186,13 @@ def actividad_crear(request):
                 actividad.marcar_ingreso_agenda(compromiso)
                 registrar_auditoria(request.user, 'CREACION', 'Compromiso', compromiso.pk, '', compromiso)
 
+        if compromiso_origen is not None:
+            messages.success(request, f"Actividad registrada y asociada al compromiso {compromiso_origen.folio()}.")
+            return redirect('actividades:compromiso_detalle', pk=compromiso_origen.pk)
         messages.success(request, "Actividad registrada correctamente.")
         return redirect('actividades:mi_gestion')
 
-    return render(request, 'actividades/actividad_form.html')
+    return render(request, 'actividades/actividad_form.html', data_form)
 
 
 # ---------------------------------------------------------------------------
@@ -186,15 +208,30 @@ def compromiso_a_diccionario(compromiso):
         'origen': compromiso.origen,
         'observacion': compromiso.observacion,
         'funcionario': compromiso.responsable,
+        'responsable_id': compromiso.responsable_id,
         'territorio': compromiso.territorio or '-',
         'estado': compromiso.estado,
+        'vencido': compromiso.vencido(),
+        'proximo_a_vencer': compromiso.proximo_a_vencer(),
     }
 
 
 def puede_ver_compromiso(usuario, compromiso):
+    """HU-12: el compromiso es visible para la supervisión, para quienes participan en él
+    y para los funcionarios de la misma delegación (agenda colectiva)."""
     if compromiso.puede_supervisar(usuario):
         return True
-    return usuario.pk == compromiso.responsable_id or usuario.pk == compromiso.registrado_por_id
+    if usuario.pk == compromiso.responsable_id or usuario.pk == compromiso.registrado_por_id:
+        return True
+    return usuario.delegacion_id is not None and usuario.delegacion_id == compromiso.delegacion_id
+
+
+def fecha_de_filtro(texto):
+    """Convierte 'AAAA-MM-DD' en fecha. Devuelve None si viene vacío o mal escrito."""
+    try:
+        return date.fromisoformat(texto)
+    except (TypeError, ValueError):
+        return None
 
 
 def tubo_trabajo(request):
@@ -206,18 +243,51 @@ def tubo_trabajo(request):
     codigo, delegacion, nombre = delegacion_seleccionada(request)
     compromisos = Compromiso.objects.select_related('responsable')
     if delegacion is not None:
+        # HU-12: todos los funcionarios ven la agenda colectiva de su delegación
         compromisos = compromisos.filter(delegacion=delegacion)
-    if not request.user.tiene_rol(['Admin', 'Coordinador', 'Delegado']):
-        # El funcionario solo ve los compromisos donde participa
+    elif not request.user.tiene_rol(['Admin', 'Coordinador']):
+        # Funcionario sin delegación asignada: solo lo que le concierne
         compromisos = compromisos.filter(responsable=request.user) | compromisos.filter(registrado_por=request.user)
 
+    # Filtros de HU-12: responsable, estado, territorio, rango de fechas comprometidas y "solo míos"
+    filtros = {
+        'responsable': request.GET.get('responsable', ''),
+        'estado': request.GET.get('estado', ''),
+        'territorio': request.GET.get('territorio', '').strip(),
+        'desde': request.GET.get('desde', ''),
+        'hasta': request.GET.get('hasta', ''),
+        'mios': request.GET.get('mios', ''),
+    }
+    responsables = Usuario.objects.filter(pk__in=compromisos.values('responsable')).order_by('first_name', 'last_name')
+
+    if filtros['responsable'].isdigit():
+        compromisos = compromisos.filter(responsable_id=int(filtros['responsable']))
+    if filtros['estado'] in ['INGRESADO', 'PENDIENTE', 'EN_PROCESO', 'REALIZADO']:
+        compromisos = compromisos.filter(estado=filtros['estado'])
+    elif filtros['estado'] == 'VENCIDOS':
+        compromisos = compromisos.exclude(estado='REALIZADO').filter(fecha_comprometida__lt=timezone.localdate())
+    if filtros['territorio']:
+        compromisos = compromisos.filter(territorio__icontains=filtros['territorio'])
+    desde = fecha_de_filtro(filtros['desde'])
+    hasta = fecha_de_filtro(filtros['hasta'])
+    if desde is not None:
+        compromisos = compromisos.filter(fecha_comprometida__gte=desde)
+    if hasta is not None:
+        compromisos = compromisos.filter(fecha_comprometida__lte=hasta)
+    if filtros['mios'] == '1':
+        compromisos = compromisos.filter(responsable=request.user)
+
     lista = []
-    for compromiso in compromisos:
+    for compromiso in compromisos.order_by('fecha_comprometida'):
         lista.append(compromiso_a_diccionario(compromiso))
 
     data = {
         'compromisos': lista,
         'delegacion_actual': f"Delegación {nombre}",
+        'codigo_delegacion': codigo,
+        'filtros': filtros,
+        'responsables': responsables,
+        'estados_filtro': [('INGRESADO', 'Ingresado'), ('PENDIENTE', 'Pendiente'), ('EN_PROCESO', 'En proceso'), ('REALIZADO', 'Realizado'), ('VENCIDOS', 'Vencidos')],
     }
     return render(request, 'actividades/tubo_trabajo.html', data)
 
@@ -306,7 +376,25 @@ def compromiso_detalle(request, pk):
             messages.error(request, mensaje)
         return redirect('actividades:compromiso_detalle', pk=compromiso.pk)
 
-    data = {'object': compromiso_a_diccionario(compromiso)}
+    es_responsable = request.user.pk == compromiso.responsable_id
+    actividades = []
+    for act in compromiso.actividades.select_related('usuario').order_by('-fecha'):
+        actividades.append({
+            'fecha': act.fecha,
+            'accion': act.accion,
+            'funcionario': act.usuario,
+            'estado': act.get_estado_display(),
+            'estado_codigo': act.estado,
+        })
+
+    data = {
+        'object': compromiso_a_diccionario(compromiso),
+        # Solo el responsable o la supervisión pueden cambiar el estado (misma regla que cambiar_estado)
+        'puede_gestionar': es_responsable or compromiso.puede_supervisar(request.user),
+        # Solo el responsable registra la actividad con la que ejecuta el compromiso
+        'puede_registrar_actividad': es_responsable and compromiso.estado != 'REALIZADO',
+        'actividades': actividades,
+    }
     return render(request, 'actividades/compromiso_detail.html', data)
 
 
