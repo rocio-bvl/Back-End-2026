@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block title %} Nuevo Compromiso — SGR {% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni-b2 text-white fw-bold py-3 d-flex align-items-center">
+                    <i class="bi bi-calendar-plus me-2 fs-5"></i>
+                    <span>Nuevo Compromiso Territorial / Agenda Colectiva</span>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Solicitante / Organización</label>
+                                <input type="text" name="origen" class="form-control" placeholder="Ej: JJ.VV. Villa Alemana" required>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Funcionario Responsable</label>
+                                <select name="funcionario" class="form-select" required>
+                                    <option value="" selected disabled>Seleccione un responsable...</option>
+                                    {% for funcionario in lista_funcionarios %}
+                                    <option value="{{ funcionario.id }}">{{ funcionario.get_full_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Descripción del Requerimiento</label>
+                                <textarea name="observacion" class="form-control" rows="3" placeholder="Detalle los acuerdos y tareas a realizar..." required></textarea>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Fecha Comprometida / Límite</label>
+                                <input type="date" name="fecha_comprometida" class="form-control" required>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Territorio / Sector</label>
+                                <input type="text" name="territorio" class="form-control" placeholder="Ej: Sector Las Compañías Alto">
+                            </div>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'actividades:tubo_trabajo' %}" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-muni fw-bold px-4">
+                                <i class="bi bi-save me-1"></i> Guardar Compromiso
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

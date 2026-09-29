@@ -235,7 +235,7 @@
             {% endif %}
 
             <!-- 5. Semáforo (Supervisores / Control) -->
-            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Verificador' or request.user.is_superuser %}
+            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Verificador' or request.user.rol == 'Consulta' or request.user.is_superuser %}
             <li class="nav-item">
                 <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'semaforo' %}active{% else %}text-dark{% endif %}" href="{% url 'indicadores:semaforo' %}">
                     <i class="bi bi-traffic-light me-1 text-danger"></i> Semáforo
@@ -244,7 +244,7 @@
             {% endif %}
 
             <!-- 6. Resumen Delegación (Directivos / Control) -->
-            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Delegado' or request.user.is_superuser %}
+            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Delegado' or request.user.rol == 'Consulta' or request.user.is_superuser %}
             <li class="nav-item">
                 <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'resumen_delegacion' %}active{% else %}text-dark{% endif %}" href="{% url 'indicadores:resumen_delegacion' %}">
                     <i class="bi bi-pie-chart me-1 text-danger"></i> Resumen
