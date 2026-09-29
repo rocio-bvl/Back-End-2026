@@ -1,0 +1,205 @@
+{% extends 'base.html' %}
+
+{% block title %}Mi Gestión — Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+<main class="container-fluid p-4">
+    <!-- Banner de Encabezado Oficial -->
+    <div class="card border-0 shadow-sm mb-4 overflow-hidden">
+        <div class="row g-0 align-items-stretch">
+            <div class="col-md-9 bg-muni-b1 p-3 text-white">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="badge bg-muni-b5 text-white tx-2">{{ request.user.area|default:"ORG COM" }}</span>
+                    <h4 class="m-0 fw-bold">{{ request.user.get_full_name|upper }}</h4>
+                    <span class="badge bg-muni-v4 text-dark tx-2 fw-bold">{{ request.user.cargo|default:"TERRITORIAL OO.CC." }}</span>
+                </div>
+                <small class="d-block text-white-50 text-end fw-bold">(Cumplimiento Mínimo Exigido: 80%)</small>
+            </div>
+            <div class="col-md-3 bg-gris-0 d-flex align-items-center justify-content-center p-2 border-start">
+                <div class="text-center">
+                    <img src="https://framework.laserena.cl/img/laserenaFuturo-Color.png" alt="Logo La Serena" height="50">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Selector de Delegación Dinámico -->
+<div class="card mb-4 border-0 shadow-sm">
+    <div class="card-body bg-light rounded d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-geo-alt-fill text-primary fs-4"></i>
+            <h5 class="mb-0 fw-bold">Filtrar por Delegación:</h5>
+        </div>
+
+        <form method="GET" action="" id="formFiltroDelegacion" class="d-flex align-items-center gap-2">
+            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.is_superuser %}
+                <select name="delegacion" class="form-select fw-semibold" onchange="document.getElementById('formFiltroDelegacion').submit();">
+                    {% for clave, nombre in opciones_delegacion %}
+                        <option value="{{ clave }}" {% if delegacion_activa == clave %}selected{% endif %}>
+                            {{ nombre }}
+                        </option>
+                    {% endfor %}
+                </select>
+            {% else %}
+                <!-- Si es Delegado o Funcionario territorial, solo ve su delegación fija -->
+                <span class="badge bg-primary fs-6 px-3 py-2">{{ request.user.get_delegacion_display|default:request.user.delegacion }}</span>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+<!-- Tabla / Lista de Actividades Filtradas -->
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white fw-bold py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span>Actividades Registradas — <span class="text-primary">{{ delegacion_activa }}</span></span>
+        {% url 'actividades:actividad_crear' as url_agregar %}
+        {% url 'admin:ActividadesApp_actividad_changelist' as url_buscar %}
+        {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar %}
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Código / Meta</th>
+                    <th>Nombre de la Actividad</th>
+                    <th>Delegación</th>
+                    <th>Estado</th>
+                    <th class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for actividad in actividades %}
+                    <tr>
+                        <td>{{ actividad.codigo_meta }}</td>
+                        <td>{{ actividad.nombre }}</td>
+                        <td><span class="badge bg-secondary">{{ actividad.delegacion }}</span></td>
+                        <td>{{ actividad.estado }}</td>
+                        <td class="text-center">
+                            {% url 'admin:ActividadesApp_actividad_change' actividad.id as url_modificar %}
+                            {% url 'admin:ActividadesApp_actividad_delete' actividad.id as url_eliminar %}
+                            {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center py-4 text-muted">
+                            <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                            No hay actividades registradas para la delegación seleccionada.
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+    <!-- Tabla 1: Metas Trimestrales -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-gris-0 fw-bold d-flex justify-content-between align-items-center py-3">
+            <span><i class="bi bi-calculator me-2 text-danger"></i>Metas Trimestrales y Cumplimiento Ponderado</span>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <span class="badge bg-muni fs-6">Total Ponderado Actual: {{ total_ponderado|default:"50.6%" }}</span>
+                {% url 'admin:IndicadoresApp_metadesempeno_add' as url_agregar %}
+                {% url 'admin:IndicadoresApp_metadesempeno_changelist' as url_buscar %}
+                {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Meta" %}
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle mb-0 text-center" style="font-size: 0.85rem;">
+                <thead class="bg-muni text-white">
+                    <tr>
+                        <th class="text-start">ITEM</th>
+                        <th>PONDERADOR</th>
+                        <th>META TRIMESTRE</th>
+                        <th>AVANCE ACTUAL</th>
+                        <th>% DE CUMPLIMIENTO</th>
+                        <th>CUMPLIMIENTO PONDERADO</th>
+                        <th>ACCIONES</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for meta in metas %}
+                    <tr>
+                        <td class="text-start">{{ meta.item_nombre }}</td>
+                        <td>{{ meta.ponderador }}%</td>
+                        <td>{{ meta.meta_trimestre }}</td>
+                        <td>{{ meta.avance_actual }}</td>
+                        <td>{{ meta.porcentaje_cumplimiento }}%</td>
+                        <td class="fw-bold {% if meta.ponderado >= 20 %}text-success{% endif %}">{{ meta.cumplimiento_ponderado }}%</td>
+                        <td>
+                            {% url 'admin:IndicadoresApp_metadesempeno_change' meta.id as url_modificar %}
+                            {% url 'admin:IndicadoresApp_metadesempeno_delete' meta.id as url_eliminar %}
+                            {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-muted py-3">No hay metas trimestrales configuradas.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Tabla 2: Registro Diario -->
+    <div class="card shadow-sm border-0" id="registros">
+        <div class="card-header bg-gris-0 d-flex justify-content-between align-items-center py-3">
+            <span class="fw-bold"><i class="bi bi-journal-plus me-2 text-danger"></i>Ingreso Diario de Actividades</span>
+            {% url 'actividades:actividad_crear' as url_agregar %}
+            {% url 'admin:ActividadesApp_actividad_changelist' as url_buscar %}
+            {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Actividad" %}
+        </div>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle mb-0" style="font-size: 0.8rem;">
+                <thead class="bg-gris-10 text-center">
+                    <tr>
+                        <th>N°</th>
+                        <th>FECHA</th>
+                        <th style="min-width: 200px;">ACTIVIDAD / SOLICITUD / PROBLEMA</th>
+                        <th>ACCIÓN</th>
+                        <th>CONTACTO</th>
+                        <th>FONO</th>
+                        <th>INGRESO A TUBO</th>
+                        <th>CÓDIGO FOTO</th>
+                        <th>VERIFICADO</th>
+                        <th>ACCIONES</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for act in actividades %}
+                    <tr>
+                        <td class="text-center" data-cell="N°">{{ forloop.counter }}</td>
+                        <td data-cell="FECHA">{{ act.fecha|date:"d/m/Y" }}</td>
+                        <td data-cell="ACTIVIDAD">{{ act.solicitud_problema }}</td>
+                        <td data-cell="ACCIÓN">{{ act.accion }}</td>
+                        <td data-cell="CONTACTO">{{ act.contacto }}</td>
+                        <td data-cell="FONO">{{ act.telefono }}</td>
+                        <td class="text-center" data-cell="TUBO">
+                            {% if act.ingreso_agenda_colectiva %}
+                            <span class="badge bg-muni">SI</span>
+                            {% else %}
+                            <span class="badge bg-gris-50">NO</span>
+                            {% endif %}
+                        </td>
+                        <td class="fw-bold text-center text-primary" data-cell="CÓDIGO">{{ act.codigo_evidencia|default:"-" }}</td>
+                        <td class="text-center {% if act.esta_validada %}bg-muni-a1 text-dark fw-bold{% endif %}" data-cell="VERIFICADO">
+                            {% if act.esta_validada %}SI{% else %}PENDIENTE{% endif %}
+                        </td>
+                        <td class="text-center" data-cell="ACCIONES">
+                            {% url 'admin:ActividadesApp_actividad_change' act.id as url_modificar %}
+                            {% url 'admin:ActividadesApp_actividad_delete' act.id as url_eliminar %}
+                            {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" class="text-center text-muted py-3">No hay registros cargados.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</main>
+{% endblock %}
