@@ -3,13 +3,18 @@ roles = (
     ('Admin', 'Administrador'),
     ('Coordinador', 'Coordinador'),
     ('Delegado', 'Delegado'),
-    ('Verificador', 'Verificador'),
     ('Funcionario', 'Funcionario'),
     ('Consulta', 'Usuario Consulta'),
 )
 
 # Orden de importancia
-orden_roles = ['Admin', 'Coordinador', 'Delegado', 'Verificador', 'Funcionario', 'Consulta']
+orden_roles = ['Admin', 'Coordinador', 'Delegado', 'Funcionario', 'Consulta']
+
+# Grupos de roles que usan las views y los templates (una sola fuente para los permisos)
+ROLES_ADMINISTRACION = ['Admin', 'Coordinador']          # usuarios, metas, auditoría, modificar y eliminar
+ROLES_REGISTRO = ['Admin', 'Coordinador', 'Funcionario']  # agregan actividades y compromisos
+ROLES_VERIFICACION = ['Admin', 'Coordinador', 'Delegado']  # validan evidencias y cambian estados del Tubo
+ROLES_RESERVADOS = ['Admin', 'Coordinador']              # solo el Admin puede asignarlos
 
 # «enumeration» EstadoRegistro
 estados_registro = (
