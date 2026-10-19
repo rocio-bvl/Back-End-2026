@@ -5,7 +5,7 @@
 {% block content %}
 <main class="container py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <h3 class="m-0 fw-bold"><i class="bi bi-shield-check text-danger me-2"></i>Auditoría y Verificación de Evidencias</h3>
+        <h3 class="m-0 fw-bold"><i class="bi bi-shield-check text-danger me-2"></i>Verificación de Evidencias</h3>
         {% url 'admin:ActividadesApp_evidencia_add' as url_agregar %}
         {% url 'admin:ActividadesApp_evidencia_changelist' as url_buscar %}
         {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Evidencia" %}
@@ -37,7 +37,12 @@
                 <div class="card-body">
                     {% if evidencia_seleccionada %}
                     <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                        <p class="mb-0"><strong>Descripción:</strong> {{ evidencia_seleccionada.descripcion }}</p>
+                        <div>
+                            <p class="mb-1"><strong>Actividad:</strong> <a href="{% url 'actividades:actividad_detalle' evidencia_seleccionada.actividad_id %}">{{ evidencia_seleccionada.folio }}</a> · {{ evidencia_seleccionada.accion }} (versión {{ evidencia_seleccionada.version }} de la evidencia)</p>
+                            <p class="mb-1"><strong>Descripción:</strong> {{ evidencia_seleccionada.descripcion }}</p>
+                            {% if evidencia_seleccionada.fue_compromiso %}<p class="mb-1 small text-muted">Venía del Tubo de Trabajo (fecha límite {{ evidencia_seleccionada.fecha_comprometida|date:"d/m/Y" }}).</p>{% endif %}
+                            {% if evidencia_seleccionada.comentario %}<p class="mb-0 small"><strong>Comentario del funcionario:</strong> {{ evidencia_seleccionada.comentario }}</p>{% endif %}
+                        </div>
                         {% url 'admin:ActividadesApp_evidencia_change' evidencia_seleccionada.id as url_modificar %}
                         {% url 'admin:ActividadesApp_evidencia_delete' evidencia_seleccionada.id as url_eliminar %}
                         {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
@@ -56,17 +61,15 @@
                         {% csrf_token %}
                         <div class="mb-3">
                             <label class="form-label">Observaciones de Verificación</label>
-                            <textarea name="observacion" class="form-control" rows="2" placeholder="Ingrese el motivo de revisión o rechazo..."></textarea>
+                            <textarea name="observacion" class="form-control" rows="2" placeholder="Obligatoria para rechazar: indique por qué la evidencia no es válida."></textarea>
+                            <small class="text-muted">Validar completa la actividad. Rechazar invalida solo la evidencia: la actividad sigue vigente y el funcionario debe subir una nueva.</small>
                         </div>
                         <div class="d-flex gap-2">
                             <button type="submit" name="decision" value="APROBAR" class="btn btn-muni flex-fill">
-                                <i class="bi bi-check-circle me-1"></i> Aprobar
-                            </button>
-                            <button type="submit" name="decision" value="CORREGIR" class="btn btn-muni-v2 flex-fill">
-                                <i class="bi bi-exclamation-triangle me-1"></i> Corregir
+                                <i class="bi bi-check-circle me-1"></i> Validar (completar)
                             </button>
                             <button type="submit" name="decision" value="RECHAZAR" class="btn btn-muni-b5 flex-fill">
-                                <i class="bi bi-x-circle me-1"></i> Rechazar
+                                <i class="bi bi-x-circle me-1"></i> Rechazar evidencia
                             </button>
                         </div>
                     </form>

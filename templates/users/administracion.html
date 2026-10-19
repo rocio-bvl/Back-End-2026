@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Administración — Ilustre Municipalidad de La Serena{% endblock %}
+{% block title %}Administración | Ilustre Municipalidad de La Serena{% endblock %}
 
 {% block content %}
 <main class="container py-4">
@@ -65,7 +65,11 @@
                         </div>
                         {% url 'users:usuario_editar' usr.pk as url_modificar %}
                         {% url 'admin:UsuarioApp_usuario_delete' usr.pk as url_eliminar %}
+                        {% if usr.editable %}
                         {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                        {% else %}
+                        {% include 'components/acciones_fila.html' with oculto=True %}
+                        {% endif %}
                     </li>
                     {% empty %}
                     <li class="list-group-item text-center py-4 text-muted">
@@ -80,23 +84,93 @@
         <div class="tab-pane fade" id="goals">
             <div class="card shadow-sm border-0 p-3">
                 <h5 class="fw-bold">Configuración de Ponderadores Trimestrales</h5>
+                <p class="text-muted small mb-0">
+                    Cada meta indica cuántas actividades validadas debe lograr un cargo en el trimestre para un ítem.
+                    Los ponderadores de un mismo cargo deben sumar 100%. Si la meta ya existe, se actualiza.
+                </p>
                 <form method="post" action="{% url 'indicadores:guardar_metas' %}" class="mt-3">
                     {% csrf_token %}
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Periodo Trimestral</label>
-                            <input type="text" class="form-control" value="{{ periodo_activo.nombre|default:'T3 - 2026' }}" readonly>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="meta_periodo">Periodo trimestral</label>
+                            <input type="text" id="meta_periodo" class="form-control" value="{{ periodo_activo.nombre }}" readonly>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-semibold">Cargo Destino</label>
-                            <select name="cargo" class="form-select">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="meta_cargo">Cargo destino</label>
+                            <select name="cargo" id="meta_cargo" class="form-select" required>
+                                <option value="" selected disabled>Seleccione un cargo...</option>
                                 {% for cargo in cargos %}
                                 <option value="{{ cargo.id }}">{{ cargo.nombre }}</option>
                                 {% endfor %}
                             </select>
                         </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="meta_item">Ítem de gestión</label>
+                            <select name="item" id="meta_item" class="form-select" required>
+                                <option value="" selected disabled>Seleccione un ítem...</option>
+                                {% for item in items_gestion %}
+                                <option value="{{ item.id }}">{{ item.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="meta_valor">Meta del trimestre (actividades)</label>
+                            <input type="number" name="valor_objetivo" id="meta_valor" class="form-control" min="1" step="1" placeholder="Ej: 30" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="meta_ponderador">Ponderador (%)</label>
+                            <input type="number" name="ponderador" id="meta_ponderador" class="form-control" min="0.01" max="100" step="0.01" placeholder="Ej: 40" required>
+                        </div>
+                        <div class="col-md-4 d-grid">
+                            <button type="submit" class="btn btn-muni fw-bold" {% if not hay_periodo %}disabled{% endif %}>
+                                <i class="bi bi-check-lg me-1"></i>Guardar meta
+                            </button>
+                        </div>
                     </div>
+                    {% if not hay_periodo %}
+                    <div class="alert alert-warning mt-3 mb-0">No hay un periodo vigente. Créelo en Django Admin (Periodos) para poder definir metas.</div>
+                    {% endif %}
                 </form>
+            </div>
+
+            <!-- Metas vigentes por cargo -->
+            <div class="card shadow-sm border-0 p-3 mt-4">
+                <h5 class="fw-bold">Metas del periodo vigente</h5>
+                {% for grupo in metas_por_cargo %}
+                    <div class="tarjeta-tabla table-responsive mt-2 mb-3">
+                        <table class="table table-hover tabla-sgr">
+                            <thead>
+                            <tr>
+                                <th colspan="2">{{ grupo.cargo.nombre }}</th>
+                                <th class="text-center">
+                                    Total {{ grupo.total }}%
+                                    {% if grupo.total == 100 %}
+                                    <span class="badge bg-success ms-1">OK</span>
+                                    {% else %}
+                                    <span class="badge bg-warning text-dark ms-1">Debe sumar 100%</span>
+                                    {% endif %}
+                                </th>
+                            </tr>
+                            <tr class="text-center">
+                                <th>Ítem</th>
+                                <th>Meta</th>
+                                <th>Ponderador</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for meta in grupo.metas %}
+                            <tr>
+                                <td data-cell="ÍTEM">{{ meta.item.nombre }}</td>
+                                <td class="text-center" data-cell="META">{{ meta.valor_objetivo }} {{ meta.unidad }}</td>
+                                <td class="text-center" data-cell="PONDERADOR">{{ meta.ponderador }}%</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        </table>
+                    </div>
+                {% empty %}
+                <p class="text-muted mb-0">Aún no hay metas definidas para el periodo vigente.</p>
+                {% endfor %}
             </div>
         </div>
 
@@ -138,16 +212,26 @@
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Rol del Sistema</label>
                             <select name="rol" class="form-select" required>
-                                <option value="Funcionario" selected>Funcionario</option>
-                                <option value="Delegado">Delegado</option>
-                                <option value="Coordinador">Coordinador</option>
-                                <option value="Verificador">Verificador</option>
-                                <option value="Admin">Administrador</option>
+                                {% for valor, texto in roles_asignables %}
+                                <option value="{{ valor }}" {% if valor == 'Funcionario' %}selected{% endif %}>{{ texto }}</option>
+                                {% endfor %}
                             </select>
+                            {% if not request.user.es_administrador %}
+                            <small class="text-muted">Solo el Administrador puede crear Coordinadores y Administradores.</small>
+                            {% endif %}
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Cargo Municipal</label>
                             <input type="text" name="cargo" class="form-control" placeholder="Ej: Inspector Territorial">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Delegación</label>
+                            <select name="delegacion" class="form-select">
+                                {% for valor, texto in opciones_delegacion %}
+                                <option value="{{ valor }}" {% if valor == 'GENERAL' %}selected{% endif %}>{{ texto }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Funcionarios y Delegados deben tener delegación.</small>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Contraseña</label>
@@ -167,4 +251,14 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Después de guardar una meta se vuelve con #goals: se abre esa pestaña
+    if (window.location.hash === '#goals') {
+        var pestana = document.getElementById('goals-tab');
+        if (pestana) { bootstrap.Tab.getOrCreateInstance(pestana).show(); }
+    }
+</script>
 {% endblock %}

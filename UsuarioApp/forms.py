@@ -14,8 +14,15 @@ class UsuarioCrearForm(forms.Form):
     last_name = forms.CharField(max_length=100, label="Apellidos")
     rol = forms.ChoiceField(choices=roles, label="Rol")
     cargo = forms.CharField(max_length=150, required=False, label="Cargo")
+    delegacion = forms.ChoiceField(choices=opciones_delegacion, required=False, label="Delegación")
     password1 = forms.CharField(label="Contraseña")
     password2 = forms.CharField(label="Confirmar contraseña")
+
+    def __init__(self, *args, roles_permitidos=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # El Coordinador no puede crear Coordinadores ni Administradores
+        if roles_permitidos is not None:
+            self.fields['rol'].choices = roles_permitidos
 
     def clean_rut(self):
         rut = limpiar_rut(self.cleaned_data['rut'])
@@ -54,7 +61,9 @@ class UsuarioEditarForm(forms.ModelForm):
         model = Usuario
         fields = ['email', 'first_name', 'last_name', 'cargo', 'is_active']
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, roles_permitidos=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['first_name'].required = True
         self.fields['last_name'].required = True
+        if roles_permitidos is not None:
+            self.fields['rol'].choices = roles_permitidos

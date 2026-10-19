@@ -11,15 +11,15 @@
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-muni-b1 fw-bold text-white d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <span>Comisiones y Cumplimiento Ponderado Global</span>
-                    <div class="bg-white rounded p-1">
+                    <div class="bg-white rounded p-1 {% if not request.user.puede_administrar %}d-none{% endif %}">
                         {% url 'admin:IndicadoresApp_metadesempeno_add' as url_agregar %}
                         {% url 'admin:IndicadoresApp_metadesempeno_changelist' as url_buscar %}
                         {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Meta" %}
                     </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-bordered table-sm align-middle text-center mb-0" style="font-size: 0.75rem;">
-                        <thead class="bg-gris-10">
+                    <div class="tarjeta-tabla table-responsive">
+                        <table class="table table-hover tabla-sgr tabla-compacta text-center">
+                            <thead>
                             <tr>
                                 <th>CARGO</th>
                                 <th>ITEM / COMISIÓN</th>
@@ -28,7 +28,7 @@
                                 <th>AVANCE</th>
                                 <th>% CUMP.</th>
                                 <th>TOTAL POND.</th>
-                                <th>ACCIONES</th>
+                                {% if request.user.puede_administrar %}<th>ACCIONES</th>{% endif %}
                             </tr>
                         </thead>
                         <tbody>
@@ -41,11 +41,13 @@
                                 <td data-cell="AVANCE">{{ item.avance }}</td>
                                 <td data-cell="% CUMP">{{ item.porcentaje_cumplimiento }}%</td>
                                 <td data-cell="TOTAL">{{ item.total_ponderado }}%</td>
+                                {% if request.user.puede_administrar %}
                                 <td data-cell="ACCIONES">
                                     {% url 'admin:IndicadoresApp_metadesempeno_change' item.id as url_modificar %}
                                     {% url 'admin:IndicadoresApp_metadesempeno_delete' item.id as url_eliminar %}
                                     {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
                                 </td>
+                                {% endif %}
                             </tr>
                             {% empty %}
                             <tr>
@@ -53,8 +55,8 @@
                             </tr>
                             {% endfor %}
                         </tbody>
-                    </table>
-                </div>
+                        </table>
+                    </div>
             </div>
         </div>
 
@@ -62,19 +64,19 @@
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-gris-90 text-white fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <span>Equipo Asignado - {{ delegacion_nombre }}</span>
-                    <div class="bg-white rounded p-1">
+                    <div class="bg-white rounded p-1 {% if not request.user.puede_administrar %}d-none{% endif %}">
                         {% url 'admin:UsuarioApp_usuario_add' as url_agregar %}
                         {% url 'admin:UsuarioApp_usuario_changelist' as url_buscar %}
                         {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar %}
                     </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped table-hover mb-0" style="font-size: 0.78rem;">
-                        <thead class="bg-gris-10">
+                    <div class="tarjeta-tabla table-responsive">
+                        <table class="table table-hover tabla-sgr tabla-compacta">
+                            <thead>
                             <tr>
                                 <th>CARGO DELEGACIÓN</th>
                                 <th>FUNCIONARIO ASIGNADO</th>
-                                <th>ACCIONES</th>
+                                {% if request.user.puede_administrar %}<th>ACCIONES</th>{% endif %}
                             </tr>
                         </thead>
                         <tbody>
@@ -82,11 +84,13 @@
                             <tr>
                                 <td data-cell="CARGO">{{ funcionario.cargo }}</td>
                                 <td class="fw-bold" data-cell="FUNCIONARIO">{{ funcionario.get_full_name }}</td>
+                                {% if request.user.puede_administrar %}
                                 <td data-cell="ACCIONES">
                                     {% url 'admin:UsuarioApp_usuario_change' funcionario.pk as url_modificar %}
                                     {% url 'admin:UsuarioApp_usuario_delete' funcionario.pk as url_eliminar %}
                                     {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
                                 </td>
+                                {% endif %}
                             </tr>
                             {% empty %}
                             <tr>
@@ -94,8 +98,8 @@
                             </tr>
                             {% endfor %}
                         </tbody>
-                    </table>
-                </div>
+                        </table>
+                    </div>
             </div>
         </div>
     </div>

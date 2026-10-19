@@ -2,7 +2,8 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 
-from UsuarioApp.choices import (roles, orden_roles, estados_registro, delegaciones, tipos_catalogo)
+from UsuarioApp.choices import (roles, orden_roles, estados_registro, delegaciones, tipos_catalogo,
+                                ROLES_ADMINISTRACION, ROLES_REGISTRO, ROLES_VERIFICACION, ROLES_RESERVADOS)
 
 
 class Catalogo(models.Model):
@@ -64,11 +65,20 @@ class Cargo(models.Model):
     def __str__(self):
         return self.nombre
 
-    def validar_ponderadores(self, periodo):
+    def total_ponderadores(self, periodo, excluir=None):
+        """Suma de los ponderadores de las metas del cargo en el periodo.
+        'excluir' deja fuera una meta (la que se está modificando)."""
+        metas = self.metas.filter(periodo=periodo)
+        if excluir is not None and excluir.pk is not None:
+            metas = metas.exclude(pk=excluir.pk)
         total = 0
-        for meta in self.metas.filter(periodo=periodo):
+        for meta in metas:
             total = total + meta.ponderador
         return total
+
+    def validar_ponderadores(self, periodo):
+        """True si las metas del cargo en el periodo suman exactamente 100%."""
+        return self.total_ponderadores(periodo) == 100
 
     class Meta:
         db_table = "cargo"
@@ -112,10 +122,10 @@ class Usuario(AbstractUser):
         return self.username
 
     def codigos_rol(self):
-        codigos = []
-        for asignacion in self.roles_asignados.all():
-            codigos.append(asignacion.rol.codigo)
-        return codigos
+        # Una sola consulta (JOIN con rol). Se guarda en el objeto para no repetirla en la misma petición.
+        if not hasattr(self, '_codigos_rol'):
+            self._codigos_rol = list(self.roles_asignados.values_list('rol__codigo', flat=True))
+        return self._codigos_rol
 
     def tiene_rol(self, lista_roles):
         if self.is_superuser:
@@ -131,6 +141,51 @@ class Usuario(AbstractUser):
             if codigo in codigos:
                 return codigo
         return ""
+
+    # ----- permisos por rol (los usan las views y los templates: request.user.puede_administrar) -----
+    def es_administrador(self):
+        return self.tiene_rol(['Admin'])
+
+    def puede_administrar(self):
+        """Admin y Coordinador: usuarios, metas, auditoría, modificar y eliminar."""
+        return self.tiene_rol(ROLES_ADMINISTRACION)
+
+    def puede_registrar(self):
+        """Admin, Coordinador y Funcionario: agregan actividades y compromisos."""
+        return self.tiene_rol(ROLES_REGISTRO)
+
+    def puede_verificar(self):
+        """Admin, Coordinador y Delegado (este último, solo en su delegación)."""
+        return self.tiene_rol(ROLES_VERIFICACION)
+
+    def roles_asignables(self):
+        """Roles que este usuario puede asignar al crear o editar usuarios.
+        El Coordinador no puede crear Coordinadores ni Administradores."""
+        if self.es_administrador():
+            return list(roles)
+        return [(codigo, nombre) for codigo, nombre in roles if codigo not in ROLES_RESERVADOS]
+
+    def puede_editar_usuario(self, otro):
+        """El Admin edita a todos. El Coordinador no edita a Administradores ni a otros Coordinadores."""
+        if self.es_administrador():
+            return True
+        if not self.puede_administrar():
+            return False
+        if otro.pk == self.pk:
+            return True
+        return not (otro.is_superuser or otro.tiene_rol(ROLES_RESERVADOS))
+
+    def sincronizar_acceso_admin(self):
+        """Django Admin: el Admin es superusuario; el Coordinador entra como staff con permisos
+        restringidos (ver UsuarioApp/admin_sgr.py). Un superusuario sin roles (createsuperuser) no se toca."""
+        if hasattr(self, '_codigos_rol'):
+            del self._codigos_rol
+        codigos = self.codigos_rol()
+        if not codigos:
+            return
+        self.is_superuser = 'Admin' in codigos
+        self.is_staff = self.is_superuser or 'Coordinador' in codigos
+        self.save(update_fields=['is_superuser', 'is_staff'])
 
     def area(self):
         if self.cargo and self.cargo.area:

@@ -1,33 +1,27 @@
 # «enumeration» EstadoActividad
+# EN_TUBO: sin evidencia, es un compromiso con fecha límite.
+# REGISTRADA: con evidencia, espera la validación del Delegado.
+# RECHAZADA: el Delegado rechazó la evidencia (no es válida). La actividad NO se anula: se debe
+#            cumplir igual, así que el funcionario resube una nueva evidencia y vuelve a REGISTRADA.
+# VALIDADA: el Delegado aprobó la evidencia; la actividad queda completada y cuenta para la meta.
 estados_actividad = (
+    ('EN_TUBO', 'En Tubo de Trabajo'),
     ('REGISTRADA', 'Registrada'),
-    ('EN_REVISION', 'En revisión'),
-    ('OBSERVADA', 'Observada'),
-    ('VALIDADA', 'Validada'),
-    ('RECHAZADA', 'Rechazada'),
+    ('RECHAZADA', 'Rechazada (resubir evidencia)'),
+    ('VALIDADA', 'Validada (completada)'),
 )
 
 # «enumeration» EstadoEvidencia
 estados_evidencia = (
     ('PENDIENTE', 'Pendiente'),
     ('APROBADA', 'Aprobada'),
-    ('OBSERVADA', 'Observada'),
     ('RECHAZADA', 'Rechazada'),
 )
 
 # «enumeration» DecisionValidacion
 decisiones = (
     ('APROBAR', 'Aprobar'),
-    ('CORREGIR', 'Corregir'),
-    ('RECHAZAR', 'Rechazar'),
-)
-
-# «enumeration» EstadoCompromiso (el orden importa: se avanza de a un paso)
-estados_compromiso = (
-    ('INGRESADO', 'Ingresado'),
-    ('PENDIENTE', 'Pendiente'),
-    ('EN_PROCESO', 'En proceso'),
-    ('REALIZADO', 'Realizado'),
+    ('RECHAZAR', 'Rechazar (resubir evidencia)'),
 )
 
 # «enumeration» TipoGestionSocial

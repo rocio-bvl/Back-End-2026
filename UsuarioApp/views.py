@@ -5,10 +5,11 @@ from django.shortcuts import render, redirect, get_object_or_404
 
 from AuditoriaApp.models import Auditoria
 from AuditoriaApp.registro import registrar_auditoria
-from IndicadoresApp.models import periodo_vigente
+from IndicadoresApp.models import MetaDesempeno, periodo_vigente
 from UsuarioApp.forms import UsuarioCrearForm, UsuarioEditarForm
 from UsuarioApp.funciones import limpiar_rut, acceso_denegado
-from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion
+from UsuarioApp.choices import opciones_delegacion
+from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion, Catalogo
 
 
 def inicio(request):
@@ -52,25 +53,45 @@ def asignar_rol(usuario, codigo, asignado_por):
         return
     UsuarioRol.objects.filter(usuario=usuario).delete()
     UsuarioRol.objects.create(usuario=usuario, rol=rol, asignado_por=asignado_por)
-    usuario.is_staff = codigo == 'Admin'
-    usuario.is_superuser = codigo == 'Admin'
-    usuario.save()
+    # Admin = superusuario; Coordinador = staff con permisos restringidos en Django Admin
+    usuario.sincronizar_acceso_admin()
 
 
 def administracion(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
-    if not request.user.tiene_rol(['Admin']):
+    if not request.user.puede_administrar():
         return acceso_denegado(request, 'Administración')
 
     periodo = periodo_vigente()
+
+    # Metas del periodo vigente agrupadas por cargo, con la suma de ponderadores (debe ser 100%)
+    metas_por_cargo = []
+    if periodo is not None:
+        cargo_actual = None
+        for meta in MetaDesempeno.objects.filter(periodo=periodo).select_related('cargo', 'item').order_by('cargo__nombre', 'item__id'):
+            if cargo_actual is None or cargo_actual['cargo'] != meta.cargo:
+                cargo_actual = {'cargo': meta.cargo, 'metas': [], 'total': 0}
+                metas_por_cargo.append(cargo_actual)
+            cargo_actual['metas'].append(meta)
+            cargo_actual['total'] = cargo_actual['total'] + meta.ponderador
     if periodo is None:
         periodo = {'nombre': 'Sin periodo vigente'}
 
+    usuarios = list(Usuario.objects.select_related('cargo', 'delegacion').all())
+    for usr in usuarios:
+        # El Coordinador ve a todos, pero no puede modificar Administradores ni otros Coordinadores
+        usr.editable = request.user.puede_editar_usuario(usr)
+
     data = {
-        'lista_usuarios': Usuario.objects.select_related('cargo', 'delegacion').all(),
+        'lista_usuarios': usuarios,
         'periodo_activo': periodo,
         'cargos': Cargo.objects.filter(estado='ACTIVO'),
+        'items_gestion': Catalogo.objects.filter(tipo='ITEM_GESTION', estado='ACTIVO').order_by('id'),
+        'metas_por_cargo': metas_por_cargo,
+        'hay_periodo': not isinstance(periodo, dict),
+        'roles_asignables': request.user.roles_asignables(),
+        'opciones_delegacion': opciones_delegacion,
         'logs_auditoria': Auditoria.objects.select_related('usuario')[:50],
     }
     return render(request, 'users/administracion.html', data)
@@ -79,12 +100,12 @@ def administracion(request):
 def usuario_crear(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
-    if not request.user.tiene_rol(['Admin']):
+    if not request.user.puede_administrar():
         return acceso_denegado(request, 'Crear Usuario')
     if request.method != 'POST':
         return redirect('users:administracion')
 
-    form = UsuarioCrearForm(request.POST)
+    form = UsuarioCrearForm(request.POST, roles_permitidos=request.user.roles_asignables())
     if not form.is_valid():
         for campo, errores in form.errors.items():
             for error in errores:
@@ -106,6 +127,8 @@ def usuario_crear(request):
         first_name=datos['first_name'],
         last_name=datos['last_name'],
         cargo=cargo,
+        # 'GENERAL' o vacío no existe como fila: el usuario queda sin delegación (Admin, Coordinador)
+        delegacion=Delegacion.objects.filter(nombre=datos.get('delegacion') or '').first(),
     )
     usuario.set_password(datos['password1'])
     usuario.save()
@@ -119,17 +142,25 @@ def usuario_crear(request):
 def usuario_editar(request, pk):
     if not request.user.is_authenticated:
         return redirect('users:login')
-    if not request.user.tiene_rol(['Admin']):
+    if not request.user.puede_administrar():
         return acceso_denegado(request, 'Editar Usuario')
 
     usuario = get_object_or_404(Usuario, pk=pk)
+    if not request.user.puede_editar_usuario(usuario):
+        messages.error(request, "Un Coordinador no puede modificar Administradores ni a otros Coordinadores.")
+        return redirect('users:administracion')
     antes = resumen_usuario(usuario)  # se guarda antes de que el formulario modifique el objeto
     rol_actual = usuario.rol()
     if usuario.is_superuser and rol_actual == '':
         rol_actual = 'Admin'
 
+    # Roles del selector. Si el Coordinador se edita a sí mismo, su rol actual se muestra (no lo puede cambiar)
+    roles_permitidos = request.user.roles_asignables()
+    if rol_actual and rol_actual not in [codigo for codigo, nombre in roles_permitidos]:
+        roles_permitidos = roles_permitidos + [(rol_actual, rol_actual)]
+
     if request.method == 'POST':
-        form = UsuarioEditarForm(request.POST, instance=usuario)
+        form = UsuarioEditarForm(request.POST, instance=usuario, roles_permitidos=roles_permitidos)
         if form.is_valid():
             es_el_mismo = usuario.pk == request.user.pk
             if es_el_mismo and (not form.cleaned_data['is_active'] or form.cleaned_data['rol'] != rol_actual):
@@ -149,11 +180,13 @@ def usuario_editar(request, pk):
         delegacion = 'GENERAL'
         if usuario.delegacion:
             delegacion = usuario.delegacion.nombre
-        form = UsuarioEditarForm(instance=usuario, initial={'rol': rol_actual, 'delegacion': delegacion})
+        form = UsuarioEditarForm(instance=usuario, initial={'rol': rol_actual, 'delegacion': delegacion}, roles_permitidos=roles_permitidos)
 
     data = {
         'form': form,
         'object': usuario,
         'cargos': Cargo.objects.filter(estado='ACTIVO'),
+        'roles_permitidos': roles_permitidos,
+        'opciones_delegacion': opciones_delegacion,
     }
     return render(request, 'users/usuario_form.html', data)

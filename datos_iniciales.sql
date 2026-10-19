@@ -8,7 +8,7 @@
 --   11111111-1  Administrador
 --   22222222-2  Coordinador
 --   33333333-3  Delegado (Las Compañías)
---   44444444-4  Verificador
+--   44444444-4  Delegado (Rural)
 --   55555555-5  Funcionario (Las Compañías)
 --   66666666-6  Usuario Consulta
 -- ============================================================================
@@ -20,12 +20,11 @@ START TRANSACTION;
 -- Roles («enumeration» RolChoices)
 -- ---------------------------------------------------------------------------
 INSERT INTO `rol` (`id`, `codigo`, `nombre`, `descripcion`) VALUES
-(1, 'Admin',       'Administrador',    'Gestiona usuarios, metas, catálogos, cargos y periodos'),
-(2, 'Coordinador', 'Coordinador',      'Supervisa la operación y revisa indicadores'),
-(3, 'Delegado',    'Delegado',         'Gestiona su delegación y los compromisos del tubo'),
-(4, 'Verificador', 'Verificador',      'Revisa y valida evidencias'),
-(5, 'Funcionario', 'Funcionario',      'Registra actividades, evidencias y compromisos'),
-(6, 'Consulta',    'Usuario Consulta', 'Solo consulta tablero, semáforo y resumen');
+(1, 'Admin',       'Administrador',    'Acceso total. Único que puede modificar fechas y horas'),
+(2, 'Coordinador', 'Coordinador',      'Mismas funciones que el Administrador, salvo crear Coordinadores o Administradores y modificar fechas'),
+(3, 'Delegado',    'Delegado',         'Valida las evidencias de las actividades de su delegación'),
+(5, 'Funcionario', 'Funcionario',      'Registra actividades con evidencia o como compromiso en el Tubo (no modifica)'),
+(6, 'Consulta',    'Usuario Consulta', 'Solo visualiza tablero, semáforo y resumen');
 
 -- ---------------------------------------------------------------------------
 -- Delegaciones (el nombre es el código que usan los <select> de los templates)
@@ -95,12 +94,12 @@ INSERT INTO `usuario` (`id`, `password`, `last_login`, `is_superuser`, `is_staff
                     `email`, `activo`, `creado`, `cargo_id`, `delegacion_id`) VALUES
 (1, 'pbkdf2_sha256$1000000$oVxLBAwkKjKkwwNuafdnTl$s6SDet+BXDM5Duma3hTPpjM05Shs0sSaDVBGb2IVYkA=', NULL, 1, 1,
     '11111111-1', 'Admin', 'Sistema', 'admin@laserena.cl', 1, UTC_TIMESTAMP(6), NULL, NULL),
-(2, 'pbkdf2_sha256$1000000$NU8IyHhhYf0coGRFG1qnXP$hMHE5nfsWUTPst5IBQU/WbpLcROukVTfZDP/STp7s1w=', NULL, 0, 0,
+(2, 'pbkdf2_sha256$1000000$NU8IyHhhYf0coGRFG1qnXP$hMHE5nfsWUTPst5IBQU/WbpLcROukVTfZDP/STp7s1w=', NULL, 0, 1,
     '22222222-2', 'Coordinación', 'General', 'coordinador@laserena.cl', 1, UTC_TIMESTAMP(6), NULL, NULL),
 (3, 'pbkdf2_sha256$1000000$boykguIhx6JzuwVS4JD1Rd$VuxtS7PdwbPiMnl+i+lUqBIsxa/Iq/RMr5qb3ZrNwEk=', NULL, 0, 0,
     '33333333-3', 'Delegado', 'Compañías', 'delegado@laserena.cl', 1, UTC_TIMESTAMP(6), 2, 2),
 (4, 'pbkdf2_sha256$1000000$a5ag9Q3cJ0mq1xd4jyL5wb$oVIOTqnPBU/YQRnU3mT8tenW7S0/eUcATELUb7J+O0o=', NULL, 0, 0,
-    '44444444-4', 'Verificador', 'Evidencias', 'verificador@laserena.cl', 1, UTC_TIMESTAMP(6), NULL, NULL),
+    '44444444-4', 'Delegado', 'Rural', 'delegado.rural@laserena.cl', 1, UTC_TIMESTAMP(6), 2, 1),
 (5, 'pbkdf2_sha256$1000000$jUd1K0NrxsETKyyrOnOsKP$NK4EzvOrFzopdtHEagyMtpfjf3Ovk8/d/VdZFgna6iA=', NULL, 0, 0,
     '55555555-5', 'Funcionario', 'Territorial', 'funcionario@laserena.cl', 1, UTC_TIMESTAMP(6), 1, 2),
 (6, 'pbkdf2_sha256$1000000$7z7frBXHxlW1lael7gKock$kNIYjQKuWNXxmDE3oX9C1Al32+5w7ajhvFwH1LVwToY=', NULL, 0, 0,
@@ -110,28 +109,20 @@ INSERT INTO `usuario_rol` (`id`, `fecha_asignacion`, `asignado_por_id`, `rol_id`
 (1, UTC_TIMESTAMP(6), NULL, 1, 1),
 (2, UTC_TIMESTAMP(6), 1,    2, 2),
 (3, UTC_TIMESTAMP(6), 1,    3, 3),
-(4, UTC_TIMESTAMP(6), 1,    4, 4),
+(4, UTC_TIMESTAMP(6), 1,    3, 4),
 (5, UTC_TIMESTAMP(6), 1,    5, 5),
 (6, UTC_TIMESTAMP(6), 1,    6, 6);
 
 -- ---------------------------------------------------------------------------
 -- Registros de ejemplo para que los listados muestren datos y botones
--- (actividades del funcionario 55555555-5, un compromiso y una atención social)
+-- Actividades del funcionario 55555555-5. Sin evidencia (no hay fotos cargadas), por eso están
+-- EN_TUBO: son compromisos con fecha límite. Al subir la evidencia pasan a REGISTRADA.
 -- ---------------------------------------------------------------------------
-INSERT INTO `compromiso` (`id`, `origen`, `solicitante`, `territorio`, `area_apoyo`, `observacion`, `fecha_registro`,
-                        `fecha_comprometida`, `estado`, `fecha_cierre`, `delegacion_id`, `registrado_por_id`, `responsable_id`) VALUES
-(1, 'JJ.VV. Villa Ejemplo', 'JJ.VV. Villa Ejemplo', 'Sector Alto', 'ORG COM',
-    'Solicitan reparación de luminarias en pasaje principal.', '2026-09-22 13:00:00', '2026-10-15', 'PENDIENTE', NULL, 2, 3, 5);
-
-INSERT INTO `historial_compromiso` (`id`, `estado_anterior`, `estado_nuevo`, `observacion`, `fecha`, `autor_id`, `compromiso_id`) VALUES
-(1, '',          'INGRESADO', 'Registro del compromiso.',           '2026-09-22 13:00:00', 3, 1),
-(2, 'INGRESADO', 'PENDIENTE', 'Se deriva a la unidad de alumbrado.', '2026-09-22 15:00:00', 5, 1);
-
-INSERT INTO `actividad` (`id`, `fecha`, `solicitud_problema`, `accion`, `contacto`, `telefono`, `ingreso_agenda_colectiva`,
-                        `estado`, `item_id`, `periodo_id`, `servicio_id`, `usuario_id`, `compromiso_id`) VALUES
-(1, '2026-09-22 12:30:00', 'Vecinos solicitan reparación de luminarias.', 'Reunión con directiva', 'Directiva JJ.VV.', '912345678', 1, 'REGISTRADA', 2, 1, NULL, 5, 1),
-(2, '2026-09-23 14:00:00', 'Consulta telefónica por patente comercial.',  'Orientación telefónica', 'Vecino sector centro', '987654321', 0, 'REGISTRADA', 1, 1, 6, 5, NULL),
-(3, '2026-09-24 16:00:00', 'Solicitud de apoyo social por emergencia.',   'Atención presencial', 'María Ejemplo', '911112222', 0, 'REGISTRADA', 1, 1, NULL, 5, NULL);
+INSERT INTO `actividad` (`id`, `fecha`, `solicitud_problema`, `accion`, `contacto`, `telefono`, `territorio`,
+                        `ingreso_agenda_colectiva`, `fecha_comprometida`, `estado`, `item_id`, `periodo_id`, `servicio_id`, `usuario_id`) VALUES
+(1, '2026-09-22 12:30:00', 'Vecinos solicitan reparación de luminarias en pasaje principal.', 'Gestión con unidad de alumbrado', 'Directiva JJ.VV. Villa Ejemplo', '912345678', 'Sector Alto', 1, '2026-10-15', 'EN_TUBO', 2, 1, NULL, 5),
+(2, '2026-09-23 14:00:00', 'Consulta telefónica por patente comercial.',  'Orientación telefónica', 'Vecino sector centro', '987654321', 'Centro', 1, '2026-10-20', 'EN_TUBO', 1, 1, 6, 5),
+(3, '2026-09-24 16:00:00', 'Solicitud de apoyo social por emergencia.',   'Atención presencial', 'María Ejemplo', '911112222', 'Las Compañías', 1, '2026-10-10', 'EN_TUBO', 1, 1, NULL, 5);
 
 INSERT INTO `atencion_social` (`id`, `nombre_solicitante`, `rut_solicitante`, `telefono_solicitante`, `requiere_visita`,
                             `actividad_id`, `subtipo_atencion_id`, `tipo_atencion_id`) VALUES
@@ -142,7 +133,7 @@ INSERT INTO `gestion_social` (`id`, `numero_gestion`, `tipo`, `accion`, `fecha`,
 (2, 2, 'INFORME', 'Informe social emitido', '2026-09-26', 1);
 
 INSERT INTO `auditoria` (`id`, `evento`, `fecha`, `entidad`, `id_entidad`, `valor_anterior`, `valor_nuevo`, `usuario_id`) VALUES
-(1, 'CREACION',     '2026-09-22 13:00:00', 'Compromiso', '1', '',          'COM1 - JJ.VV. Villa Ejemplo', 3),
-(2, 'MODIFICACION', '2026-09-22 15:00:00', 'Compromiso', '1', 'INGRESADO', 'PENDIENTE',                   5);
+(1, 'CREACION', '2026-09-22 12:30:00', 'Actividad', '1', '', 'ACT1 - Gestión con unidad de alumbrado [EN_TUBO]', 5),
+(2, 'CREACION', '2026-09-23 14:00:00', 'Actividad', '2', '', 'ACT2 - Orientación telefónica [EN_TUBO]', 5);
 
 COMMIT;

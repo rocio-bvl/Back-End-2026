@@ -12,33 +12,28 @@
                     <span>Ingreso Diario de Actividad Territorial</span>
                 </div>
                 <div class="card-body p-4">
-                    {% if compromiso %}
-                    <div class="alert alert-info border-0 d-flex align-items-start" role="status">
-                        <i class="bi bi-kanban me-2 fs-5"></i>
-                        <div>
-                            <strong>Actividad del compromiso {{ compromiso.id_compromiso }}</strong><br>
-                            <small>{{ compromiso.origen }}: {{ compromiso.observacion }} (comprometido para el {{ compromiso.fecha_comprometida|date:"d/m/Y" }})</small>
-                        </div>
+                    <div class="alert alert-light border small mb-4" role="note">
+                        <strong>¿Cómo se registra?</strong> Si ya realizó la actividad, adjunte la fotografía: queda
+                        <strong>registrada</strong> y el Delegado la valida. Si necesita tiempo para realizarla, márquela para que
+                        pase al <strong>Tubo de Trabajo</strong> como compromiso, con una fecha límite; subirá la evidencia cuando la ejecute.
                     </div>
-                    {% endif %}
                     <form method="post" enctype="multipart/form-data">
                         {% csrf_token %}
-                        {% if compromiso %}<input type="hidden" name="compromiso" value="{{ compromiso.pk }}">{% endif %}
 
                         <div class="row g-3">
                             <div class="col-12">
-                                <label class="form-label fw-semibold">Descripción de la Actividad / Solicitud / Problema</label>
-                                <textarea name="solicitud_problema" class="form-control" rows="3" placeholder="Detalle los requerimientos o la labor realizada en terreno..." required></textarea>
+                                <label class="form-label fw-semibold" for="id_solicitud">Descripción de la Actividad / Solicitud / Problema</label>
+                                <textarea name="solicitud_problema" id="id_solicitud" class="form-control" rows="3" placeholder="Detalle los requerimientos o la labor realizada en terreno..." required></textarea>
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold">Acción Realizada</label>
-                                <input type="text" name="accion" class="form-control" placeholder="Ej: Gestión terreno, Inspección, Reunión..." required>
+                                <label class="form-label fw-semibold" for="id_accion">Acción</label>
+                                <input type="text" name="accion" id="id_accion" class="form-control" placeholder="Ej: Gestión terreno, Inspección, Reunión..." required>
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold">Item / Comisión a Medir</label>
-                                <select name="item_comision" class="form-select" required>
+                                <label class="form-label fw-semibold" for="id_item">Item / Comisión a Medir</label>
+                                <select name="item_comision" id="id_item" class="form-select" required>
                                     <option value="" selected disabled>Seleccione una opción...</option>
                                     <option value="1">Atención de Usuario Teléfono y Presencial</option>
                                     <option value="2">Visitas, Reuniones con Organizaciones</option>
@@ -46,44 +41,52 @@
                                 </select>
                             </div>
 
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Nombre de Contacto / Solicitante</label>
-                                <input type="text" name="contacto" class="form-control" placeholder="Nombre completo del dirigente o usuario">
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" for="id_contacto">Nombre de Contacto / Solicitante</label>
+                                <input type="text" name="contacto" id="id_contacto" class="form-control" placeholder="Dirigente o vecino">
                             </div>
 
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold">Teléfono de Contacto</label>
-                                <input type="text" name="telefono" class="form-control" placeholder="Ej: 912345678">
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" for="id_telefono">Teléfono de Contacto</label>
+                                <input type="text" name="telefono" id="id_telefono" class="form-control" placeholder="Ej: 912345678">
                             </div>
 
-                            {% if not compromiso %}
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" for="id_territorio">Territorio / Sector</label>
+                                <input type="text" name="territorio" id="id_territorio" class="form-control" placeholder="Ej: Sector Alto">
+                            </div>
+
                             <div class="col-12">
                                 <div class="form-check form-switch bg-light p-3 border rounded">
-                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="ingreso_agenda_colectiva" id="id_tubo">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="ingreso_agenda_colectiva" id="id_tubo" {% if al_tubo %}checked{% endif %}>
                                     <label class="form-check-label fw-semibold" for="id_tubo">
-                                        ¿Ingresa al Tubo de Trabajo? (Agenda Colectiva de Compromisos)
+                                        No puedo realizarla ahora: pasa al Tubo de Trabajo como compromiso
                                     </label>
+                                    <div class="small text-muted ms-4">Se registra sin evidencia y con una fecha límite de cumplimiento.</div>
                                 </div>
                             </div>
-                            {% endif %}
 
-                            <div class="col-12">
-                                <label class="form-label fw-semibold"><i class="bi bi-camera me-1"></i> Fotografías / Adjuntar Evidencia</label>
-                                <input type="file" name="evidencia_imagen" class="form-control" accept="image/*">
-                                <small class="text-muted">Formatos permitidos: JPG, PNG. Máximo 5MB.</small>
+                            <!-- Con evidencia: actividad registrada -->
+                            <div class="col-12" id="bloque_evidencia">
+                                <label class="form-label fw-semibold" for="id_imagen"><i class="bi bi-camera me-1"></i> Fotografía de evidencia (obligatoria)</label>
+                                <input type="file" name="evidencia_imagen" id="id_imagen" class="form-control" accept=".jpg,.jpeg,.png">
+                                <small class="text-muted">Formatos permitidos: JPG, PNG. Máximo 5 MB.</small>
+                            </div>
+
+                            <!-- Sin evidencia: compromiso en el Tubo -->
+                            <div class="col-md-6" id="bloque_tubo">
+                                <label class="form-label fw-semibold" for="id_fecha_limite"><i class="bi bi-calendar-check me-1"></i> Fecha límite comprometida</label>
+                                <input type="date" name="fecha_comprometida" id="id_fecha_limite" class="form-control" min="{{ hoy|date:'Y-m-d' }}">
+                                <small class="text-muted">Fecha en que se compromete a ejecutar la actividad.</small>
                             </div>
                         </div>
 
                         <hr class="my-4">
 
                         <div class="d-flex justify-content-end gap-2">
-                            {% if compromiso %}
-                            <a href="{% url 'actividades:compromiso_detalle' compromiso.pk %}" class="btn btn-outline-secondary">Cancelar</a>
-                            {% else %}
                             <a href="{% url 'actividades:mi_gestion' %}" class="btn btn-outline-secondary">Cancelar</a>
-                            {% endif %}
                             <button type="submit" class="btn btn-muni-v2 fw-bold px-4">
-                                <i class="bi bi-check-circle me-1"></i> Guardar Actividad
+                                <i class="bi bi-check-circle me-1"></i> <span id="texto_guardar">Registrar Actividad</span>
                             </button>
                         </div>
                     </form>
@@ -92,4 +95,29 @@
         </div>
     </div>
 </main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Muestra la evidencia o la fecha límite según la opción elegida (el servidor valida igual)
+    (function () {
+        var tubo = document.getElementById('id_tubo');
+        var evidencia = document.getElementById('bloque_evidencia');
+        var bloqueTubo = document.getElementById('bloque_tubo');
+        var imagen = document.getElementById('id_imagen');
+        var fecha = document.getElementById('id_fecha_limite');
+        var texto = document.getElementById('texto_guardar');
+        function actualizar() {
+            var alTubo = tubo.checked;
+            evidencia.style.display = alTubo ? 'none' : '';
+            bloqueTubo.style.display = alTubo ? '' : 'none';
+            imagen.required = !alTubo;
+            fecha.required = alTubo;
+            if (alTubo) { imagen.value = ''; } else { fecha.value = ''; }
+            texto.textContent = alTubo ? 'Ingresar al Tubo de Trabajo' : 'Registrar Actividad';
+        }
+        tubo.addEventListener('change', actualizar);
+        actualizar();
+    })();
+</script>
 {% endblock %}

@@ -78,7 +78,8 @@ DATABASES = {
         'HOST': os.getenv('DB_HOST'),
         'PORT': os.getenv('DB_PORT'),
         'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            # WAMP trae MyISAM como motor por defecto: se fuerza InnoDB (transacciones y llaves foraneas)
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES', default_storage_engine=INNODB",
             'charset': 'utf8mb4',
         },
     }
