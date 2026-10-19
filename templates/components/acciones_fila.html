@@ -1,9 +1,17 @@
-
+{% comment %}
+Modificar y Eliminar de una fila (Django Admin). Solo se muestran a quien puede usarlos:
+Admin y Coordinador; con solo_admin=True, solo el Administrador (ej.: Auditoría).
+oculto=True los oculta siempre (ej.: un Coordinador frente a un Administrador).
+{% endcomment %}
+{% if not oculto %}
+{% if solo_admin and request.user.es_administrador or not solo_admin and request.user.puede_administrar %}
 <div class="btn-group btn-group-sm" role="group" aria-label="Acciones">
-    <a href="{{ url_modificar|default:'#' }}" class="btn btn-outline-warning text-nowrap {% if deshabilitado %}disabled{% endif %}" title="Modificar" {% if deshabilitado %}aria-disabled="true"{% endif %}>
+    <a href="{{ url_modificar|default:'#' }}" class="btn btn-outline-warning text-nowrap" title="Modificar">
         <i class="bi bi-pencil-square me-1"></i>Modificar
     </a>
-    <a href="{{ url_eliminar|default:'#' }}" class="btn btn-outline-danger text-nowrap {% if deshabilitado %}disabled{% endif %}" title="Eliminar" {% if deshabilitado %}aria-disabled="true"{% endif %}>
+    <a href="{{ url_eliminar|default:'#' }}" class="btn btn-outline-danger text-nowrap" title="Eliminar">
         <i class="bi bi-trash me-1"></i>Eliminar
     </a>
 </div>
+{% endif %}
+{% endif %}

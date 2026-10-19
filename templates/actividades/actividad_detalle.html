@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+
+{% block title %}Actividad {{ actividad.folio }} | SGR{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            {% if actividad.ingreso_agenda_colectiva %}
+            <a href="{% url 'actividades:tubo_trabajo' %}" class="btn btn-sm btn-outline-dark mb-2"><i class="bi bi-arrow-left me-1"></i> Volver al Tubo de Trabajo</a>
+            {% else %}
+            <a href="{% url 'actividades:mi_gestion' %}" class="btn btn-sm btn-outline-dark mb-2"><i class="bi bi-arrow-left me-1"></i> Volver a Mi Gestión</a>
+            {% endif %}
+            <h3 class="fw-bold m-0">Actividad {{ actividad.folio }}{% if actividad.es_compromiso %} <small class="text-muted fs-6">(compromiso en el Tubo)</small>{% endif %}</h3>
+        </div>
+        <div>
+            {% include 'actividades/components/estado_actividad.html' with estado=actividad.estado texto=actividad.get_estado_display grande=True %}
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-muni-b1 text-white fw-bold py-3">Datos de la actividad</div>
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold mb-1">Actividad / solicitud / problema:</h6>
+                    <p class="bg-light p-3 rounded text-dark border">{{ actividad.solicitud_problema }}</p>
+                    <div class="row g-3">
+                        <div class="col-md-6"><small class="text-muted d-block">Acción:</small><span class="fw-bold">{{ actividad.accion }}</span></div>
+                        <div class="col-md-6"><small class="text-muted d-block">Ítem:</small><span>{{ actividad.item.nombre }}</span></div>
+                        <div class="col-md-6"><small class="text-muted d-block">Funcionario:</small><span class="fw-bold">{{ actividad.usuario.get_full_name|default:actividad.usuario.username }}</span></div>
+                        <div class="col-md-6"><small class="text-muted d-block">Contacto:</small><span>{{ actividad.contacto|default:"-" }} {% if actividad.telefono %}({{ actividad.telefono }}){% endif %}</span></div>
+                        <div class="col-md-6"><small class="text-muted d-block">Territorio:</small><span>{{ actividad.territorio|default:"-" }}</span></div>
+                        <div class="col-md-6"><small class="text-muted d-block">Registrada el:</small><span>{{ actividad.fecha|date:"d/m/Y H:i" }}</span></div>
+                        {% if actividad.ingreso_agenda_colectiva %}
+                        <div class="col-md-6">
+                            <small class="text-muted d-block">Fecha límite comprometida:</small>
+                            <span class="fw-bold text-danger">{{ actividad.fecha_comprometida|date:"d/m/Y" }}</span>
+                            {% if actividad.vencido %}<span class="badge bg-danger ms-1">VENCIDO</span>{% elif actividad.proximo_a_vencer %}<span class="badge bg-warning text-dark ms-1">POR VENCER</span>{% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-gris-0 fw-bold py-3"><i class="bi bi-images me-2 text-danger"></i>Evidencias (la más reciente primero)</div>
+                <div class="tarjeta-tabla table-responsive">
+                    <table class="table table-hover tabla-sgr">
+                        <thead class="text-center">
+                            <tr><th>CÓDIGO</th><th>VERSIÓN</th><th>FECHA</th><th>REVISIÓN</th><th>MOTIVO / OBSERVACIÓN DEL DELEGADO</th><th>FOTO</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for ev in evidencias %}
+                            <tr>
+                                <td class="text-center fw-bold" data-cell="CÓDIGO">{{ ev.codigo }}</td>
+                                <td class="text-center" data-cell="VERSIÓN">{{ ev.version }}</td>
+                                <td class="text-center" data-cell="FECHA">{{ ev.fecha|date:"d/m/Y H:i" }}</td>
+                                <td class="text-center" data-cell="REVISIÓN">
+                                    {% if ev.estado_codigo == 'APROBADA' %}<span class="badge bg-success">APROBADA</span>
+                                    {% elif ev.estado_codigo == 'RECHAZADA' %}<span class="badge bg-danger">RECHAZADA</span>
+                                    {% else %}<span class="badge bg-secondary">PENDIENTE</span>{% endif %}
+                                </td>
+                                <td data-cell="OBSERVACIÓN">{{ ev.observacion|default:"-" }}</td>
+                                <td class="text-center" data-cell="FOTO">{% if ev.imagen %}<a href="{{ ev.imagen.url }}" target="_blank" rel="noopener">Ver</a>{% else %}-{% endif %}</td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="6" class="text-center text-muted py-3">Sin evidencia: la actividad está en el Tubo de Trabajo hasta que se ejecute.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-gris-90 text-white fw-bold py-3">
+                    {% if actividad.es_compromiso %}Ejecutar compromiso{% elif actividad.estado == 'RECHAZADA' %}Resubir evidencia{% else %}Evidencia{% endif %}
+                </div>
+                <div class="card-body p-3">
+                    {% if puede_subir %}
+                    <form method="post" action="{% url 'actividades:subir_evidencia' actividad.pk %}" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <p class="small text-muted">
+                            {% if actividad.es_compromiso %}
+                            Al subir la fotografía, la actividad sale del Tubo y queda registrada para que el Delegado la valide.
+                            {% else %}
+                            El Delegado rechazó la evidencia anterior porque no es válida (vea el motivo en la tabla). La actividad
+                            sigue vigente: suba una nueva fotografía para enviarla otra vez a validación.
+                            {% endif %}
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="id_imagen">Fotografía (JPG o PNG, máx. 5 MB)</label>
+                            <input type="file" name="evidencia_imagen" id="id_imagen" class="form-control" accept=".jpg,.jpeg,.png" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="id_comentario">Comentario (opcional)</label>
+                            <textarea name="comentario" id="id_comentario" class="form-control" rows="2"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-muni-v2 w-100 fw-bold"><i class="bi bi-upload me-1"></i> Subir evidencia</button>
+                    </form>
+                    {% elif actividad.estado == 'REGISTRADA' %}
+                    <p class="text-muted small mb-0"><i class="bi bi-hourglass-split me-1"></i>Evidencia enviada: espera la validación del Delegado.</p>
+                    {% elif actividad.estado == 'VALIDADA' %}
+                    <p class="text-success small mb-0 fw-semibold"><i class="bi bi-check-circle me-1"></i>Actividad completada: el Delegado validó la evidencia y cuenta para la meta.</p>
+                    {% else %}
+                    <p class="text-muted small mb-0"><i class="bi bi-eye me-1"></i>Vista de consulta: solo el funcionario que registró la actividad puede subir la evidencia.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

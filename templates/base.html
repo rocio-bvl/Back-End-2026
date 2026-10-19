@@ -17,69 +17,6 @@
 </head>
 <body>
 
-<!-- 1. BARRA SUPERIOR MUNICIPAL (Transparencia & Emergencias) -->
-<nav class="bg-muni-b5 p-1">
-    <div class="container-fluid">
-        <div class="row justify-content-between">
-            <div class="col-md col-12 align-self-center">
-                <div class="row">
-                    <div class="col-md-auto d-none d-md-block g-0">
-                        <div class="btn-outline-dark btn-sm d-flex align-items-center text-light text-start lh-1">
-                            <div class="row align-items-center">
-                                <div class="col-3"><img width="30px" src="https://framework.laserena.cl/img/logo-transparencia.png" alt="Transparencia" /></div>
-                                <div class="col-9 tx-1">Transparencia <br/>Municipal</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-auto col-3 g-0">
-                        <a href="https://www.portaltransparencia.cl/PortalPdT/web/guest/directorio-de-organismos-regulados?p_p_id=pdtorganismos_WAR_pdtorganismosportlet&orgcode=d67e38e61d6896e0e50080a9baaabf3f" target="_blank" class="btn btn-outline-dark btn-sm d-flex align-items-center text-light text-start lh-1">
-                            <div class="row align-items-center">
-                                <div class="col-lg-3 d-none d-lg-block"><i class="bi bi-info-circle-fill tx-8"></i></div>
-                                <div class="col-12 col-lg-9 tx-2">Solicita <br/>Información</div>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col-md-auto col-3 g-0">
-                        <a href="https://www.portaltransparencia.cl/PortalPdT/directorio-de-organismos-regulados/?org=MU126" target="_blank" class="btn btn-outline-dark btn-sm d-flex align-items-center text-light text-start lh-1">
-                            <div class="row align-items-center">
-                                <div class="col-lg-3 d-none d-lg-block"><i class="bi bi-check2-square tx-8"></i></div>
-                                <div class="col-12 col-lg-9 tx-2">Transparencia <br/>Activa</div>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col-md-auto col-3 g-0">
-                        <a href="https://www.leylobby.gob.cl/instituciones/MU126" target="_blank" class="btn btn-outline-dark btn-sm d-flex align-items-center text-light text-start lh-1">
-                            <div class="row align-items-center">
-                                <div class="col-lg-3 d-none d-lg-block"><i class="bi bi-file-earmark-medical-fill tx-8"></i></div>
-                                <div class="col-12 col-lg-9 tx-2">Plataforma <br/>Ley del Lobby</div>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col-md-auto col-3 g-0">
-                        <a href="tel:1457" target="_blank" class="btn btn-muni-v2 btn-sm d-flex align-items-center text-start lh-1">
-                            <div class="row align-items-center">
-                                <div class="col-lg-3 d-none d-lg-block"><i class="bi bi-telephone-fill tx-8"></i></div>
-                                <div class="col-12 col-lg-9 tx-2 text-center">EMERGENCIAS <br/> <strong>1457</strong></div>
-                            </div>
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Redes Sociales Superior -->
-            <div class="col-auto align-self-end d-none d-md-block">
-                <div class="btn-group btn-group-sm" role="group">
-                    <a href="https://www.facebook.com/Munilaserena/" target="_blank" class="btn"><i class="bi bi-facebook tx-8 text-light"></i></a>
-                    <a href="https://www.instagram.com/muni_laserena" target="_blank" class="btn"><i class="bi bi-instagram tx-8 text-light"></i></a>
-                    <a href="https://www.youtube.com/user/munilaserena" target="_blank" class="btn"><i class="bi bi-youtube tx-8 text-light"></i></a>
-                    <a href="https://x.com/munilaserena" target="_blank" class="btn"><i class="bi bi-twitter-x tx-8 text-light"></i></a>
-                    <a href="https://www.tiktok.com/@munilaserena" target="_blank" class="btn"><i class="bi bi-tiktok text-light tx-8"></i></a>
-                </div>
-            </div>
-        </div>
-    </div>
-</nav>
-
 <!-- 2. NAVBAR MUNICIPAL PRINCIPAL SGR -->
 <nav class="navbar navbar-expand-lg bg-muni sticky-top shadow-sm" data-bs-theme="dark">
     <div class="container-fluid">
@@ -225,8 +162,8 @@
             </li>
             {% endif %}
 
-            <!-- 4. Verificación (Solo Verificadores, Admin o Coordinadores) -->
-            {% if request.user.rol == 'Verificador' or request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.is_superuser %}
+            <!-- 4. Verificación (Delegado de su delegación, Coordinador y Admin) -->
+            {% if request.user.puede_verificar %}
             <li class="nav-item">
                 <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'verificacion' %}active{% else %}text-dark{% endif %}" href="{% url 'actividades:verificacion' %}">
                     <i class="bi bi-shield-check me-1 text-danger"></i> Verificación
@@ -235,7 +172,7 @@
             {% endif %}
 
             <!-- 5. Semáforo (Supervisores / Control) -->
-            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Verificador' or request.user.rol == 'Consulta' or request.user.is_superuser %}
+            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Delegado' or request.user.rol == 'Consulta' or request.user.is_superuser %}
             <li class="nav-item">
                 <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'semaforo' %}active{% else %}text-dark{% endif %}" href="{% url 'indicadores:semaforo' %}">
                     <i class="bi bi-traffic-light me-1 text-danger"></i> Semáforo
@@ -252,11 +189,20 @@
             </li>
             {% endif %}
 
-            <!-- 7. Administración (Exclusivo Administrador y Superusuario) -->
-            {% if request.user.rol == 'Admin' or request.user.is_superuser %}
+            <!-- 7. Administración (Administrador y Coordinador) -->
+            {% if request.user.puede_administrar %}
             <li class="nav-item">
                 <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'administracion' %}active{% else %}text-dark{% endif %}" href="{% url 'users:administracion' %}">
                     <i class="bi bi-gear-fill me-1 text-danger"></i> Administración
+                </a>
+            </li>
+            {% endif %}
+
+            <!-- 8. Auditoría (Administrador y Coordinador: misma regla que la vista auditoria:logs) -->
+            {% if request.user.puede_administrar %}
+            <li class="nav-item">
+                <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'logs' %}active{% else %}text-dark{% endif %}" href="{% url 'auditoria:logs' %}">
+                    <i class="bi bi-clock-history me-1 text-danger"></i> Auditoría
                 </a>
             </li>
             {% endif %}

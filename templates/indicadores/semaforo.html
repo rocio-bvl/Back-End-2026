@@ -11,15 +11,15 @@
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-muni text-white fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <span>Monitoreo por Responsable de Área</span>
-                    <div class="bg-white rounded p-1">
+                    <div class="bg-white rounded p-1 {% if not request.user.puede_administrar %}d-none{% endif %}">
                         {% url 'admin:IndicadoresApp_ajustedesempeno_add' as url_agregar %}
                         {% url 'admin:IndicadoresApp_indicadordesempeno_changelist' as url_buscar %}
                         {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Ajuste" %}
                     </div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-bordered align-middle text-center mb-0" style="font-size: 0.82rem;">
-                        <thead class="bg-gris-10">
+                    <div class="tarjeta-tabla table-responsive">
+                        <table class="table table-hover tabla-sgr text-center">
+                            <thead>
                             <tr>
                                 <th>ÁREA</th>
                                 <th>RESPONSABLE</th>
@@ -27,7 +27,7 @@
                                 <th>MÍNIMO (60%)</th>
                                 <th>AVANCE LOGRADO</th>
                                 <th>SEMÁFORO</th>
-                                <th>ACCIONES</th>
+                                {% if request.user.puede_administrar %}<th>ACCIONES</th>{% endif %}
                             </tr>
                         </thead>
                         <tbody>
@@ -47,11 +47,13 @@
                                     <span class="badge bg-muni px-3 py-2"><i class="bi bi-circle-fill me-1"></i> ROJO</span>
                                     {% endif %}
                                 </td>
+                                {% if request.user.puede_administrar %}
                                 <td data-cell="ACCIONES">
                                     {% url 'admin:UsuarioApp_usuario_change' item.id as url_modificar %}
                                     {% url 'admin:UsuarioApp_usuario_delete' item.id as url_eliminar %}
                                     {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
                                 </td>
+                                {% endif %}
                             </tr>
                             {% empty %}
                             <tr>
@@ -59,8 +61,8 @@
                             </tr>
                             {% endfor %}
                         </tbody>
-                    </table>
-                </div>
+                        </table>
+                    </div>
             </div>
         </div>
 

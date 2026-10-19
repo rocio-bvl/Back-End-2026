@@ -58,3 +58,66 @@ body { background-color: #f8f9fa; }
 /* Botón usado en verificacion.html (Rechazar) que no tenía estilo definido */
 .btn-muni-b5 { background-color: #1a0000; color: #ffffff !important; border: none; }
 .btn-muni-b5:hover { background-color: #4d0000; color: #ffffff !important; }
+
+/* Tabla SGR: limpia, sin bordes verticales, encabezado sutil */
+.tabla-sgr {
+    --bs-table-bg: #ffffff;
+    --bs-table-hover-bg: #fdf3f3;
+    /* rojo municipal muy suave al pasar el mouse */
+    --bs-table-border-color: #eceef1;
+    font-size: 0.85rem;
+    margin-bottom: 0;
+}
+
+.tabla-sgr thead th {
+    background: #f8f9fa;
+    color: #6c757d;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    border-bottom: 2px solid #AD0000;
+    /* el acento de color va solo aquí */
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.tabla-sgr td {
+    padding-top: .75rem;
+    padding-bottom: .75rem;
+    vertical-align: middle;
+}
+
+.tabla-sgr tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+/* Contenedor tipo tarjeta */
+.tarjeta-tabla {
+    background: #fff;
+    border: 1px solid #eceef1;
+    border-radius: .75rem;
+    /* auto (no hidden): mantiene las esquinas redondeadas y permite desplazar la tabla en pantallas angostas */
+    overflow-x: auto;
+}
+
+/* Bajo el encabezado de una .card la tarjeta ya tiene marco: se quita el borde para no duplicarlo */
+.card > .card-header ~ .tarjeta-tabla {
+    border: 0;
+    border-radius: 0 0 var(--bs-card-inner-border-radius) var(--bs-card-inner-border-radius);
+}
+
+/* Encabezados con color propio (Gestión Social): texto blanco para que se lea sobre el fondo */
+.tabla-sgr thead th[class*="bg-muni"] {
+    color: #ffffff;
+}
+
+/* Variante compacta para tablas con muchas columnas o en columnas angostas */
+.tabla-sgr.tabla-compacta {
+    font-size: 0.75rem;
+}
+
+.tabla-sgr.tabla-compacta th,
+.tabla-sgr.tabla-compacta td {
+    padding: .5rem .4rem;
+}

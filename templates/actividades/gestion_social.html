@@ -15,9 +15,9 @@
     </div>
 
     <div class="card shadow-sm border-0">
-        <div class="table-responsive">
-            <table class="table table-bordered table-striped align-middle mb-0" style="font-size: 0.75rem;">
-                <thead class="bg-muni-b5 text-white text-center align-middle">
+            <div class="tarjeta-tabla table-responsive">
+                <table class="table table-hover tabla-sgr tabla-compacta">
+                    <thead class="text-center">
                     <tr>
                         <th rowspan="2">N°</th>
                         <th rowspan="2">FECHA INGRESO</th>
@@ -31,7 +31,7 @@
                         <th colspan="2" class="bg-muni-v1">3RA GESTIÓN</th>
                         <th rowspan="2">CÓDIGO</th>
                         <th rowspan="2">VERIF.</th>
-                        <th rowspan="2">ACCIONES</th>
+                        {% if request.user.puede_administrar %}<th rowspan="2">ACCIONES</th>{% endif %}
                     </tr>
                     <tr>
                         <th class="bg-muni-b1 text-white">ACCIÓN</th>
@@ -62,11 +62,13 @@
                         <td class="{% if atencion.verificado %}bg-muni-a1 text-dark{% endif %} text-center">
                             {% if atencion.verificado %}SI{% else %}NO{% endif %}
                         </td>
+                        {% if request.user.puede_administrar %}
                         <td class="text-center">
                             {% url 'admin:ActividadesApp_atencionsocial_change' atencion.id as url_modificar %}
                             {% url 'admin:ActividadesApp_atencionsocial_delete' atencion.id as url_eliminar %}
                             {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
                         </td>
+                        {% endif %}
                     </tr>
                     {% empty %}
                     <tr>
@@ -74,8 +76,8 @@
                     </tr>
                     {% endfor %}
                 </tbody>
-            </table>
-        </div>
+                </table>
+            </div>
     </div>
 </main>
 {% endblock %}

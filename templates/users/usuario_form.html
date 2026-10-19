@@ -62,11 +62,9 @@
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold">Rol de Sistema</label>
                                 <select name="rol" class="form-select" required>
-                                    <option value="Funcionario" {% if form.rol.value == 'Funcionario' or form.rol.value == 'FUNCIONARIO' or object.rol == 'Funcionario' %}selected{% endif %}>Funcionario</option>
-                                    <option value="Delegado" {% if form.rol.value == 'Delegado' or form.rol.value == 'DELEGADO' or object.rol == 'Delegado' %}selected{% endif %}>Delegado</option>
-                                    <option value="Coordinador" {% if form.rol.value == 'Coordinador' or form.rol.value == 'COORDINADOR' or object.rol == 'Coordinador' %}selected{% endif %}>Coordinador</option>
-                                    <option value="Verificador" {% if form.rol.value == 'Verificador' or form.rol.value == 'VERIFICADOR' or object.rol == 'Verificador' %}selected{% endif %}>Verificador</option>
-                                    <option value="Admin" {% if form.rol.value == 'Admin' or form.rol.value == 'ADMINISTRADOR' or object.rol == 'Admin' %}selected{% endif %}>Administrador</option>
+                                    {% for valor, texto in roles_permitidos %}
+                                    <option value="{{ valor }}" {% if form.rol.value == valor %}selected{% endif %}>{{ texto }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
 
@@ -91,12 +89,9 @@
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold">Delegación Asignada</label>
                                 <select name="delegacion" class="form-select">
-                                    <option value="GENERAL" {% if form.delegacion.value == 'GENERAL' or not form.delegacion.value %}selected{% endif %}>General (Toda la Municipalidad)</option>
-                                    <option value="LAS_COMPANIAS" {% if form.delegacion.value == 'LAS_COMPANIAS' %}selected{% endif %}>Las Compañías</option>
-                                    <option value="LA_ANTENA" {% if form.delegacion.value == 'LA_ANTENA' %}selected{% endif %}>La Antena</option>
-                                    <option value="LA_PAMPA" {% if form.delegacion.value == 'LA_PAMPA' %}selected{% endif %}>La Pampa</option>
-                                    <option value="CENTRO" {% if form.delegacion.value == 'CENTRO' %}selected{% endif %}>Centro</option>
-                                    <option value="RURAL" {% if form.delegacion.value == 'RURAL' %}selected{% endif %}>Rural</option>
+                                    {% for valor, texto in opciones_delegacion %}
+                                    <option value="{{ valor }}" {% if form.delegacion.value == valor %}selected{% endif %}>{{ texto }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
 
