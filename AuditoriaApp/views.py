@@ -8,7 +8,7 @@ from UsuarioApp.funciones import acceso_denegado
 def logs(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
-    if not request.user.tiene_rol(['Admin']):
+    if not request.user.puede_administrar():
         return acceso_denegado(request, 'Auditoría')
 
     registros = Auditoria.objects.select_related('usuario').all()
