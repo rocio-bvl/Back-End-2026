@@ -1,4 +1,4 @@
-# SGR: Sistema de Gestión y Control, Municipalidad de La Serena
+# SGR: Sistema de Gestión de Resultados, Municipalidad de La Serena
 
 Aplicación web en Django para registrar la gestión territorial de los funcionarios municipales: actividades diarias con evidencia fotográfica, compromisos del Tubo de Trabajo, gestión social, verificación de evidencias, metas trimestrales con semáforo de cumplimiento y auditoría de cambios.
 
