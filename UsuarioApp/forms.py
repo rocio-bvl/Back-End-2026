@@ -21,7 +21,7 @@ class UsuarioCrearForm(forms.Form):
     first_name = forms.CharField(max_length=100, label="Nombres")
     last_name = forms.CharField(max_length=100, label="Apellidos")
     telefono = forms.CharField(max_length=20, required=False, label="Teléfono")
-    rol = forms.ChoiceField(choices=roles, label="Rol")
+    rol = forms.ChoiceField(choices=roles, label="Perfil (grupo)")
     cargo = forms.CharField(max_length=150, required=False, label="Cargo")
     delegacion = forms.ChoiceField(choices=opciones_delegacion, required=False, label="Delegación")
     territorio = forms.ModelChoiceField(queryset=Territorio.objects.filter(estado='ACTIVO'), required=False,

@@ -60,6 +60,7 @@ def asignar_rol(usuario, codigo, asignado_por):
     UsuarioRol.objects.create(usuario=usuario, rol=rol, asignado_por=asignado_por)
     # Admin = superusuario; los demás roles no entran a Django Admin
     usuario.sincronizar_acceso_admin()
+    usuario.sincronizar_grupo()  # grupo de Django del rol (hereda sus permisos)
 
 
 def metas_agrupadas(periodo, usuario):

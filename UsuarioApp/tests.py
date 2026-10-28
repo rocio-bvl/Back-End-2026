@@ -8,6 +8,9 @@ from IndicadoresApp.models import Periodo, MetaDesempeno
 from UsuarioApp.funciones import limpiar_rut, validar_rut
 from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion, Catalogo
 
+from io import StringIO
+from django.core.management import call_command
+
 CLAVE = 'Serena2026!'
 
 
@@ -15,6 +18,7 @@ def crear_datos_base():
     from ActividadesApp.models import Territorio
     for codigo in ['Admin', 'Coordinador', 'Delegado', 'Funcionario']:
         Rol.objects.create(codigo=codigo, nombre=codigo)
+    call_command('crear_grupos', stdout=StringIO())
     compania = Delegacion.objects.create(nombre='LAS_COMPANIAS', nombre_visible='Las Compañías', ambito='Urbano')
     rural = Delegacion.objects.create(nombre='RURAL', nombre_visible='Rural', ambito='Rural')
     territorio = Territorio.objects.create(nombre='Sector Alto', delegacion=compania)
@@ -34,6 +38,7 @@ def crear_datos_base():
 def crear_usuario(rut, rol, delegacion=None, cargo=None):
     usuario = Usuario.objects.create_user(username=rut, password=CLAVE, email=f"{rut}@laserena.cl", first_name='Nombre', last_name=rol, delegacion=delegacion, cargo=cargo)
     UsuarioRol.objects.create(usuario=usuario, rol=Rol.objects.get(codigo=rol))
+    usuario.sincronizar_grupo()
     return usuario
 
 
@@ -603,3 +608,71 @@ class PantallasVariasTest(TestCase):
 
     def test_semaforo_tiene_icono_en_la_barra(self):
         self.assertIn('bi-stoplights', self.client.get(reverse('actividades:mi_gestion')).content.decode())
+
+class GruposYPermisosTest(TestCase):
+    """J1: cada rol queda en su grupo de Django y hereda sus permisos."""
+
+    def setUp(self):
+        self.datos = crear_datos_base()
+        self.admin = crear_usuario('11111111-1', 'Admin')
+        self.coord = crear_usuario('22222222-2', 'Coordinador')
+        self.delegado = crear_usuario('33333333-3', 'Delegado', self.datos['delegacion'])
+        self.func = crear_usuario('55555555-5', 'Funcionario', self.datos['delegacion'], self.datos['cargo'])
+
+    def test_cuatro_grupos_y_cada_usuario_en_el_suyo(self):
+        from django.contrib.auth.models import Group
+        self.assertEqual(sorted(Group.objects.values_list('name', flat=True)), ['Administrador', 'Administrativo', 'Delegado', 'Supervisor'])
+        for usuario, grupo in [(self.admin, 'Administrador'), (self.coord, 'Supervisor'), (self.delegado, 'Delegado'), (self.func, 'Administrativo')]:
+            self.assertEqual(list(usuario.groups.values_list('name', flat=True)), [grupo])
+
+    def test_permisos_heredados_del_grupo(self):
+        coord = Usuario.objects.get(pk=self.coord.pk)  # se recarga: Django guarda en caché los permisos
+        func = Usuario.objects.get(pk=self.func.pk)
+        delegado = Usuario.objects.get(pk=self.delegado.pk)
+        self.assertTrue(coord.has_perm('UsuarioApp.view_usuario'))
+        self.assertFalse(coord.has_perm('UsuarioApp.change_usuario'))  # el Supervisor solo visualiza
+        self.assertTrue(func.has_perm('ActividadesApp.add_actividad'))
+        self.assertFalse(func.has_perm('UsuarioApp.view_usuario'))
+        self.assertTrue(delegado.has_perm('IndicadoresApp.change_metadesempeno'))
+        self.assertFalse(delegado.has_perm('UsuarioApp.delete_usuario'))
+
+    def test_crear_usuario_desde_la_pantalla_le_asigna_grupo(self):
+        self.client.login(username='11111111-1', password=CLAVE)
+        self.client.post(reverse('users:usuario_crear'), {
+            'rut': '12.345.678-5', 'email': 'nuevo@laserena.cl', 'first_name': 'A', 'last_name': 'B',
+            'rol': 'Coordinador', 'cargo': 'TERR', 'delegacion': 'GENERAL', 'territorio': '',
+            'password1': 'ClaveSegura#2026', 'password2': 'ClaveSegura#2026'})
+        nuevo = Usuario.objects.get(username='12345678-5')
+        self.assertEqual(list(nuevo.groups.values_list('name', flat=True)), ['Supervisor'])
+
+    def test_comando_es_repetible(self):
+        from django.contrib.auth.models import Group
+        salida = StringIO()
+        call_command('crear_grupos', stdout=salida)
+        call_command('crear_grupos', stdout=salida)
+        self.assertIn('Grupos listos', salida.getvalue())
+        self.assertEqual(Group.objects.count(), 4)
+        self.assertEqual(self.func.groups.count(), 1)
+
+    def test_decorador_permiso_requerido(self):
+        from django.http import HttpResponse
+        from django.test import RequestFactory
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.contrib.auth.models import AnonymousUser
+        from UsuarioApp.funciones import permiso_requerido
+
+        @permiso_requerido('UsuarioApp.view_usuario', 'Usuarios')
+        def vista(request):
+            return HttpResponse('ok')
+
+        def pedir(usuario):
+            request = RequestFactory().get('/usuarios/')
+            request.user = usuario
+            request.session = {}
+            request._messages = FallbackStorage(request)
+            return vista(request)
+
+        self.assertEqual(pedir(Usuario.objects.get(pk=self.coord.pk)).content, b'ok')
+        negado = pedir(Usuario.objects.get(pk=self.func.pk))
+        self.assertEqual(negado['Location'], reverse('actividades:mi_gestion'))
+        self.assertIn('/login', pedir(AnonymousUser())['Location'].lower())

@@ -396,7 +396,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci√
                             <input type="text" name="telefono" maxlength="20" class="form-control" placeholder="Ej: 912345678">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold">Rol del Sistema</label>
+                            <label class="form-label fw-semibold">Perfil (grupo)</label>
                             <select name="rol" id="crear_rol" class="form-select" required>
                                 {% for valor, texto in roles_asignables %}
                                 <option value="{{ valor }}" {% if valor == 'Funcionario' %}selected{% endif %}>{{ texto }}</option>

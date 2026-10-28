@@ -123,8 +123,7 @@ class Usuario(AbstractUser):
     telefono = models.CharField(max_length=20, blank=True, default="", verbose_name="Teléfono")
     foto = models.ImageField(upload_to='perfiles/', blank=True, default="", verbose_name="Foto de perfil")
     # Solo los Funcionarios tienen territorio (uno, dentro de su delegación). El Delegado es de toda su delegación.
-    territorio = models.ForeignKey('ActividadesApp.Territorio', on_delete=models.SET_NULL, null=True, blank=True,
-                                   related_name='funcionarios', verbose_name="Territorio")
+    territorio = models.ForeignKey('ActividadesApp.Territorio', on_delete=models.SET_NULL, null=True, blank=True, related_name='funcionarios', verbose_name="Territorio")
 
     def __str__(self):
         nombre = self.get_full_name()
@@ -206,12 +205,15 @@ class Usuario(AbstractUser):
         return self.es_delegado() and meta.delegacion_id is not None and meta.delegacion_id == self.delegacion_id
 
     def roles_asignables(self):
-        """Roles que este usuario puede asignar al crear o editar usuarios. El Delegado, solo Funcionarios."""
+        """Perfiles que puede asignar. El Delegado, solo Funcionarios. Muestra el grupo que recibe."""
+        from UsuarioApp.choices import GRUPO_DE_ROL
         if self.es_administrador():
-            return list(roles)
-        if self.es_delegado():
-            return [(codigo, nombre) for codigo, nombre in roles if codigo == 'Funcionario']
-        return []
+            permitidos = list(roles)
+        elif self.es_delegado():
+            permitidos = [(codigo, nombre) for codigo, nombre in roles if codigo == 'Funcionario']
+        else:
+            permitidos = []
+        return [(codigo, f"{nombre} (grupo {GRUPO_DE_ROL[codigo]})") for codigo, nombre in permitidos]
 
     def usuarios_visibles(self):
         """Usuarios que aparecen en la pantalla de Usuarios / Gestión."""
@@ -247,6 +249,19 @@ class Usuario(AbstractUser):
         self.is_superuser = 'Admin' in codigos
         self.is_staff = self.is_superuser
         self.save(update_fields=['is_superuser', 'is_staff'])
+
+    def sincronizar_grupo(self):
+        """Deja al usuario solo en el grupo de Django de su rol, así hereda sus permisos."""
+        from django.contrib.auth.models import Group
+        from UsuarioApp.choices import GRUPO_DE_ROL
+        if hasattr(self, '_codigos_rol'):
+            del self._codigos_rol
+        nombre = GRUPO_DE_ROL.get(self.rol())
+        if nombre is None:
+            self.groups.clear()
+            return
+        grupo, _ = Group.objects.get_or_create(name=nombre)
+        self.groups.set([grupo])
 
     def area(self):
         if self.cargo and self.cargo.area:
