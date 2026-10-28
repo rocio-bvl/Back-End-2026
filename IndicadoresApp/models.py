@@ -62,6 +62,17 @@ class Periodo(models.Model):
         ordering = ["-fecha_inicio"]
 
 
+def metas_para(cargo_id, periodo, delegacion_id):
+    """Metas que se le miden a un cargo en una delegación: las propias de la delegación si definió alguna
+    para ese cargo; si no, las generales de la municipalidad."""
+    metas = MetaDesempeno.objects.filter(cargo_id=cargo_id, periodo=periodo).select_related('item', 'periodo')
+    if delegacion_id is not None:
+        propias = metas.filter(delegacion_id=delegacion_id)
+        if propias.exists():
+            return propias
+    return metas.filter(delegacion__isnull=True)
+
+
 def periodo_vigente(fecha=None):
     if fecha is None:
         fecha = timezone.localdate()
@@ -75,9 +86,14 @@ class MetaDesempeno(models.Model):
     cargo = models.ForeignKey('UsuarioApp.Cargo', on_delete=models.PROTECT, related_name='metas', verbose_name="Cargo")
     item = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, related_name='metas', limit_choices_to={'tipo': 'ITEM_GESTION'}, verbose_name="Ítem de gestión")
     periodo = models.ForeignKey(Periodo, on_delete=models.PROTECT, related_name='metas', verbose_name="Periodo")
+    # Vacío = meta general de la municipalidad (la define el Administrador). Con delegación = meta propia de esa
+    # delegación (la definen el Administrador o su Delegado) y reemplaza a la general para los cargos que defina.
+    delegacion = models.ForeignKey('UsuarioApp.Delegacion', on_delete=models.PROTECT, null=True, blank=True,
+                                   related_name='metas', verbose_name="Delegación (vacío = general)")
 
     def __str__(self):
-        return f"{self.cargo} - {self.item} ({self.periodo})"
+        alcance = self.delegacion or "General"
+        return f"{self.cargo} - {self.item} ({self.periodo}, {alcance})"
 
     def calcular_meta_esperada(self, fecha):
         return round(Decimal(self.valor_objetivo) * self.periodo.porcentaje_transcurrido(fecha) / 100, 2)
@@ -86,7 +102,7 @@ class MetaDesempeno(models.Model):
         db_table = "meta_desempeno"
         verbose_name = "Meta de desempeño"
         verbose_name_plural = "Metas de desempeño"
-        ordering = ["cargo__nombre", "item__id"]
+        ordering = ["delegacion__nombre", "cargo__nombre", "item__id"]
 
 
 class IndicadorDesempeno(models.Model):
@@ -104,8 +120,12 @@ class IndicadorDesempeno(models.Model):
         return f"{self.usuario} - {self.meta.item} ({self.fecha_calculo})"
 
     def calcular_avance(self):
+        """Actividades validadas del ítem en el periodo. Cuentan para quien la ejecutó: el encargado,
+        si se asignó uno; si no, quien la registró."""
+        from django.db.models import Q
         from ActividadesApp.models import Actividad
-        return Actividad.objects.filter(usuario=self.usuario, item=self.meta.item,
+        responsable = Q(encargado=self.usuario) | Q(encargado__isnull=True, usuario=self.usuario)
+        return Actividad.objects.filter(responsable, item=self.meta.item,
                                         periodo=self.meta.periodo, estado='VALIDADA').count()
 
     def calcular_meta_esperada(self):

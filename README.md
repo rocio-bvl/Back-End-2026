@@ -13,26 +13,46 @@ Asignatura: Programación Back End (TI3041)
 
 ## Roles y permisos
 
-| Acción | Admin | Coordinador | Delegado | Funcionario | Consulta |
-|---|:-:|:-:|:-:|:-:|:-:|
-| Ver tablero, semáforo y resumen | Sí | Sí | Sí (su delegación) | Tablero | Sí |
-| Registrar actividades (con evidencia o al Tubo) | Sí | Sí | No | Sí | No |
-| Subir la evidencia de su propia actividad | Sí | Sí | No | Sí | No |
-| Validar o rechazar evidencias | Sí | Sí | Sí (su delegación) | No | No |
-| Modificar y eliminar (Django Admin) | Sí | Sí, sin fechas | No | No | No |
-| Crear y editar usuarios, metas y ver auditoría | Sí | Sí | No | No | No |
-| Crear o asignar Coordinador y Administrador | Sí | No | No | No | No |
-| Modificar fechas y horas | Sí | No | No | No | No |
+| Acción | Admin | Coordinador | Delegado | Funcionario |
+|---|:-:|:-:|:-:|:-:|
+| Ver actividades | Todas (filtra por delegación) | Todas (filtra por delegación) | Su delegación | Su delegación |
+| Registrar actividades y atenciones sociales | Sí | No | No | Sí |
+| Validar o rechazar la ejecución | Sí | No | Sí (su delegación) | No |
+| Asignar encargado a una actividad pendiente | Sí | Sí | Sí (su delegación) | Al registrar, de su delegación |
+| Ver usuarios y delegaciones (Administración) | Sí, con el nombre "Gestión" | Solo visualiza ("Usuarios") | Funcionarios de su delegación | No |
+| Crear, editar y desactivar usuarios | Sí | No | Funcionarios de su delegación | No |
+| Eliminar usuarios (con confirmación) | Sí, si no tienen registros | No | No | No |
+| Agregar, modificar y eliminar delegaciones y territorios | Sí | No | No | No |
+| Metas generales de la municipalidad | Agrega y edita | Visualiza | Visualiza | No |
+| Metas propias de una delegación | Todas | Visualiza | Las de su delegación | No |
+| Auditoría | Sí | Solo visualiza | No | No |
+| Entrar a Django Admin | Sí (superusuario) | No | No | No |
 
-- El rol Verificador ya no existe: sus funciones pasaron al Delegado. La migración `UsuarioApp/0003` convierte a los usuarios que eran Verificador en Delegado (hay que asignarles una delegación).
-- Las fechas y horas de actividades y compromisos se registran solas. En Django Admin el Coordinador las ve de solo lectura; solo el Administrador (superusuario) puede corregirlas. Las reglas están en `UsuarioApp/admin_sgr.py`.
-- El Administrador es superusuario. El Coordinador entra a Django Admin como staff con permisos restringidos. Delegado, Funcionario y Consulta no entran a Django Admin.
+- Cada usuario edita su foto, teléfono y correo desde **Editar perfil**.
+- Las delegaciones ya no son una lista fija: el Administrador las agrega en Administración > Gestión > Delegaciones. Cada Funcionario puede tener un territorio de su delegación.
+- Una meta de delegación reemplaza a la meta general para los cargos que la delegación defina.
 
 ## Flujo de una actividad
 
-1. **Con evidencia** (el funcionario ya la realizó): se registra con la fotografía y queda `REGISTRADA`.
-2. **Sin evidencia** (necesita tiempo): el mismo funcionario la envía al **Tubo de Trabajo** con una fecha límite. Eso es un **compromiso**: no es otra tabla, es la actividad en estado `EN_TUBO`. Se marca vencida si pasa la fecha.
-3. Cuando ejecuta el compromiso, el funcionario sube la evidencia desde el detalle de la actividad (botón Ejecutar) y pasa a `REGISTRADA`.
-4. El Delegado de la delegación revisa la evidencia: **Validar** deja la actividad `VALIDADA`, es decir, **completada** (también la que vino del Tubo) y cuenta para la meta. **Rechazar evidencia** exige un motivo y deja la actividad `RECHAZADA`: la evidencia no es válida, pero la actividad no se anula porque se debe cumplir; el funcionario sube una nueva evidencia (nueva versión) y vuelve a `REGISTRADA`.
+La **fecha de ingreso** se guarda sola; quien registra elige la **fecha de ejecución**, el **territorio**, opcionalmente un **encargado** (Funcionario de su delegación) y opcionalmente la **solicitud social** a la que responde.
 
+| Caso | Estado inicial |
+|---|---|
+| Fecha de ejecución hoy o anterior | `REGISTRADA` (en revisión). Comentario obligatorio, foto opcional. |
+| Fecha de ejecución posterior a hoy | `PROGRAMADA` (compromiso). |
+| Depende de factores externos, sin fecha | `EN_TUBO`. La fecha se agrega después y pasa a `PROGRAMADA`. |
+| Depende de factores externos, con fecha | `PROGRAMADA`, y sigue en el Tubo de Trabajo. |
 
+Luego se registra la ejecución, el Delegado valida (`VALIDADA`) o rechaza con motivo (`RECHAZADA`), y se pueden agregar comentarios con fecha en la bitácora.
+
+## Registro de Atenciones (Gestión Social)
+
+Un funcionario registra la solicitud de una persona natural (fecha y funcionario automáticos). Las acciones para atenderla son actividades vinculadas a ella: una o varias, según lo que la solicitud requiera. Estado de la solicitud: **Pendiente** (sin actividades), **En proceso** (con actividades) y **Atendida** (todas sus actividades vinculadas fueron validadas).
+
+## Tablas nuevas o modificadas
+
+- Nuevas: `territorio`, `comentario_actividad`. Se eliminó `gestion_social` (las acciones de una solicitud son sus actividades).
+- `actividad`: `territorio_id`, `fecha_realizacion` (fecha de ejecución), `depende_externos`, `encargado_id`, `solicitud_id`. Se quitaron `contacto` y `telefono`.
+- `atencion_social`: `fecha` y `usuario_id` (quién la registró). Se quitó `actividad_id`: ahora es la actividad la que apunta a la solicitud.
+- `delegacion`: `nombre_visible`. `usuario`: `telefono`, `foto`, `territorio_id`. `meta_desempeno`: `delegacion_id` (vacío = meta general).
+- `evidencia.imagen` es opcional.

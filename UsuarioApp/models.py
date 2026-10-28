@@ -2,8 +2,9 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 
-from UsuarioApp.choices import (roles, orden_roles, estados_registro, delegaciones, tipos_catalogo,
-                                ROLES_ADMINISTRACION, ROLES_REGISTRO, ROLES_VERIFICACION, ROLES_RESERVADOS)
+from UsuarioApp.choices import (roles, orden_roles, estados_registro, tipos_catalogo,
+                                ROLES_ADMINISTRACION, ROLES_VER_USUARIOS, ROLES_GESTION_USUARIOS, ROLES_METAS,
+                                ROLES_REGISTRO, ROLES_VERIFICACION, ROLES_ASIGNAN_ENCARGADO, ROLES_RESERVADOS)
 
 
 class Catalogo(models.Model):
@@ -65,10 +66,10 @@ class Cargo(models.Model):
     def __str__(self):
         return self.nombre
 
-    def total_ponderadores(self, periodo, excluir=None):
-        """Suma de los ponderadores de las metas del cargo en el periodo.
-        'excluir' deja fuera una meta (la que se está modificando)."""
-        metas = self.metas.filter(periodo=periodo)
+    def total_ponderadores(self, periodo, excluir=None, delegacion=None):
+        """Suma de los ponderadores de las metas del cargo en el periodo, dentro de un mismo alcance
+        (generales si delegacion es None, o las de esa delegación). 'excluir' deja fuera la meta que se modifica."""
+        metas = self.metas.filter(periodo=periodo, delegacion=delegacion)
         if excluir is not None and excluir.pk is not None:
             metas = metas.exclude(pk=excluir.pk)
         total = 0
@@ -76,9 +77,9 @@ class Cargo(models.Model):
             total = total + meta.ponderador
         return total
 
-    def validar_ponderadores(self, periodo):
-        """True si las metas del cargo en el periodo suman exactamente 100%."""
-        return self.total_ponderadores(periodo) == 100
+    def validar_ponderadores(self, periodo, delegacion=None):
+        """True si las metas del cargo en el periodo (y alcance) suman exactamente 100%."""
+        return self.total_ponderadores(periodo, delegacion=delegacion) == 100
 
     class Meta:
         db_table = "cargo"
@@ -88,12 +89,20 @@ class Cargo(models.Model):
 
 
 class Delegacion(models.Model):
-    nombre = models.CharField(max_length=100, unique=True, choices=delegaciones, verbose_name="Nombre")
+    # nombre: código interno que viaja en las direcciones (?delegacion=LAS_COMPANIAS); nombre_visible: lo que se lee
+    nombre = models.CharField(max_length=100, unique=True, verbose_name="Código")
+    nombre_visible = models.CharField(max_length=100, default="", verbose_name="Nombre")
     ambito = models.CharField(max_length=100, blank=True, default="", verbose_name="Ámbito")
     estado = models.CharField(max_length=10, choices=estados_registro, default='ACTIVO', verbose_name="Estado")
 
     def __str__(self):
-        return self.get_nombre_display()
+        return self.nombre_visible or self.nombre
+
+    def delegados(self):
+        return self.usuarios.filter(roles_asignados__rol__codigo='Delegado').distinct()
+
+    def funcionarios(self):
+        return self.usuarios.filter(roles_asignados__rol__codigo='Funcionario').distinct()
 
     class Meta:
         db_table = "delegacion"
@@ -111,6 +120,11 @@ class Usuario(AbstractUser):
     date_joined = models.DateTimeField(default=timezone.now, db_column='creado', verbose_name="Creado")
     cargo = models.ForeignKey(Cargo, on_delete=models.PROTECT, null=True, blank=True, related_name='usuarios', verbose_name="Cargo")
     delegacion = models.ForeignKey(Delegacion, on_delete=models.PROTECT, null=True, blank=True, related_name='usuarios', verbose_name="Delegación")
+    telefono = models.CharField(max_length=20, blank=True, default="", verbose_name="Teléfono")
+    foto = models.ImageField(upload_to='perfiles/', blank=True, default="", verbose_name="Foto de perfil")
+    # Solo los Funcionarios tienen territorio (uno, dentro de su delegación). El Delegado es de toda su delegación.
+    territorio = models.ForeignKey('ActividadesApp.Territorio', on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='funcionarios', verbose_name="Territorio")
 
     def __str__(self):
         nombre = self.get_full_name()
@@ -146,45 +160,92 @@ class Usuario(AbstractUser):
     def es_administrador(self):
         return self.tiene_rol(['Admin'])
 
+    def es_delegado(self):
+        """Delegado (y no superusuario): todo lo que hace queda limitado a su delegación."""
+        return not self.is_superuser and self.rol() == 'Delegado'
+
     def puede_administrar(self):
-        """Admin y Coordinador: usuarios, metas, auditoría, modificar y eliminar."""
+        """Admin y Coordinador: metas, auditoría y vista de todas las delegaciones."""
         return self.tiene_rol(ROLES_ADMINISTRACION)
 
+    def puede_ver_usuarios(self):
+        """Admin y Coordinador ven todos los usuarios y delegaciones; el Delegado, los Funcionarios de la suya."""
+        if self.es_delegado():
+            return self.delegacion_id is not None
+        return self.tiene_rol(ROLES_VER_USUARIOS)
+
+    def puede_gestionar_usuarios(self):
+        """Crean, editan y desactivan: el Admin (todos) y el Delegado (Funcionarios de su delegación).
+        El Coordinador solo visualiza."""
+        if self.es_delegado():
+            return self.delegacion_id is not None
+        return self.tiene_rol(ROLES_GESTION_USUARIOS)
+
     def puede_registrar(self):
-        """Admin, Coordinador y Funcionario: agregan actividades y compromisos."""
+        """Admin y Funcionario agregan actividades y atenciones sociales. El Coordinador y el Delegado solo las ven."""
         return self.tiene_rol(ROLES_REGISTRO)
 
     def puede_verificar(self):
-        """Admin, Coordinador y Delegado (este último, solo en su delegación)."""
+        """Admin (todas las delegaciones) y Delegado (solo la suya) validan la ejecución."""
         return self.tiene_rol(ROLES_VERIFICACION)
 
+    def puede_asignar_encargado(self):
+        """Admin y Coordinador en todas las delegaciones; el Delegado, en la suya."""
+        return self.tiene_rol(ROLES_ASIGNAN_ENCARGADO)
+
+    def puede_gestionar_metas(self):
+        """El Admin agrega y edita todas las metas (generales y de cada delegación); el Delegado, las de su
+        delegación. El Coordinador solo las visualiza."""
+        if self.es_delegado():
+            return self.delegacion_id is not None
+        return self.tiene_rol(ROLES_METAS)
+
+    def puede_editar_meta(self, meta):
+        if self.es_administrador():
+            return True
+        return self.es_delegado() and meta.delegacion_id is not None and meta.delegacion_id == self.delegacion_id
+
     def roles_asignables(self):
-        """Roles que este usuario puede asignar al crear o editar usuarios.
-        El Coordinador no puede crear Coordinadores ni Administradores."""
+        """Roles que este usuario puede asignar al crear o editar usuarios. El Delegado, solo Funcionarios."""
         if self.es_administrador():
             return list(roles)
-        return [(codigo, nombre) for codigo, nombre in roles if codigo not in ROLES_RESERVADOS]
+        if self.es_delegado():
+            return [(codigo, nombre) for codigo, nombre in roles if codigo == 'Funcionario']
+        return []
+
+    def usuarios_visibles(self):
+        """Usuarios que aparecen en la pantalla de Usuarios / Gestión."""
+        usuarios = Usuario.objects.select_related('cargo', 'delegacion', 'territorio')
+        if self.es_delegado():
+            return usuarios.filter(delegacion_id=self.delegacion_id, roles_asignados__rol__codigo='Funcionario').distinct()
+        return usuarios.all()
+
+    # Nombre anterior, por compatibilidad
+    usuarios_gestionables = usuarios_visibles
 
     def puede_editar_usuario(self, otro):
-        """El Admin edita a todos. El Coordinador no edita a Administradores ni a otros Coordinadores."""
+        """El Admin edita a todos. El Delegado edita solo a los Funcionarios de su delegación. El Coordinador, a nadie."""
         if self.es_administrador():
             return True
-        if not self.puede_administrar():
-            return False
-        if otro.pk == self.pk:
-            return True
-        return not (otro.is_superuser or otro.tiene_rol(ROLES_RESERVADOS))
+        if self.es_delegado() and self.puede_gestionar_usuarios():
+            return (otro.delegacion_id == self.delegacion_id and not otro.is_superuser
+                    and otro.rol() == 'Funcionario')
+        return False
+
+    def puede_eliminar_usuario(self, otro):
+        """Solo el Admin elimina, y nunca a sí mismo."""
+        return self.es_administrador() and otro.pk != self.pk
 
     def sincronizar_acceso_admin(self):
-        """Django Admin: el Admin es superusuario; el Coordinador entra como staff con permisos
-        restringidos (ver UsuarioApp/admin_sgr.py). Un superusuario sin roles (createsuperuser) no se toca."""
+        """Django Admin: solo el Admin entra (es superusuario). El Coordinador solo visualiza desde las
+        pantallas propias, así que no es staff. Un superusuario sin roles (createsuperuser) no se toca."""
         if hasattr(self, '_codigos_rol'):
             del self._codigos_rol
         codigos = self.codigos_rol()
         if not codigos:
             return
         self.is_superuser = 'Admin' in codigos
-        self.is_staff = self.is_superuser or 'Coordinador' in codigos
+        self.is_staff = self.is_superuser
         self.save(update_fields=['is_superuser', 'is_staff'])
 
     def area(self):

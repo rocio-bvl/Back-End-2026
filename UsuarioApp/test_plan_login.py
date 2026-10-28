@@ -20,7 +20,7 @@ class PlanLoginTest(TestCase):
 
     def test_cp_login_001_credenciales_validas(self):
         respuesta = self.intentar('55555555-5', CLAVE)
-        self.assertRedirects(respuesta, reverse('indicadores:dashboard'))
+        self.assertRedirects(respuesta, reverse('actividades:mi_gestion'))
         self.assertEqual(int(self.client.session['_auth_user_id']), self.func.pk)
 
     def test_cp_login_002_contrasena_incorrecta(self):

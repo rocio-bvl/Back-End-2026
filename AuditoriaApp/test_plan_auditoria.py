@@ -2,6 +2,7 @@
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from ActividadesApp.models import Actividad, Evidencia
 from ActividadesApp.tests import foto
@@ -20,8 +21,9 @@ class PlanAuditoriaTest(TestCase):
     def registrar_actividad(self):
         self.client.login(username='55555555-5', password=CLAVE)
         return self.client.post(reverse('actividades:actividad_crear'), {
-            'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item_comision': '1',
-            'contacto': 'Juan', 'telefono': '912345678', 'territorio': 'Sector Alto', 'evidencia_imagen': foto()})
+            'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item': '1',
+            'contacto': 'Juan', 'telefono': '912345678', 'territorio': self.datos['territorio'].pk,
+            'fecha_realizacion': timezone.localdate().isoformat(), 'comentario': 'Se inspeccionó', 'imagen': foto()})
 
     def test_cp_aud_001_registro_operacion_critica(self):
         registro = registrar_auditoria(self.func, 'CREACION', 'Actividad', 15, '', 'ACT15 - Inspección')

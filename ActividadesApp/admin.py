@@ -1,7 +1,8 @@
 from django.contrib import admin
 
 from UsuarioApp.admin_sgr import AdminSGR, TabularInlineSGR
-from ActividadesApp.models import Actividad, Evidencia, Validacion, AtencionSocial, GestionSocial
+from ActividadesApp.models import (Actividad, Evidencia, Validacion, AtencionSocial, Territorio,
+                                   ComentarioActividad)
 
 
 class EvidenciaInline(TabularInlineSGR):
@@ -9,11 +10,22 @@ class EvidenciaInline(TabularInlineSGR):
     extra = 0
 
 
+class ComentarioInline(TabularInlineSGR):
+    model = ComentarioActividad
+    extra = 0
+
+
 class ActividadAdmin(AdminSGR):
-    list_display = ("id", "fecha", "usuario", "item", "accion", "estado", "ingreso_agenda_colectiva", "fecha_comprometida")
-    search_fields = ("accion", "solicitud_problema", "contacto", "territorio")
-    list_filter = ("estado", "ingreso_agenda_colectiva", "item", "periodo")
-    inlines = [EvidenciaInline]
+    list_display = ("id", "fecha", "usuario", "encargado", "item", "accion", "estado", "depende_externos", "fecha_realizacion")
+    search_fields = ("accion", "solicitud_problema", "territorio__nombre")
+    list_filter = ("estado", "depende_externos", "item", "periodo")
+    inlines = [EvidenciaInline, ComentarioInline]
+
+
+class TerritorioAdmin(AdminSGR):
+    list_display = ("nombre", "delegacion", "estado")
+    search_fields = ("nombre",)
+    list_filter = ("delegacion", "estado")
 
 
 class EvidenciaAdmin(AdminSGR):
@@ -28,27 +40,20 @@ class ValidacionAdmin(AdminSGR):
     list_filter = ("decision",)
 
 
-class GestionSocialInline(TabularInlineSGR):
-    model = GestionSocial
-    extra = 0
-    max_num = 3
-
-
-class GestionSocialAdmin(AdminSGR):
-    list_display = ("atencion", "numero_gestion", "tipo", "accion", "fecha")
-    search_fields = ("accion", "atencion__nombre_solicitante", "atencion__rut_solicitante")
-    list_filter = ("tipo",)
+class ComentarioActividadAdmin(AdminSGR):
+    list_display = ("actividad", "usuario", "fecha")
+    search_fields = ("texto", "actividad__accion", "usuario__username")
 
 
 class AtencionSocialAdmin(AdminSGR):
-    list_display = ("id", "nombre_solicitante", "rut_solicitante", "tipo_atencion", "requiere_visita")
+    list_display = ("id", "fecha", "nombre_solicitante", "rut_solicitante", "tipo_atencion", "usuario", "requiere_visita")
     search_fields = ("nombre_solicitante", "rut_solicitante")
     list_filter = ("tipo_atencion",)
-    inlines = [GestionSocialInline]
 
 
 admin.site.register(Actividad, ActividadAdmin)
 admin.site.register(Evidencia, EvidenciaAdmin)
 admin.site.register(Validacion, ValidacionAdmin)
 admin.site.register(AtencionSocial, AtencionSocialAdmin)
-admin.site.register(GestionSocial, GestionSocialAdmin)
+admin.site.register(Territorio, TerritorioAdmin)
+admin.site.register(ComentarioActividad, ComentarioActividadAdmin)

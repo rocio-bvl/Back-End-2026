@@ -9,75 +9,144 @@
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-muni text-white fw-bold py-3 d-flex align-items-center">
                     <i class="bi bi-journal-plus me-2 fs-5"></i>
-                    <span>Ingreso Diario de Actividad Territorial</span>
+                    <span>Registrar Actividad Territorial</span>
                 </div>
                 <div class="card-body p-4">
                     <div class="alert alert-light border small mb-4" role="note">
-                        <strong>¿Cómo se registra?</strong> Si ya realizó la actividad, adjunte la fotografía: queda
-                        <strong>registrada</strong> y el Delegado la valida. Si necesita tiempo para realizarla, márquela para que
-                        pase al <strong>Tubo de Trabajo</strong> como compromiso, con una fecha límite; subirá la evidencia cuando la ejecute.
+                        <strong>¿Cómo se registra?</strong> La fecha de ingreso se guarda sola (hoy, {{ hoy|date:"d/m/Y" }}). Usted elige la <strong>fecha de ejecución</strong>.
+                        <ul class="mb-0 mt-1">
+                            <li><strong>Hoy (o un día anterior):</strong> queda registrada como ejecutada. Escriba qué se hizo; la foto es opcional.</li>
+                            <li><strong>Un día posterior:</strong> queda como <strong>compromiso</strong> pendiente hasta que se ejecute.</li>
+                            <li><strong>Depende de factores externos:</strong> pasa al <strong>Tubo de Trabajo</strong>. La fecha de ejecución es opcional: si todavía no se sabe, se agrega después.</li>
+                        </ul>
                     </div>
-                    <form method="post" enctype="multipart/form-data">
-                        {% csrf_token %}
 
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>
+                    {% endif %}
+
+                    <form method="post" enctype="multipart/form-data" novalidate>
+                        {% csrf_token %}
                         <div class="row g-3">
                             <div class="col-12">
-                                <label class="form-label fw-semibold" for="id_solicitud">Descripción de la Actividad / Solicitud / Problema</label>
-                                <textarea name="solicitud_problema" id="id_solicitud" class="form-control" rows="3" placeholder="Detalle los requerimientos o la labor realizada en terreno..." required></textarea>
+                                <label class="form-label fw-semibold" for="{{ form.solicitud_problema.id_for_label }}">{{ form.solicitud_problema.label }}</label>
+                                <textarea name="solicitud_problema" id="{{ form.solicitud_problema.id_for_label }}" rows="3" class="form-control {% if form.solicitud_problema.errors %}is-invalid{% endif %}" placeholder="Detalle los requerimientos o la labor en terreno...">{{ form.solicitud_problema.value|default:'' }}</textarea>
+                                {% for error in form.solicitud_problema.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold" for="id_accion">Acción</label>
-                                <input type="text" name="accion" id="id_accion" class="form-control" placeholder="Ej: Gestión terreno, Inspección, Reunión..." required>
+                                <label class="form-label fw-semibold" for="{{ form.accion.id_for_label }}">{{ form.accion.label }}</label>
+                                <input type="text" name="accion" id="{{ form.accion.id_for_label }}" value="{{ form.accion.value|default:'' }}" maxlength="255" class="form-control {% if form.accion.errors %}is-invalid{% endif %}" placeholder="Ej: Gestión en terreno, Inspección, Reunión...">
+                                {% for error in form.accion.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                             </div>
 
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold" for="id_item">Item / Comisión a Medir</label>
-                                <select name="item_comision" id="id_item" class="form-select" required>
-                                    <option value="" selected disabled>Seleccione una opción...</option>
-                                    <option value="1">Atención de Usuario Teléfono y Presencial</option>
-                                    <option value="2">Visitas, Reuniones con Organizaciones</option>
-                                    <option value="3">Fiscalizaciones de Terreno</option>
+                                <label class="form-label fw-semibold" for="{{ form.item.id_for_label }}">{{ form.item.label }}</label>
+                                <select name="item" id="{{ form.item.id_for_label }}" class="form-select {% if form.item.errors %}is-invalid{% endif %}">
+                                    <option value="">Seleccione una opción...</option>
+                                    {% for opcion in form.fields.item.queryset %}
+                                    <option value="{{ opcion.pk }}" {% if form.item.value|stringformat:"s" == opcion.pk|stringformat:"s" %}selected{% endif %}>{{ opcion.nombre }}</option>
+                                    {% endfor %}
                                 </select>
+                                {% for error in form.item.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                             </div>
 
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold" for="id_contacto">Nombre de Contacto / Solicitante</label>
-                                <input type="text" name="contacto" id="id_contacto" class="form-control" placeholder="Dirigente o vecino">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="{{ form.territorio.id_for_label }}">{{ form.territorio.label }}</label>
+                                <select name="territorio" id="{{ form.territorio.id_for_label }}" class="form-select {% if form.territorio.errors %}is-invalid{% endif %}">
+                                    <option value="">Seleccione un territorio...</option>
+                                    {% for territorio in form.fields.territorio.queryset %}
+                                    <option value="{{ territorio.pk }}" {% if form.territorio.value|stringformat:"s" == territorio.pk|stringformat:"s" %}selected{% endif %}>{{ territorio.nombre }}{% if not request.user.delegacion %} ({{ territorio.delegacion|default:"sin delegación" }}){% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                                {% for error in form.territorio.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                {% if not form.fields.territorio.queryset %}
+                                <small class="text-danger">Su delegación no tiene territorios registrados. Pida al Administrador que los agregue.</small>
+                                {% endif %}
                             </div>
 
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold" for="id_telefono">Teléfono de Contacto</label>
-                                <input type="text" name="telefono" id="id_telefono" class="form-control" placeholder="Ej: 912345678">
+                            <!-- Encargado: se busca entre los Funcionarios registrados -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="buscar_encargado">{{ form.encargado.label }}</label>
+                                <input type="search" id="buscar_encargado" class="form-control form-control-sm mb-1" placeholder="Buscar funcionario por nombre o territorio...">
+                                <select name="encargado" id="id_encargado" class="form-select {% if form.encargado.errors %}is-invalid{% endif %}" size="4">
+                                    <option value="" {% if not form.encargado.value %}selected{% endif %}>{{ form.fields.encargado.empty_label }}</option>
+                                    {% for funcionario in form.fields.encargado.queryset %}
+                                    <option value="{{ funcionario.pk }}" {% if form.encargado.value|stringformat:"s" == funcionario.pk|stringformat:"s" %}selected{% endif %}>{{ funcionario.get_full_name|default:funcionario.username }} · {{ funcionario.territorio|default:"sin territorio" }}{% if request.user.es_administrador %} · {{ funcionario.delegacion|default:"sin delegación" }}{% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                                {% for error in form.encargado.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                <small class="text-muted">Si lo deja en "Yo mismo", la actividad queda a su cargo.</small>
                             </div>
 
-                            <div class="col-md-4">
-                                <label class="form-label fw-semibold" for="id_territorio">Territorio / Sector</label>
-                                <input type="text" name="territorio" id="id_territorio" class="form-control" placeholder="Ej: Sector Alto">
+                            <!-- Vincular a una solicitud social registrada antes -->
+                            <div class="col-12">
+                                <div class="border rounded p-3">
+                                    <h6 class="fw-bold mb-1"><i class="bi bi-link-45deg me-1 text-danger"></i>Vincular actividad a solicitud social <small class="text-muted fw-normal">(opcional)</small></h6>
+                                    <p class="small text-muted mb-2">Busque por nombre o RUT de la persona, fecha (dd/mm/aaaa) o funcionario que la ingresó.</p>
+                                    <input type="search" id="buscar_solicitud" class="form-control form-control-sm mb-2" placeholder="Ej: María, 12345678, 22/10/2026...">
+                                    <div class="table-responsive border rounded" style="max-height: 220px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover mb-0 small" id="tabla_solicitudes">
+                                            <thead class="table-light"><tr><th></th><th>CÓDIGO</th><th>FECHA</th><th>SOLICITANTE</th><th>RUT</th><th>TIPO</th><th>INGRESADA POR</th><th>ESTADO</th></tr></thead>
+                                            <tbody>
+                                                <tr class="fila-fija">
+                                                    <td><input class="form-check-input" type="radio" name="solicitud" id="solicitud_ninguna" value="" {% if not form.solicitud.value %}checked{% endif %}></td>
+                                                    <td colspan="7"><label for="solicitud_ninguna" class="mb-0">No vincular a ninguna solicitud</label></td>
+                                                </tr>
+                                                {% for solicitud in form.fields.solicitud.queryset %}
+                                                <tr>
+                                                    <td><input class="form-check-input" type="radio" name="solicitud" id="solicitud_{{ solicitud.pk }}" value="{{ solicitud.pk }}" {% if form.solicitud.value|stringformat:"s" == solicitud.pk|stringformat:"s" %}checked{% endif %}></td>
+                                                    <td><label for="solicitud_{{ solicitud.pk }}" class="mb-0 fw-bold">{{ solicitud.codigo }}</label></td>
+                                                    <td>{{ solicitud.fecha|date:"d/m/Y" }}</td>
+                                                    <td>{{ solicitud.nombre_solicitante }}</td>
+                                                    <td>{{ solicitud.rut_solicitante }}</td>
+                                                    <td>{{ solicitud.tipo_atencion.nombre }}</td>
+                                                    <td>{{ solicitud.usuario.get_full_name|default:solicitud.usuario.username }}</td>
+                                                    <td>{{ solicitud.get_estado_display }}</td>
+                                                </tr>
+                                                {% empty %}
+                                                <tr><td colspan="8" class="text-muted text-center">No hay solicitudes sociales registradas en su delegación.</td></tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {% for error in form.solicitud.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                </div>
                             </div>
 
                             <div class="col-12">
                                 <div class="form-check form-switch bg-light p-3 border rounded">
-                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="ingreso_agenda_colectiva" id="id_tubo" {% if al_tubo %}checked{% endif %}>
-                                    <label class="form-check-label fw-semibold" for="id_tubo">
-                                        No puedo realizarla ahora: pasa al Tubo de Trabajo como compromiso
-                                    </label>
-                                    <div class="small text-muted ms-4">Se registra sin evidencia y con una fecha límite de cumplimiento.</div>
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="depende_externos" id="id_depende_externos" {% if form.depende_externos.value %}checked{% endif %}>
+                                    <label class="form-check-label fw-semibold" for="id_depende_externos">{{ form.depende_externos.label }}</label>
+                                    <div class="small text-muted ms-4">Úselo si la actividad depende de otros (respuesta de otra institución, permisos, clima...). La fecha de ejecución queda opcional.</div>
                                 </div>
                             </div>
 
-                            <!-- Con evidencia: actividad registrada -->
-                            <div class="col-12" id="bloque_evidencia">
-                                <label class="form-label fw-semibold" for="id_imagen"><i class="bi bi-camera me-1"></i> Fotografía de evidencia (obligatoria)</label>
-                                <input type="file" name="evidencia_imagen" id="id_imagen" class="form-control" accept=".jpg,.jpeg,.png">
-                                <small class="text-muted">Formatos permitidos: JPG, PNG. Máximo 5 MB.</small>
+                            <!-- Fechas: la de ingreso es automática; la de ejecución se elige (en el Tubo es opcional) -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold"><i class="bi bi-calendar me-1"></i>Fecha de ingreso</label>
+                                <input type="text" class="form-control bg-light" value="{{ hoy|date:'d/m/Y' }} (automática)" readonly>
+                            </div>
+                            <div class="col-md-6" id="bloque_fecha">
+                                <label class="form-label fw-semibold" for="id_fecha_realizacion"><i class="bi bi-calendar-check me-1"></i>{{ form.fecha_realizacion.label }}</label>
+                                <input type="date" name="fecha_realizacion" id="id_fecha_realizacion" value="{{ form.fecha_realizacion.value|date:'Y-m-d'|default:form.fecha_realizacion.value|default:'' }}" class="form-control {% if form.fecha_realizacion.errors %}is-invalid{% endif %}">
+                                {% for error in form.fecha_realizacion.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                <small class="text-muted" id="aviso_fecha">Si elige un día posterior a hoy, la actividad queda como compromiso pendiente.</small>
+                                <small class="text-muted d-none" id="aviso_fecha_tubo">Opcional en el Tubo: si aún no se sabe, déjela vacía y agréguela después.</small>
                             </div>
 
-                            <!-- Sin evidencia: compromiso en el Tubo -->
-                            <div class="col-md-6" id="bloque_tubo">
-                                <label class="form-label fw-semibold" for="id_fecha_limite"><i class="bi bi-calendar-check me-1"></i> Fecha límite comprometida</label>
-                                <input type="date" name="fecha_comprometida" id="id_fecha_limite" class="form-control" min="{{ hoy|date:'Y-m-d' }}">
-                                <small class="text-muted">Fecha en que se compromete a ejecutar la actividad.</small>
+                            <!-- Ejecución: solo si la fecha es hoy o anterior -->
+                            <div class="col-12" id="bloque_ejecucion">
+                                <div class="border rounded p-3">
+                                    <h6 class="fw-bold mb-3"><i class="bi bi-check2-square me-1 text-danger"></i>Registro de ejecución</h6>
+                                    <label class="form-label fw-semibold" for="id_comentario">{{ form.comentario.label }} <span class="text-danger">*</span></label>
+                                    <textarea name="comentario" id="id_comentario" rows="2" class="form-control {% if form.comentario.errors %}is-invalid{% endif %}" placeholder="Ej: Se realizó la reunión con la junta de vecinos y se acordó...">{{ form.comentario.value|default:'' }}</textarea>
+                                    {% for error in form.comentario.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                    <label class="form-label fw-semibold mt-3" for="id_imagen"><i class="bi bi-camera me-1"></i>{{ form.imagen.label }}</label>
+                                    <input type="file" name="imagen" id="id_imagen" class="form-control {% if form.imagen.errors %}is-invalid{% endif %}" accept=".jpg,.jpeg,.png">
+                                    {% for error in form.imagen.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                    <small class="text-muted">JPG o PNG, máximo 5 MB. No todas las actividades requieren fotografía.</small>
+                                </div>
                             </div>
                         </div>
 
@@ -99,25 +168,48 @@
 
 {% block extra_js %}
 <script>
-    // Muestra la evidencia o la fecha límite según la opción elegida (el servidor valida igual)
+    // Muestra u oculta los bloques según la opción elegida. Es solo ayuda visual: el servidor valida igual.
     (function () {
-        var tubo = document.getElementById('id_tubo');
-        var evidencia = document.getElementById('bloque_evidencia');
-        var bloqueTubo = document.getElementById('bloque_tubo');
-        var imagen = document.getElementById('id_imagen');
-        var fecha = document.getElementById('id_fecha_limite');
+        var hoy = '{{ hoy|date:"Y-m-d" }}';
+        var tubo = document.getElementById('id_depende_externos');
+        var fecha = document.getElementById('id_fecha_realizacion');
+        var avisoFecha = document.getElementById('aviso_fecha');
+        var avisoTubo = document.getElementById('aviso_fecha_tubo');
+        var bloqueEjecucion = document.getElementById('bloque_ejecucion');
         var texto = document.getElementById('texto_guardar');
         function actualizar() {
             var alTubo = tubo.checked;
-            evidencia.style.display = alTubo ? 'none' : '';
-            bloqueTubo.style.display = alTubo ? '' : 'none';
-            imagen.required = !alTubo;
-            fecha.required = alTubo;
-            if (alTubo) { imagen.value = ''; } else { fecha.value = ''; }
-            texto.textContent = alTubo ? 'Ingresar al Tubo de Trabajo' : 'Registrar Actividad';
+            var futura = fecha.value && fecha.value > hoy;
+            avisoFecha.classList.toggle('d-none', alTubo);
+            avisoTubo.classList.toggle('d-none', !alTubo);
+            bloqueEjecucion.style.display = (alTubo || futura) ? 'none' : '';
+            if (alTubo) { texto.textContent = 'Ingresar al Tubo de Trabajo'; }
+            else if (futura) { texto.textContent = 'Programar compromiso'; }
+            else { texto.textContent = 'Registrar Actividad'; }
         }
-        tubo.addEventListener('change', actualizar);
+        // Al marcar el Tubo, la fecha de hoy que viene por defecto se borra (la fecha es opcional ahí)
+        tubo.addEventListener('change', function () {
+            if (tubo.checked && fecha.value === hoy) { fecha.value = ''; }
+            actualizar();
+        });
+        fecha.addEventListener('change', actualizar);
         actualizar();
+
+        // Filtro de texto para buscar encargado y solicitud social
+        function filtrar(entrada, filas) {
+            entrada.addEventListener('input', function () {
+                var texto = entrada.value.toLowerCase().trim();
+                Array.prototype.forEach.call(filas(), function (fila) {
+                    fila.hidden = texto !== '' && fila.textContent.toLowerCase().indexOf(texto) === -1;
+                });
+            });
+        }
+        filtrar(document.getElementById('buscar_encargado'), function () {
+            return Array.prototype.filter.call(document.getElementById('id_encargado').options, function (o) { return o.value; });
+        });
+        filtrar(document.getElementById('buscar_solicitud'), function () {
+            return document.querySelectorAll('#tabla_solicitudes tbody tr:not(.fila-fija)');
+        });
     })();
 </script>
 {% endblock %}

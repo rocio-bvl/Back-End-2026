@@ -1,0 +1,73 @@
+{% comment %}
+Tabla de actividades reutilizable (Mi Gestión).
+Parámetros: filas (lista de fila_actividad), vacio (texto si no hay filas), con_responsable (muestra la columna Responsable).
+{% endcomment %}
+<div class="tarjeta-tabla table-responsive">
+    <table class="table table-hover tabla-sgr align-middle mb-0">
+        <thead>
+            <tr>
+                <th>CÓDIGO</th>
+                <th>FECHA INGRESO</th>
+                <th>FECHA EJECUCIÓN</th>
+                <th>ACTIVIDAD</th>
+                <th>TERRITORIO</th>
+                {% if con_responsable %}<th>RESPONSABLE</th>{% endif %}
+                <th class="text-center">ESTADO</th>
+                <th class="text-center">ACCIONES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for act in filas %}
+            <tr>
+                <td class="fw-bold text-nowrap">{{ act.folio }}</td>
+                <td class="text-nowrap">{{ act.fecha|date:"d/m/Y" }}</td>
+                <td class="text-nowrap">
+                    {% if act.fecha_realizacion %}
+                        <span class="{% if act.vencido %}text-danger fw-bold{% endif %}">{{ act.fecha_realizacion|date:"d/m/Y" }}</span>
+                        {% if act.vencido %}<span class="badge bg-danger d-block mt-1">VENCIDA</span>
+                        {% elif act.proximo_a_vencer %}<span class="badge bg-warning text-dark d-block mt-1">PRÓXIMA</span>{% endif %}
+                    {% else %}
+                        <small class="text-muted">Aún no se ha agregado fecha de ejecución</small>
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="fw-semibold">{{ act.accion }}</span>
+                    <small class="d-block text-muted">{{ act.solicitud_problema|truncatechars:80 }}</small>
+                    <small class="text-muted">{{ act.item }}{% if act.tiene_foto %} · <i class="bi bi-image" title="Con fotografía"></i>{% endif %}</small>
+                    {% if act.solicitud %}
+                    <div class="mt-1"><span class="badge bg-muni-v2"><i class="bi bi-link-45deg"></i> Solicitud social {{ act.solicitud.codigo }}</span>
+                        <a href="{% url 'actividades:gestion_social' %}?solicitud={{ act.solicitud.pk }}" class="small ms-1">Ver solicitud</a></div>
+                    {% endif %}
+                </td>
+                <td>{{ act.territorio }}</td>
+                {% if con_responsable %}
+                <td>
+                    {% if act.encargado %}
+                        {{ act.encargado.get_full_name|default:act.encargado.username }}
+                        <small class="d-block text-muted">Encargado</small>
+                    {% else %}
+                        {{ act.funcionario.get_full_name|default:act.funcionario.username }}
+                        <small class="d-block text-muted">Registró</small>
+                    {% endif %}
+                </td>
+                {% endif %}
+                <td class="text-center">{% include 'actividades/components/estado_actividad.html' with estado=act.estado_codigo %}</td>
+                <td class="text-center">
+                    <div class="d-flex flex-wrap gap-1 justify-content-center">
+                        <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm {% if act.puede_ejecutar %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
+                            {% if act.puede_ejecutar %}<i class="bi bi-check2-circle me-1"></i>Gestionar{% else %}<i class="bi bi-eye me-1"></i>Ver{% endif %}
+                        </a>
+                        {% url 'admin:ActividadesApp_actividad_change' act.id as url_modificar %}
+                        {% url 'admin:ActividadesApp_actividad_delete' act.id as url_eliminar %}
+                        {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar solo_admin=True %}
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="{% if con_responsable %}8{% else %}7{% endif %}" class="text-center text-muted py-4">{{ vacio }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

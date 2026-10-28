@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if object %}Modificar{% else %}Agregar{% endif %} atención | SGR{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-9">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni text-white fw-bold py-3">
+                    <i class="bi bi-person-vcard me-2"></i>{% if object %}Modificar atención {{ object.codigo }}{% else %}Agregar atención social{% endif %}
+                </div>
+                <div class="card-body p-4">
+                    <p class="small text-muted">
+                        {% if object %}Ingresada el {{ object.fecha|date:"d/m/Y H:i" }} por {{ object.usuario.get_full_name|default:object.usuario.username }}.
+                        {% else %}La fecha de ingreso y su nombre como funcionario que la registra se guardan automáticamente.{% endif %}
+                    </p>
+                    {% if form.non_field_errors %}<div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
+
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        <h6 class="fw-bold">Solicitante</h6>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-5">
+                                <label class="form-label fw-semibold" for="id_nombre_solicitante">{{ form.nombre_solicitante.label }}</label>
+                                <input type="text" name="nombre_solicitante" id="id_nombre_solicitante" maxlength="200" value="{{ form.nombre_solicitante.value|default:'' }}" class="form-control {% if form.nombre_solicitante.errors %}is-invalid{% endif %}">
+                                {% for error in form.nombre_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" for="id_rut_solicitante">{{ form.rut_solicitante.label }}</label>
+                                <input type="text" name="rut_solicitante" id="id_rut_solicitante" maxlength="15" value="{{ form.rut_solicitante.value|default:'' }}" class="form-control {% if form.rut_solicitante.errors %}is-invalid{% endif %}" placeholder="12345678-5">
+                                {% for error in form.rut_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-semibold" for="id_telefono_solicitante">{{ form.telefono_solicitante.label }}</label>
+                                <input type="text" name="telefono_solicitante" id="id_telefono_solicitante" maxlength="20" value="{{ form.telefono_solicitante.value|default:'' }}" class="form-control">
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label fw-semibold" for="id_tipo_atencion">{{ form.tipo_atencion.label }}</label>
+                                <select name="tipo_atencion" id="id_tipo_atencion" class="form-select {% if form.tipo_atencion.errors %}is-invalid{% endif %}">
+                                    <option value="">Seleccione el tipo...</option>
+                                    {% for tipo in form.fields.tipo_atencion.queryset %}
+                                    <option value="{{ tipo.pk }}" {% if form.tipo_atencion.value|stringformat:"s" == tipo.pk|stringformat:"s" %}selected{% endif %}>{{ tipo.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% for error in form.tipo_atencion.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-semibold" for="id_subtipo_atencion">{{ form.subtipo_atencion.label }}</label>
+                                <select name="subtipo_atencion" id="id_subtipo_atencion" class="form-select {% if form.subtipo_atencion.errors %}is-invalid{% endif %}">
+                                    <option value="">Sin subtipo</option>
+                                    {% for subtipo in form.fields.subtipo_atencion.queryset %}
+                                    <option value="{{ subtipo.pk }}" {% if form.subtipo_atencion.value|stringformat:"s" == subtipo.pk|stringformat:"s" %}selected{% endif %}>{{ subtipo.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% for error in form.subtipo_atencion.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-3 d-flex align-items-end">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" name="requiere_visita" id="id_requiere_visita" {% if form.requiere_visita.value %}checked{% endif %}>
+                                    <label class="form-check-label fw-semibold" for="id_requiere_visita">{{ form.requiere_visita.label }}</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p class="small text-muted mb-0"><i class="bi bi-info-circle me-1"></i>Las acciones para atender esta solicitud se registran como actividades vinculadas a ella (botón <i class="bi bi-plus-circle"></i> en el Registro de Atenciones, o "Vincular actividad a solicitud social" al registrar una actividad).</p>
+
+                        <hr class="my-4">
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'actividades:gestion_social' %}" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-muni fw-bold px-4"><i class="bi bi-save me-1"></i>Guardar atención</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -12,10 +12,14 @@ CLAVE = 'Serena2026!'
 
 
 def crear_datos_base():
-    for codigo in ['Admin', 'Coordinador', 'Delegado', 'Funcionario', 'Consulta']:
+    from ActividadesApp.models import Territorio
+    for codigo in ['Admin', 'Coordinador', 'Delegado', 'Funcionario']:
         Rol.objects.create(codigo=codigo, nombre=codigo)
-    compania = Delegacion.objects.create(nombre='LAS_COMPANIAS', ambito='Urbano')
-    Delegacion.objects.create(nombre='RURAL', ambito='Rural')
+    compania = Delegacion.objects.create(nombre='LAS_COMPANIAS', nombre_visible='Las Compañías', ambito='Urbano')
+    rural = Delegacion.objects.create(nombre='RURAL', nombre_visible='Rural', ambito='Rural')
+    territorio = Territorio.objects.create(nombre='Sector Alto', delegacion=compania)
+    Territorio.objects.create(nombre='Sector Bajo', delegacion=compania)
+    Territorio.objects.create(nombre='Localidad Norte', delegacion=rural)
     item1 = Catalogo.objects.create(id=1, tipo='ITEM_GESTION', nombre='Atención de Usuario')
     Catalogo.objects.create(id=2, tipo='ITEM_GESTION', nombre='Visitas')
     Catalogo.objects.create(id=3, tipo='ITEM_GESTION', nombre='Fiscalizaciones')
@@ -24,7 +28,7 @@ def crear_datos_base():
     hoy = timezone.localdate()
     periodo = Periodo.objects.create(nombre='Prueba', fecha_inicio=hoy - timedelta(days=9), fecha_termino=hoy + timedelta(days=10), dias_computables=20)
     MetaDesempeno.objects.create(valor_objetivo=10, ponderador=100, cargo=cargo, item=item1, periodo=periodo)
-    return {'delegacion': compania, 'cargo': cargo, 'periodo': periodo, 'item': item1}
+    return {'delegacion': compania, 'cargo': cargo, 'periodo': periodo, 'item': item1, 'territorio': territorio}
 
 
 def crear_usuario(rut, rol, delegacion=None, cargo=None):
@@ -50,7 +54,7 @@ class LoginYPermisosTest(TestCase):
 
     def test_login_con_rut_con_puntos(self):
         respuesta = self.client.post(reverse('users:login'), {'username': '55.555.555-5', 'password': CLAVE})
-        self.assertRedirects(respuesta, reverse('indicadores:dashboard'))
+        self.assertRedirects(respuesta, reverse('actividades:mi_gestion'))
 
     def test_login_incorrecto_muestra_error(self):
         respuesta = self.client.post(reverse('users:login'), {'username': '55555555-5', 'password': 'mala'})
@@ -108,8 +112,8 @@ class RequisitosEvaluacionTest(TestCase):
 
 
 class RolesYPermisosTest(TestCase):
-    """Coordinador = Admin sin crear Coordinadores/Admin ni modificar fechas. Delegado = verifica (ex Verificador).
-    Funcionario = registra sin modificar. Consulta = solo visualiza."""
+    """Coordinador = administra usuarios y metas, pero solo visualiza actividades. Delegado = gestiona los
+    Funcionarios de su delegación y valida sus actividades. Funcionario = registra actividades."""
 
     def setUp(self):
         from ActividadesApp.models import Actividad, Evidencia
@@ -123,37 +127,49 @@ class RolesYPermisosTest(TestCase):
         self.delegado = crear_usuario('33333333-3', 'Delegado', compania)
         self.delegado_rural = crear_usuario('44444444-4', 'Delegado', Delegacion.objects.get(nombre='RURAL'))
         self.func = crear_usuario('55555555-5', 'Funcionario', compania, self.datos['cargo'])
-        self.consulta = crear_usuario('66666666-6', 'Consulta')
-        # Compromiso = actividad sin evidencia en el Tubo de Trabajo
+        self.func_rural = crear_usuario('88888888-8', 'Funcionario', Delegacion.objects.get(nombre='RURAL'), self.datos['cargo'])
+        # Compromiso = actividad pendiente con fecha futura
         self.compromiso = Actividad.objects.create(
             solicitud_problema='Luminarias', accion='Gestión con alumbrado', item=self.datos['item'],
-            periodo=self.datos['periodo'], usuario=self.func, estado='EN_TUBO', ingreso_agenda_colectiva=True,
-            fecha_comprometida=timezone.localdate() + timedelta(days=5))
+            periodo=self.datos['periodo'], usuario=self.func, estado='PROGRAMADA',
+            fecha_realizacion=timezone.localdate() + timedelta(days=5), territorio=self.datos['territorio'])
         actividad = Actividad.objects.create(solicitud_problema='x', accion='y', item=self.datos['item'],
                                              periodo=self.datos['periodo'], usuario=self.func)
-        self.evidencia = Evidencia.objects.create(actividad=actividad, imagen='evidencias/x.png')
+        self.evidencia = Evidencia.objects.create(actividad=actividad, comentario='Hecho', imagen='evidencias/x.png')
 
     def entrar(self, rut):
         self.client.login(username=rut, password=CLAVE)
 
-    def crear_usuario_web(self, rut, rol, delegacion='LAS_COMPANIAS'):
+    def crear_usuario_web(self, rut, rol, delegacion='LAS_COMPANIAS', territorio=''):
         self.client.post(reverse('users:usuario_crear'), {
             'rut': rut, 'email': f'{rut}@laserena.cl', 'first_name': 'A', 'last_name': 'B', 'rol': rol,
-            'cargo': 'TERR', 'delegacion': delegacion, 'password1': 'ClaveSegura#2026', 'password2': 'ClaveSegura#2026'})
+            'cargo': 'TERR', 'delegacion': delegacion, 'territorio': territorio,
+            'password1': 'ClaveSegura#2026', 'password2': 'ClaveSegura#2026'})
         return Usuario.objects.filter(username=limpiar_rut(rut)).first()
 
     # ----- Coordinador -----
-    def test_coordinador_es_staff_pero_no_superusuario(self):
+    def test_coordinador_no_es_staff_ni_superusuario(self):
         self.coord.refresh_from_db()
-        self.assertTrue(self.coord.is_staff)
+        self.assertFalse(self.coord.is_staff)
         self.assertFalse(self.coord.is_superuser)
 
-    def test_coordinador_crea_funcionario_con_delegacion(self):
+    def test_admin_crea_funcionario_con_delegacion_y_territorio(self):
+        self.entrar('11111111-1')
+        nuevo = self.crear_usuario_web('12.345.678-5', 'Funcionario', territorio=self.datos['territorio'].pk)
+        self.assertEqual((nuevo.rol(), nuevo.delegacion, nuevo.territorio),
+                         ('Funcionario', self.datos['delegacion'], self.datos['territorio']))
+        # Un territorio de otra delegación no se acepta
+        self.assertIsNone(self.crear_usuario_web('11.222.333-9', 'Funcionario', 'RURAL', territorio=self.datos['territorio'].pk))
+
+    def test_coordinador_solo_visualiza_usuarios(self):
         self.entrar('22222222-2')
-        self.assertEqual(self.client.get(reverse('users:administracion')).status_code, 200)
-        nuevo = self.crear_usuario_web('12.345.678-5', 'Funcionario')
-        self.assertEqual(nuevo.rol(), 'Funcionario')
-        self.assertEqual(nuevo.delegacion, self.datos['delegacion'])
+        respuesta = self.client.get(reverse('users:administracion'))
+        self.assertEqual(respuesta.status_code, 200)
+        html = respuesta.content.decode()
+        self.assertEqual(respuesta.context['vista'], 'coordinador')  # su pestaña se llama Usuarios, no Gestión
+        self.assertNotIn('Agregar Usuario', html)
+        self.assertNotIn('Agregar delegación', html)
+        self.assertIsNone(self.crear_usuario_web('12.345.678-5', 'Funcionario'))
 
     def test_coordinador_no_crea_coordinador_ni_admin(self):
         self.entrar('22222222-2')
@@ -165,68 +181,99 @@ class RolesYPermisosTest(TestCase):
         self.entrar('11111111-1')
         nuevo = self.crear_usuario_web('12.345.678-5', 'Coordinador', 'GENERAL')
         self.assertEqual(nuevo.rol(), 'Coordinador')
-        self.assertTrue(nuevo.is_staff)
+        self.assertFalse(nuevo.is_staff)  # solo visualiza: no entra a Django Admin
         self.assertIsNone(nuevo.delegacion)
 
-    def test_coordinador_no_edita_admin_ni_lo_asciende(self):
+    def test_coordinador_no_edita_usuarios(self):
         self.entrar('22222222-2')
-        self.assertRedirects(self.client.get(reverse('users:usuario_editar', args=[self.admin.pk])),
-                             reverse('users:administracion'))
+        self.assertRedirects(self.client.get(reverse('users:usuario_editar', args=[self.func.pk])),
+                             reverse('actividades:mi_gestion'))
         self.client.post(reverse('users:usuario_editar', args=[self.func.pk]), {
             'email': self.func.email, 'first_name': 'X', 'last_name': 'Y', 'is_active': 'on',
             'rol': 'Coordinador', 'delegacion': 'LAS_COMPANIAS'})
         self.func.refresh_from_db()
         self.assertEqual(self.func.rol(), 'Funcionario')
 
-    def test_coordinador_en_django_admin_sin_tocar_fechas(self):
-        from django.contrib import admin
-        from django.test import RequestFactory
-        from ActividadesApp.models import Actividad
-        solicitud = RequestFactory().get('/')
-        solicitud.user = Usuario.objects.get(pk=self.coord.pk)
-        admin_compromiso = admin.site._registry[Actividad]
-        al_modificar = admin_compromiso.get_readonly_fields(solicitud, self.compromiso)
-        for campo in ['fecha', 'fecha_comprometida']:
-            self.assertIn(campo, al_modificar)
-        al_agregar = admin_compromiso.get_readonly_fields(solicitud, None)
-        self.assertIn('fecha', al_agregar)
-        self.assertNotIn('fecha_comprometida', al_agregar)  # se elige al registrar, no se cambia después
-        # El Admin (superusuario) sí puede modificar las fechas
-        solicitud.user = self.admin
-        self.assertEqual(list(admin_compromiso.get_readonly_fields(solicitud, self.compromiso)), [])
-
-    def test_coordinador_en_django_admin_permisos(self):
+    def test_coordinador_no_entra_a_django_admin(self):
         self.entrar('22222222-2')
-        self.assertEqual(self.client.get(reverse('admin:ActividadesApp_actividad_change', args=[self.compromiso.pk])).status_code, 200)
-        # Puede ver al Admin, pero no modificarlo: la página queda de solo lectura
-        respuesta = self.client.get(reverse('admin:UsuarioApp_usuario_change', args=[self.admin.pk]))
-        self.assertFalse(respuesta.context['has_change_permission'])
-        # No puede asignar el rol Admin desde Rol de usuario
-        self.client.post(reverse('admin:UsuarioApp_usuariorol_add'), {
-            'usuario': self.func.pk, 'rol': Rol.objects.get(codigo='Admin').pk,
-            'fecha_asignacion_0': '2026-10-01', 'fecha_asignacion_1': '10:00:00'})
-        self.assertFalse(self.func.roles_asignados.filter(rol__codigo='Admin').exists())
-        # Edita a un Funcionario, pero sin ver superusuario, staff ni permisos
-        html = self.client.get(reverse('admin:UsuarioApp_usuario_change', args=[self.func.pk])).content.decode()
-        self.assertNotIn('name="is_superuser"', html)
-        self.assertIn('name="is_active"', html)
-        # La auditoría es de solo lectura
-        self.assertEqual(self.client.get(reverse('admin:AuditoriaApp_auditoria_add')).status_code, 403)
+        for url in [reverse('admin:index'), reverse('admin:ActividadesApp_actividad_change', args=[self.compromiso.pk]),
+                    reverse('admin:UsuarioApp_usuario_change', args=[self.func.pk])]:
+            self.assertEqual(self.client.get(url).status_code, 302, url)  # manda al login de Django Admin
+        # Tampoco ve botones que lleven a Django Admin
+        for pantalla in ['actividades:mi_gestion', 'actividades:tubo_trabajo', 'indicadores:semaforo',
+                         'indicadores:resumen_delegacion', 'auditoria:logs']:
+            self.assertNotIn('/admin/', self.client.get(reverse(pantalla)).content.decode(), pantalla)
+
+    def test_admin_si_entra_a_django_admin(self):
+        self.entrar('11111111-1')
+        self.assertEqual(self.client.get(reverse('admin:index')).status_code, 200)
 
     def test_funcionario_no_entra_a_django_admin(self):
         self.entrar('55555555-5')
         respuesta = self.client.get(reverse('admin:index'))
         self.assertEqual(respuesta.status_code, 302)
 
-    # ----- Delegado (ex Verificador) -----
-    def test_delegado_no_registra_actividades_ni_compromisos(self):
+    # ----- Delegado: controla su delegación -----
+    def datos_actividad(self, **extra):
+        datos = {'solicitud_problema': 'x', 'accion': 'y', 'item': '1', 'territorio': self.datos['territorio'].pk,
+                 'fecha_realizacion': timezone.localdate().isoformat(), 'comentario': 'Hecho'}
+        datos.update(extra)
+        return datos
+
+    def test_delegado_y_coordinador_no_registran_actividades(self):
         from ActividadesApp.models import Actividad
-        self.entrar('33333333-3')
-        self.client.post(reverse('actividades:actividad_crear'), {'solicitud_problema': 'x', 'accion': 'y', 'item_comision': '1'})
-        self.client.post(reverse('actividades:actividad_crear'), {
-            'solicitud_problema': 'x', 'accion': 'y', 'item_comision': '1', 'ingreso_agenda_colectiva': 'on',
-            'fecha_comprometida': (timezone.localdate() + timedelta(days=3)).isoformat()})
+        for rut in ['33333333-3', '22222222-2']:
+            self.entrar(rut)
+            self.assertRedirects(self.client.get(reverse('actividades:actividad_crear')), reverse('actividades:mi_gestion'))
+            self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad())
+            self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad(depende_externos='on'))
         self.assertEqual(Actividad.objects.count(), 2)  # las dos del setUp
+
+    def test_delegado_crea_funcionarios_solo_en_su_delegacion(self):
+        self.entrar('33333333-3')
+        self.assertEqual(self.client.get(reverse('users:administracion')).status_code, 200)
+        nuevo = self.crear_usuario_web('12.345.678-5', 'Funcionario', 'RURAL')  # pide otra delegación
+        self.assertEqual((nuevo.rol(), nuevo.delegacion), ('Funcionario', self.datos['delegacion']))
+        self.assertIsNone(self.crear_usuario_web('11.222.333-9', 'Delegado'))
+
+    def test_delegado_lista_y_edita_solo_su_delegacion(self):
+        self.entrar('33333333-3')
+        lista = self.client.get(reverse('users:administracion')).context['lista_usuarios']
+        self.assertEqual([u.pk for u in lista], [self.func.pk])
+        self.assertRedirects(self.client.get(reverse('users:usuario_editar', args=[self.func_rural.pk])),
+                             reverse('users:administracion'))
+        self.assertRedirects(self.client.get(reverse('users:usuario_editar', args=[self.delegado_rural.pk])),
+                             reverse('users:administracion'))
+        self.assertEqual(self.client.get(reverse('users:usuario_editar', args=[self.func.pk])).status_code, 200)
+        # Un POST directo sobre un Funcionario de otra delegación tampoco lo cambia
+        self.client.post(reverse('users:usuario_editar', args=[self.func_rural.pk]), {
+            'email': self.func_rural.email, 'first_name': 'Cambiado', 'last_name': 'Y', 'is_active': 'on',
+            'rol': 'Funcionario', 'delegacion': 'LAS_COMPANIAS'})
+        self.func_rural.refresh_from_db()
+        self.assertNotEqual(self.func_rural.first_name, 'Cambiado')
+        self.assertEqual(self.func_rural.delegacion.nombre, 'RURAL')
+
+    def test_delegado_desactiva_funcionario_de_su_delegacion(self):
+        self.entrar('33333333-3')
+        self.client.post(reverse('users:usuario_desactivar', args=[self.func.pk]))
+        self.client.post(reverse('users:usuario_desactivar', args=[self.func_rural.pk]))
+        self.client.post(reverse('users:usuario_desactivar', args=[self.delegado.pk]))  # a sí mismo no
+        self.func.refresh_from_db()
+        self.func_rural.refresh_from_db()
+        self.delegado.refresh_from_db()
+        self.assertEqual((self.func.is_active, self.func_rural.is_active, self.delegado.is_active), (False, True, True))
+        self.client.post(reverse('users:usuario_desactivar', args=[self.func.pk]))  # vuelve a activarlo
+        self.func.refresh_from_db()
+        self.assertTrue(self.func.is_active)
+
+    def test_delegado_ve_usuarios_y_metas_sin_logs(self):
+        self.entrar('33333333-3')
+        html = self.client.get(reverse('users:administracion')).content.decode()
+        self.assertIn('id="goals"', html)
+        self.assertNotIn('id="audit"', html)
+        self.assertNotIn('Logs de Trazabilidad', html)
+        self.assertNotIn('apartado-delegaciones', html)  # el Delegado no ve el apartado de delegaciones
+        self.assertIn('Mi Delegación', html)
 
     def test_delegado_verifica_solo_su_delegacion(self):
         url = reverse('actividades:validar_evidencia', args=[self.evidencia.pk])
@@ -248,7 +295,7 @@ class RolesYPermisosTest(TestCase):
         self.assertIn(reverse('indicadores:semaforo'), html)
         self.assertEqual(self.client.get(reverse('indicadores:semaforo')).status_code, 200)
 
-    # ----- Funcionario y Consulta -----
+    # ----- Funcionario -----
     def test_funcionario_registra_pero_no_modifica_ni_verifica(self):
         self.entrar('55555555-5')
         html = self.client.get(reverse('actividades:mi_gestion')).content.decode()
@@ -256,15 +303,20 @@ class RolesYPermisosTest(TestCase):
         self.assertIn(reverse('actividades:actividad_crear'), html)
         self.assertRedirects(self.client.get(reverse('actividades:verificacion')), reverse('actividades:mi_gestion'))
 
-    def test_consulta_solo_visualiza(self):
-        from ActividadesApp.models import Actividad
-        self.entrar('66666666-6')
-        self.client.post(reverse('actividades:actividad_crear'), {'solicitud_problema': 'x', 'accion': 'y', 'item_comision': '1'})
-        self.assertEqual(Actividad.objects.count(), 2)  # las dos del setUp
-        html = self.client.get(reverse('indicadores:dashboard')).content.decode()
-        self.assertIn(reverse('indicadores:semaforo'), html)
-        self.assertIn(reverse('indicadores:resumen_delegacion'), html)
-        self.assertNotIn(reverse('users:administracion'), html)
+    def test_rol_consulta_ya_no_existe(self):
+        self.assertFalse(Rol.objects.filter(codigo='Consulta').exists())
+        self.entrar('11111111-1')
+        self.assertNotIn('value="Consulta"', self.client.get(reverse('users:administracion')).content.decode())
+
+    def test_coordinador_solo_visualiza_actividades(self):
+        self.entrar('22222222-2')
+        detalle = self.client.get(reverse('actividades:actividad_detalle', args=[self.compromiso.pk]))
+        self.assertEqual(detalle.status_code, 200)
+        self.assertFalse(detalle.context['puede_ejecutar'])
+        self.assertFalse(detalle.context['puede_comentar'])
+        self.assertFalse(detalle.context['puede_programar'])
+        self.assertTrue(detalle.context['puede_asignar'])  # sí asigna encargado
+        self.assertRedirects(self.client.get(reverse('actividades:verificacion')), reverse('actividades:mi_gestion'))
 
     # ----- Metas (Admin y Coordinador) -----
     def guardar_meta(self, item_id, ponderador):
@@ -272,17 +324,18 @@ class RolesYPermisosTest(TestCase):
             'cargo': self.datos['cargo'].pk, 'item': item_id, 'valor_objetivo': '10', 'ponderador': ponderador})
 
     def test_ponderadores_validados(self):
-        self.entrar('22222222-2')
+        self.entrar('11111111-1')
         self.assertEqual(self.guardar_meta(2, 'abc').status_code, 302)  # no es número: no rompe
         self.guardar_meta(2, '10')  # 100 + 10 supera 100%
         self.assertEqual(MetaDesempeno.objects.count(), 1)
         self.guardar_meta(1, '60')
+        self.assertFalse(self.datos['cargo'].validar_ponderadores(self.datos['periodo']))
         self.guardar_meta(2, '40')
         self.assertTrue(self.datos['cargo'].validar_ponderadores(self.datos['periodo']))
 
 
 class MetasYFechasInlineTest(TestCase):
-    """Formulario de metas del panel y fechas de gestiones sociales en Django Admin."""
+    """Formulario de metas del panel de administración."""
 
     def setUp(self):
         self.datos = crear_datos_base()
@@ -292,14 +345,14 @@ class MetasYFechasInlineTest(TestCase):
         self.coord.sincronizar_acceso_admin()
 
     def test_formulario_de_metas_completo(self):
-        self.client.login(username='22222222-2', password=CLAVE)
+        self.client.login(username='11111111-1', password=CLAVE)
         html = self.client.get(reverse('users:administracion')).content.decode()
         for campo in ['name="cargo"', 'name="item"', 'name="valor_objetivo"', 'name="ponderador"', 'Guardar meta']:
             self.assertIn(campo, html)
         self.assertIn('Total 100', html)  # la meta de crear_datos_base aparece con su total
 
     def test_guardar_meta_vuelve_a_la_pestana(self):
-        self.client.login(username='22222222-2', password=CLAVE)
+        self.client.login(username='11111111-1', password=CLAVE)
         MetaDesempeno.objects.all().delete()
         respuesta = self.client.post(reverse('indicadores:guardar_metas'), {
             'cargo': self.datos['cargo'].pk, 'item': 2, 'valor_objetivo': '30', 'ponderador': '40'})
@@ -309,30 +362,6 @@ class MetasYFechasInlineTest(TestCase):
         # Valores que no son número no provocan error 500
         respuesta = self.client.post(reverse('indicadores:guardar_metas'), {'cargo': 'x', 'item': 'y', 'valor_objetivo': '1', 'ponderador': '1'})
         self.assertEqual(respuesta.status_code, 302)
-
-    def test_fecha_de_gestion_existente_solo_la_cambia_el_admin(self):
-        from django.contrib import admin
-        from django.test import RequestFactory
-        from ActividadesApp.models import Actividad, AtencionSocial, GestionSocial
-        func = crear_usuario('55555555-5', 'Funcionario', self.datos['delegacion'], self.datos['cargo'])
-        tipo = Catalogo.objects.create(tipo='TIPO_ATENCION', nombre='Ayuda social')
-        actividad = Actividad.objects.create(solicitud_problema='x', accion='y', item=self.datos['item'],
-                                             periodo=self.datos['periodo'], usuario=func)
-        atencion = AtencionSocial.objects.create(nombre_solicitante='María', rut_solicitante='12345678-5',
-                                                 actividad=actividad, tipo_atencion=tipo)
-        GestionSocial.objects.create(numero_gestion=1, tipo='VISITA', accion='Visita', fecha=timezone.localdate(), atencion=atencion)
-
-        modelo_admin = admin.site._registry[AtencionSocial]
-        solicitud = RequestFactory().get('/')
-        solicitud.user = Usuario.objects.get(pk=self.coord.pk)
-        inline = modelo_admin.get_inline_instances(solicitud, atencion)[0]
-        formset = inline.get_formset(solicitud, atencion)(instance=atencion)
-        self.assertTrue(formset.forms[0].fields['fecha'].disabled)       # gestión existente: bloqueada
-        self.assertFalse(formset.empty_form.fields['fecha'].disabled)    # gestión nueva: se elige la fecha
-
-        solicitud.user = Usuario.objects.get(pk=self.admin.pk)
-        formset = inline.get_formset(solicitud, atencion)(instance=atencion)
-        self.assertFalse(formset.forms[0].fields['fecha'].disabled)
 
 
 class BotonesSegunRolTest(TestCase):
@@ -347,7 +376,6 @@ class BotonesSegunRolTest(TestCase):
         self.coord = crear_usuario('22222222-2', 'Coordinador')
         crear_usuario('33333333-3', 'Delegado', compania)
         self.func = crear_usuario('55555555-5', 'Funcionario', compania, self.datos['cargo'])
-        crear_usuario('66666666-6', 'Consulta')
         Actividad.objects.create(solicitud_problema='x', accion='y', item=self.datos['item'],
                                  periodo=self.datos['periodo'], usuario=self.func)
         registrar_auditoria(self.func, 'CREACION', 'Actividad', 1, '', 'x')
@@ -362,10 +390,10 @@ class BotonesSegunRolTest(TestCase):
         for texto in ['Modificar', 'Eliminar', 'Buscar', 'Agregar Meta']:
             self.assertNotIn(texto, html)
 
-    def test_delegado_y_consulta_no_ven_botones_crud(self):
+    def test_delegado_no_ve_botones_crud(self):
         for rut, pantalla in [('33333333-3', 'actividades:mi_gestion'), ('33333333-3', 'actividades:verificacion'),
-                              ('33333333-3', 'actividades:tubo_trabajo'), ('66666666-6', 'indicadores:semaforo'),
-                              ('66666666-6', 'indicadores:resumen_delegacion')]:
+                              ('33333333-3', 'actividades:tubo_trabajo'), ('33333333-3', 'indicadores:semaforo'),
+                              ('33333333-3', 'indicadores:resumen_delegacion')]:
             html = self.html(rut, pantalla)
             for texto in ['Agregar', 'Modificar', 'Eliminar', 'Buscar']:
                 self.assertNotIn(texto, html, f"{pantalla}: {texto}")
@@ -377,9 +405,201 @@ class BotonesSegunRolTest(TestCase):
 
     def test_auditoria_botones_solo_para_admin(self):
         html = self.html('22222222-2', 'auditoria:logs')
-        self.assertIn('Buscar', html)
-        for texto in ['Agregar', 'Modificar', 'Eliminar']:
+        for texto in ['Buscar', 'Agregar', 'Modificar', 'Eliminar']:
             self.assertNotIn(texto, html)
         html = self.html('11111111-1', 'auditoria:logs')
         for texto in ['Agregar', 'Modificar', 'Eliminar', 'Buscar']:
             self.assertIn(texto, html)
+
+
+@override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
+class PerfilTest(TestCase):
+    """Cada usuario edita su foto, teléfono y correo desde su perfil (Mi Gestión)."""
+
+    def setUp(self):
+        datos = crear_datos_base()
+        self.func = crear_usuario('55555555-5', 'Funcionario', datos['delegacion'], datos['cargo'])
+        crear_usuario('77777777-7', 'Funcionario', datos['delegacion'], datos['cargo'])
+        self.client.login(username='55555555-5', password=CLAVE)
+
+    def guardar(self, **extra):
+        datos = {'email': self.func.email, 'telefono': '912345678'}
+        datos.update(extra)
+        return self.client.post(reverse('users:perfil_editar'), datos)
+
+    def test_edita_telefono_y_foto(self):
+        from ActividadesApp.tests import foto
+        self.assertRedirects(self.guardar(foto=foto()), reverse('actividades:mi_gestion'))
+        self.func.refresh_from_db()
+        self.assertEqual(self.func.telefono, '912345678')
+        self.assertTrue(self.func.foto.name.startswith('perfiles/'))
+        html = self.client.get(reverse('actividades:mi_gestion')).content.decode()
+        self.assertIn(self.func.foto.url, html)
+        self.assertIn('912345678', html)
+        # Quitar la foto
+        self.guardar(quitar_foto='on')
+        self.func.refresh_from_db()
+        self.assertFalse(self.func.foto)
+
+    def test_rechaza_correo_repetido_y_foto_no_imagen(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        self.assertEqual(self.guardar(email='77777777-7@laserena.cl').status_code, 200)
+        self.assertEqual(self.guardar(foto=SimpleUploadedFile('foto.gif', b'GIF89a')).status_code, 200)
+        self.func.refresh_from_db()
+        self.assertEqual((self.func.email, self.func.foto.name), ('55555555-5@laserena.cl', ''))
+
+
+class MetasPorDelegacionTest(TestCase):
+    """Metas generales (solo el Admin) y metas propias de cada delegación (Admin o su Delegado).
+    El Coordinador solo las visualiza."""
+
+    def setUp(self):
+        self.datos = crear_datos_base()  # meta general: ítem 1, 10 actividades, 100 %
+        self.compania = self.datos['delegacion']
+        self.rural = Delegacion.objects.get(nombre='RURAL')
+        crear_usuario('11111111-1', 'Admin')
+        crear_usuario('22222222-2', 'Coordinador')
+        crear_usuario('33333333-3', 'Delegado', self.compania)
+        self.func = crear_usuario('55555555-5', 'Funcionario', self.compania, self.datos['cargo'])
+        self.func_rural = crear_usuario('88888888-8', 'Funcionario', self.rural, self.datos['cargo'])
+
+    def guardar(self, rut, alcance, item=2, valor='20', ponderador='100'):
+        self.client.login(username=rut, password=CLAVE)
+        return self.client.post(reverse('indicadores:guardar_metas'), {
+            'alcance': alcance, 'cargo': self.datos['cargo'].pk, 'item': item,
+            'valor_objetivo': valor, 'ponderador': ponderador})
+
+    def test_delegado_define_metas_solo_de_su_delegacion(self):
+        from IndicadoresApp.calculos import indicadores_usuario
+        self.guardar('33333333-3', 'GENERAL')  # pide general: se le impone su delegación (la elección no es válida)
+        self.guardar('33333333-3', 'LAS_COMPANIAS')
+        propias = MetaDesempeno.objects.filter(delegacion=self.compania)
+        self.assertEqual(propias.count(), 1)
+        self.assertEqual(MetaDesempeno.objects.filter(delegacion__isnull=True).count(), 1)  # la general sigue igual
+        # La meta propia reemplaza a la general en Las Compañías; Rural sigue con la general
+        hoy = timezone.localdate()
+        self.assertEqual([i.meta.item_id for i in indicadores_usuario(self.func, self.datos['periodo'], hoy)], [2])
+        self.assertEqual([i.meta.item_id for i in indicadores_usuario(self.func_rural, self.datos['periodo'], hoy)], [1])
+
+    def test_delegado_no_edita_metas_generales_y_admin_si(self):
+        general = MetaDesempeno.objects.get()
+        self.client.login(username='33333333-3', password=CLAVE)
+        self.client.post(reverse('indicadores:meta_editar', args=[general.pk]), {'valor_objetivo': '99', 'ponderador': '100'})
+        general.refresh_from_db()
+        self.assertEqual(general.valor_objetivo, 10)
+        self.client.login(username='11111111-1', password=CLAVE)
+        self.assertEqual(self.client.get(reverse('indicadores:meta_editar', args=[general.pk])).status_code, 200)
+        self.client.post(reverse('indicadores:meta_editar', args=[general.pk]), {'valor_objetivo': '15', 'ponderador': '100'})
+        general.refresh_from_db()
+        self.assertEqual(general.valor_objetivo, 15)
+        self.client.post(reverse('indicadores:meta_eliminar', args=[general.pk]))
+        self.assertFalse(MetaDesempeno.objects.exists())
+
+    def test_coordinador_solo_visualiza_metas(self):
+        self.guardar('22222222-2', 'GENERAL')
+        self.assertEqual(MetaDesempeno.objects.count(), 1)
+        html = self.client.get(reverse('users:administracion')).content.decode()
+        self.assertIn('Vista de consulta', html)
+        self.assertNotIn('Guardar meta', html)
+
+    def test_admin_define_meta_para_una_delegacion(self):
+        self.guardar('11111111-1', 'RURAL')
+        self.assertTrue(MetaDesempeno.objects.filter(delegacion=self.rural).exists())
+
+
+class GestionDelegacionesYUsuariosTest(TestCase):
+    """Administración > Gestión: delegaciones con sus territorios y usuarios con filtros (solo el Admin modifica)."""
+
+    def setUp(self):
+        from ActividadesApp.models import Territorio
+        self.datos = crear_datos_base()
+        self.compania = self.datos['delegacion']
+        self.alto = self.datos['territorio']
+        self.bajo = Territorio.objects.get(nombre='Sector Bajo')
+        self.admin = crear_usuario('11111111-1', 'Admin')
+        crear_usuario('22222222-2', 'Coordinador')
+        self.delegado = crear_usuario('33333333-3', 'Delegado', self.compania)
+        self.func = crear_usuario('55555555-5', 'Funcionario', self.compania, self.datos['cargo'])
+        self.func.territorio = self.alto
+        self.func.save()
+        self.otro = crear_usuario('77777777-7', 'Funcionario', self.compania, self.datos['cargo'])
+        self.otro.territorio = self.bajo
+        self.otro.save()
+
+    def entrar(self, rut):
+        self.client.login(username=rut, password=CLAVE)
+
+    def test_admin_agrega_delegacion_con_territorios(self):
+        self.entrar('11111111-1')
+        self.client.post(reverse('users:delegacion_crear'), {
+            'nombre_visible': 'La Florida', 'ambito': 'Urbano', 'estado': 'ACTIVO',
+            'territorios-TOTAL_FORMS': '2', 'territorios-INITIAL_FORMS': '0',
+            'territorios-MIN_NUM_FORMS': '0', 'territorios-MAX_NUM_FORMS': '1000',
+            'territorios-0-nombre': 'Villa Nueva', 'territorios-0-estado': 'ACTIVO',
+            'territorios-1-nombre': '', 'territorios-1-estado': 'ACTIVO'})
+        nueva = Delegacion.objects.get(nombre='LA_FLORIDA')
+        self.assertEqual((str(nueva), list(nueva.territorios.values_list('nombre', flat=True))), ('La Florida', ['Villa Nueva']))
+        # Aparece en el selector de delegación de la barra superior
+        self.assertIn('LA_FLORIDA', self.client.get(reverse('actividades:mi_gestion')).content.decode())
+
+    def test_delegacion_con_usuarios_no_se_elimina(self):
+        self.entrar('11111111-1')
+        self.client.post(reverse('users:delegacion_eliminar', args=[self.compania.pk]))
+        self.assertTrue(Delegacion.objects.filter(pk=self.compania.pk).exists())
+
+    def test_coordinador_y_delegado_no_modifican_delegaciones(self):
+        for rut in ['22222222-2', '33333333-3']:
+            self.entrar(rut)
+            self.assertRedirects(self.client.get(reverse('users:delegacion_crear')), reverse('actividades:mi_gestion'))
+
+    def test_apartado_delegaciones_muestra_delegado_territorios_y_funcionarios(self):
+        self.entrar('11111111-1')
+        delegaciones = self.client.get(reverse('users:administracion')).context['delegaciones']
+        compania = [d for d in delegaciones if d['delegacion'] == self.compania][0]
+        self.assertEqual(compania['delegados'], [self.delegado])
+        por_territorio = {b['territorio'].nombre: b['funcionarios'] for b in compania['territorios']}
+        self.assertEqual(por_territorio['Sector Alto'], [self.func])
+        self.assertEqual(por_territorio['Sector Bajo'], [self.otro])
+
+    def test_filtros_de_usuarios(self):
+        self.entrar('11111111-1')
+        lista = self.client.get(reverse('users:administracion'), {'territorio': self.alto.pk}).context['lista_usuarios']
+        self.assertEqual(lista, [self.func])
+        lista = self.client.get(reverse('users:administracion'), {'f_delegacion': 'RURAL'}).context['lista_usuarios']
+        self.assertEqual(lista, [])
+        # El Delegado solo filtra por territorio (los otros filtros se ignoran) y solo ve sus Funcionarios
+        self.entrar('33333333-3')
+        lista = self.client.get(reverse('users:administracion'), {'territorio': self.bajo.pk, 'f_delegacion': 'RURAL'}).context['lista_usuarios']
+        self.assertEqual(lista, [self.otro])
+
+    def test_admin_elimina_usuario_sin_registros_y_no_uno_con_actividades(self):
+        from ActividadesApp.models import Actividad
+        Actividad.objects.create(solicitud_problema='x', accion='y', item=self.datos['item'],
+                                 periodo=self.datos['periodo'], usuario=self.func)
+        self.entrar('11111111-1')
+        self.client.post(reverse('users:usuario_eliminar', args=[self.otro.pk]))
+        self.client.post(reverse('users:usuario_eliminar', args=[self.func.pk]))
+        self.assertFalse(Usuario.objects.filter(pk=self.otro.pk).exists())
+        self.assertTrue(Usuario.objects.filter(pk=self.func.pk).exists())  # tiene actividades: se desactiva, no se borra
+        html = self.client.get(reverse('users:administracion'), {'pestana': 'usuarios'}).content.decode()
+        self.assertIn('data-confirmar=', html)  # el botón Eliminar pide confirmación (SweetAlert)
+
+    def test_solo_el_admin_elimina(self):
+        self.entrar('33333333-3')
+        self.client.post(reverse('users:usuario_eliminar', args=[self.otro.pk]))
+        self.assertTrue(Usuario.objects.filter(pk=self.otro.pk).exists())
+
+
+class PantallasVariasTest(TestCase):
+    def setUp(self):
+        datos = crear_datos_base()
+        crear_usuario('11111111-1', 'Admin')
+        self.client.login(username='11111111-1', password=CLAVE)
+
+    def test_auditoria_tiene_un_solo_titulo(self):
+        html = self.client.get(reverse('auditoria:logs')).content.decode()
+        self.assertEqual(html.count('Auditoría de Registros'), 2)  # <title> y el encabezado
+        self.assertNotIn('Registros de Auditoría y Cambios', html)
+
+    def test_semaforo_tiene_icono_en_la_barra(self):
+        self.assertIn('bi-stoplights', self.client.get(reverse('actividades:mi_gestion')).content.decode())

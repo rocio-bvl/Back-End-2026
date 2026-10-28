@@ -57,3 +57,12 @@ def acceso_denegado(request, pantalla):
                         '', f"Intento de acceso a {pantalla}")
     messages.error(request, f"No tienes permisos para acceder a {pantalla}.")
     return redirect('actividades:mi_gestion')
+
+
+def opciones_delegacion():
+    """Opciones de los <select> de delegación: 'GENERAL' (toda la municipalidad) y las delegaciones activas.
+    Se arma desde la base de datos porque el Administrador agrega y edita delegaciones en Gestión."""
+    opciones = [('GENERAL', 'General (Toda la Municipalidad)')]
+    for delegacion in Delegacion.objects.filter(estado='ACTIVO').order_by('nombre_visible'):
+        opciones.append((delegacion.nombre, str(delegacion)))
+    return opciones

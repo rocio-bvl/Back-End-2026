@@ -1,83 +1,103 @@
 {% extends 'base.html' %}
 
-{% block title %}Gestión Social — Ilustre Municipalidad de La Serena{% endblock %}
+{% block title %}Registro de Atenciones | Ilustre Municipalidad de La Serena{% endblock %}
 
 {% block content %}
+{% comment %}
+Solicitudes sociales de personas naturales. Las registran el Funcionario y el Administrador (la fecha y quién la
+registró se guardan solos); el Delegado ve las de su delegación y el Coordinador, todas, solo para visualizar.
+Las acciones con que se atiende una solicitud son las actividades vinculadas a ella (una o varias).
+Estado: Pendiente (sin actividad), En proceso (ya se creó una actividad para ella), Atendida (todas sus actividades
+vinculadas fueron validadas).
+{% endcomment %}
 <main class="container-fluid p-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="fw-bold text-danger m-0"><i class="bi bi-people-fill me-2"></i>Pestaña Personal - Área Social</h4>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h4 class="fw-bold text-danger m-0"><i class="bi bi-people-fill me-2"></i>Registro de Atenciones</h4>
         <div class="d-flex flex-wrap align-items-center gap-2">
-            <span class="badge bg-muni-v3 text-white">Servicios Especializados de Múltiple Gestión</span>
-            {% url 'admin:ActividadesApp_atencionsocial_add' as url_agregar %}
-            {% url 'admin:ActividadesApp_atencionsocial_changelist' as url_buscar %}
-            {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Atención" %}
+            <form method="get" class="d-flex" role="search">
+                <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="Nombre o RUT del solicitante" aria-label="Buscar">
+                <button type="submit" class="btn btn-sm btn-outline-dark ms-1 text-nowrap"><i class="bi bi-search me-1"></i>Buscar</button>
+            </form>
+            {% if request.user.puede_registrar %}
+            <a href="{% url 'actividades:atencion_crear' %}" class="btn btn-sm btn-muni text-nowrap"><i class="bi bi-plus-circle me-1"></i>Agregar Atención</a>
+            {% endif %}
         </div>
     </div>
 
+    {% if filtro_solicitud or q %}
+    <div class="alert alert-light border small d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-funnel me-1"></i>{% if filtro_solicitud %}Mostrando solo la solicitud vinculada a la actividad.{% else %}Resultados para "{{ q }}".{% endif %}</span>
+        <a href="{% url 'actividades:gestion_social' %}">Ver todas</a>
+    </div>
+    {% endif %}
+
     <div class="card shadow-sm border-0">
-            <div class="tarjeta-tabla table-responsive">
-                <table class="table table-hover tabla-sgr tabla-compacta">
-                    <thead class="text-center">
+        <div class="tarjeta-tabla table-responsive">
+            <table class="table table-hover tabla-sgr tabla-compacta">
+                <thead>
                     <tr>
-                        <th rowspan="2">N°</th>
-                        <th rowspan="2">FECHA INGRESO</th>
-                        <th rowspan="2">TIPO ATENCIÓN</th>
-                        <th rowspan="2">SUB ATENCIÓN</th>
-                        <th rowspan="2">USUARIO / RUT / FONO</th>
-                        <th rowspan="2">REQ. VISITA</th>
-                        <th rowspan="2">TUBO</th>
-                        <th colspan="2" class="bg-muni-b1">1RA GESTIÓN</th>
-                        <th colspan="2" class="bg-muni-b3">2DA GESTIÓN</th>
-                        <th colspan="2" class="bg-muni-v1">3RA GESTIÓN</th>
-                        <th rowspan="2">CÓDIGO</th>
-                        <th rowspan="2">VERIF.</th>
-                        {% if request.user.puede_administrar %}<th rowspan="2">ACCIONES</th>{% endif %}
-                    </tr>
-                    <tr>
-                        <th class="bg-muni-b1 text-white">ACCIÓN</th>
-                        <th class="bg-muni-b1 text-white">FECHA VISITA</th>
-                        <th class="bg-muni-b3 text-white">ACCIÓN</th>
-                        <th class="bg-muni-b3 text-white">FECHA INFORME</th>
-                        <th class="bg-muni-v1 text-white">ACCIÓN</th>
-                        <th class="bg-muni-v1 text-white">FECHA BENEFICIO</th>
+                        <th>CÓDIGO</th>
+                        <th class="text-center">ESTADO</th>
+                        <th>FECHA INGRESO</th>
+                        <th>REGISTRADA POR</th>
+                        <th>TIPO ATENCIÓN</th>
+                        <th>SUB ATENCIÓN</th>
+                        <th>SOLICITANTE / RUT / FONO</th>
+                        <th class="text-center">REQ. VISITA</th>
+                        <th>ACTIVIDADES VINCULADAS</th>
+                        <th class="text-center">ACCIONES</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for atencion in atenciones %}
-                    <tr>
-                        <td class="text-center" data-cell="col-1">{{ forloop.counter }}</td>
-                        <td data-cell="col-2">{{ atencion.fecha_atencion|date:"d/m/Y" }}</td>
-                        <td data-cell="col-3"><span class="badge bg-gris-10 text-dark border">{{ atencion.tipo_atencion }}</span></td>
-                        <td data-cell="col-4">{{ atencion.sub_atencion }}</td>
-                        <td data-cell="col-5">{{ atencion.nombre_usuario }}<br><small class="text-muted">{{ atencion.rut_usuario }} | {{ atencion.fono }}</small></td>
-                        <td class="text-center" data-cell="col-6">{% if atencion.requiere_visita %}SI{% else %}NO{% endif %}</td>
-                        <td class="text-center" data-cell="col-7">{% if atencion.ingreso_tubo %}SI{% else %}NO{% endif %}</td>
-                        <td data-cell="col-8">{{ atencion.accion_1|default:"-" }}</td>
-                        <td data-cell="col-9">{{ atencion.fecha_visita|date:"d/m/Y"|default:"-" }}</td>
-                        <td data-cell="col-10">{{ atencion.accion_2|default:"-" }}</td>
-                        <td data-cell="col-11">{{ atencion.fecha_informe|date:"d/m/Y"|default:"-" }}</td>
-                        <td data-cell="col-12">{{ atencion.accion_3|default:"-" }}</td>
-                        <td>{{ atencion.fecha_beneficio|date:"d/m/Y"|default:"-" }}</td>
+                    <tr {% if filtro_solicitud %}class="table-warning"{% endif %}>
                         <td class="fw-bold text-danger">{{ atencion.codigo }}</td>
-                        <td class="{% if atencion.verificado %}bg-muni-a1 text-dark{% endif %} text-center">
-                            {% if atencion.verificado %}SI{% else %}NO{% endif %}
-                        </td>
-                        {% if request.user.puede_administrar %}
                         <td class="text-center">
-                            {% url 'admin:ActividadesApp_atencionsocial_change' atencion.id as url_modificar %}
-                            {% url 'admin:ActividadesApp_atencionsocial_delete' atencion.id as url_eliminar %}
-                            {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                            <span class="badge {% if atencion.estado == 'ATENDIDA' %}bg-success{% elif atencion.estado == 'EN_PROCESO' %}bg-primary{% else %}bg-secondary{% endif %}">{{ atencion.estado_texto|upper }}</span>
                         </td>
-                        {% endif %}
+                        <td>{{ atencion.fecha_atencion|date:"d/m/Y" }}</td>
+                        <td>{{ atencion.registrada_por.get_full_name|default:atencion.registrada_por.username|default:"-" }}</td>
+                        <td><span class="badge bg-gris-10 text-dark border">{{ atencion.tipo_atencion }}</span></td>
+                        <td>{{ atencion.sub_atencion }}</td>
+                        <td>{{ atencion.nombre_usuario }}<br><small class="text-muted">{{ atencion.rut_usuario }}{% if atencion.fono %} | {{ atencion.fono }}{% endif %}</small></td>
+                        <td class="text-center">{% if atencion.requiere_visita %}SI{% else %}NO{% endif %}</td>
+                        <td>
+                            {% for actividad in atencion.actividades %}
+                            <div class="small mb-1">
+                                <a href="{% url 'actividades:actividad_detalle' actividad.pk %}" class="fw-bold">{{ actividad.folio }}</a>
+                                {{ actividad.accion }}
+                                {% include 'actividades/components/estado_actividad.html' with estado=actividad.estado %}
+                            </div>
+                            {% empty %}
+                            <span class="text-muted small">Sin actividades todavía</span>
+                            {% endfor %}
+                        </td>
+                        <td class="text-center">
+                            <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                {% if request.user.puede_registrar %}
+                                <a href="{% url 'actividades:actividad_crear' %}?solicitud={{ atencion.id }}" class="btn btn-sm btn-outline-dark" title="Crear una actividad vinculada a esta solicitud" aria-label="Crear actividad"><i class="bi bi-plus-circle"></i></a>
+                                {% endif %}
+                                {% if atencion.editable %}
+                                <a href="{% url 'actividades:atencion_editar' atencion.id %}" class="btn btn-sm btn-outline-warning" title="Modificar" aria-label="Modificar"><i class="bi bi-pencil-square"></i></a>
+                                {% endif %}
+                                {% if atencion.eliminable %}
+                                <form method="post" action="{% url 'actividades:atencion_eliminar' atencion.id %}" data-confirmar="¿Eliminar la atención {{ atencion.codigo }}? Las actividades vinculadas se conservan, pero quedan sin solicitud.">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar" aria-label="Eliminar"><i class="bi bi-trash"></i></button>
+                                </form>
+                                {% endif %}
+                                {% if not request.user.puede_registrar and not atencion.editable %}<span class="text-muted small">Solo lectura</span>{% endif %}
+                            </div>
+                        </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="16" class="text-center text-muted py-3">No existen prestaciones registradas.</td>
+                        <td colspan="10" class="text-center text-muted py-3">No hay atenciones registradas.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
-                </table>
-            </div>
+            </table>
+        </div>
     </div>
 </main>
 {% endblock %}
