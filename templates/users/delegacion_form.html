@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if object %}Modificar{% else %}Agregar{% endif %} delegación | SGR{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni-b1 text-white fw-bold py-3">
+                    <i class="bi bi-diagram-3 me-2"></i>{% if object %}Modificar delegación: {{ object }}{% else %}Agregar delegación{% endif %}
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="id_nombre_visible">Nombre</label>
+                                <input type="text" name="nombre_visible" id="id_nombre_visible" maxlength="100" value="{{ form.nombre_visible.value|default:'' }}" class="form-control {% if form.nombre_visible.errors %}is-invalid{% endif %}" placeholder="Ej: Las Compañías">
+                                {% for error in form.nombre_visible.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                {% if object %}<small class="text-muted">Código interno: {{ object.nombre }} (no cambia).</small>{% endif %}
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-semibold" for="id_ambito">Ámbito</label>
+                                <input type="text" name="ambito" id="id_ambito" maxlength="100" value="{{ form.ambito.value|default:'' }}" class="form-control" placeholder="Urbano o Rural">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-semibold" for="id_estado">Estado</label>
+                                <select name="estado" id="id_estado" class="form-select">
+                                    {% for valor, texto in form.fields.estado.choices %}
+                                    <option value="{{ valor }}" {% if form.estado.value == valor %}selected{% endif %}>{{ texto }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <h6 class="fw-bold mt-4">Territorios de la delegación</h6>
+                        <p class="text-muted small">Un territorio en uso no se borra: se marca Inactivo y deja de aparecer en los formularios. Las filas vacías se ignoran.</p>
+                        {{ formset.management_form }}
+                        {% if formset.non_form_errors %}<div class="alert alert-danger">{{ formset.non_form_errors }}</div>{% endif %}
+                        <div class="tarjeta-tabla table-responsive">
+                            <table class="table tabla-sgr align-middle mb-0">
+                                <thead><tr><th>TERRITORIO</th><th style="width: 180px;">ESTADO</th></tr></thead>
+                                <tbody>
+                                    {% for fila in formset %}
+                                    <tr>
+                                        <td>
+                                            {{ fila.id }}
+                                            <input type="text" name="{{ fila.nombre.html_name }}" value="{{ fila.nombre.value|default:'' }}" maxlength="150" class="form-control form-control-sm {% if fila.nombre.errors %}is-invalid{% endif %}" placeholder="Nuevo territorio">
+                                            {% for error in fila.nombre.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                            {% for error in fila.non_field_errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                                        </td>
+                                        <td>
+                                            <select name="{{ fila.estado.html_name }}" class="form-select form-select-sm">
+                                                {% for valor, texto in fila.fields.estado.choices %}
+                                                <option value="{{ valor }}" {% if fila.estado.value == valor %}selected{% endif %}>{{ texto }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {% if object %}
+                        <p class="small text-muted mt-3 mb-0"><i class="bi bi-info-circle me-1"></i>El Delegado y los Funcionarios se asignan a la delegación (y a un territorio) desde Modificar usuario.</p>
+                        {% endif %}
+
+                        <hr class="my-4">
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'users:administracion' %}?pestana=delegaciones" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-muni fw-bold px-4"><i class="bi bi-save me-1"></i>Guardar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

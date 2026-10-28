@@ -12,7 +12,7 @@ class PeriodoAdmin(AdminSGR):
 
 
 class MetaDesempenoAdmin(AdminSGR):
-    list_display = ("periodo", "cargo", "item", "valor_objetivo", "unidad", "ponderador")
+    list_display = ("periodo", "delegacion", "cargo", "item", "valor_objetivo", "unidad", "ponderador")
     search_fields = ("cargo__nombre", "item__nombre", "periodo__nombre")
     list_filter = ("periodo", "cargo")
     ordering = ("periodo", "cargo", "item")

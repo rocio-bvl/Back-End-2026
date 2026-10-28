@@ -1,14 +1,15 @@
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from django.contrib import messages
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 
 from ActividadesApp.models import Actividad
 from AuditoriaApp.registro import registrar_auditoria
 from IndicadoresApp.calculos import seguimiento_usuario
-from IndicadoresApp.models import MetaDesempeno, periodo_vigente
+from IndicadoresApp.forms import MetaForm
+from IndicadoresApp.models import MetaDesempeno, periodo_vigente, metas_para
 from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado
 from UsuarioApp.models import Usuario, Cargo, Catalogo
 
@@ -28,8 +29,8 @@ def dashboard(request):
     hoy = timezone.localdate()
     periodo = periodo_vigente(hoy)
 
-    # Compromisos pendientes = actividades que siguen en el Tubo (sin evidencia)
-    compromisos = Actividad.objects.filter(estado='EN_TUBO')
+    # Actividades pendientes = compromisos programados y actividades del Tubo (todavía sin ejecutar)
+    compromisos = Actividad.objects.filter(estado__in=['PROGRAMADA', 'EN_TUBO'])
     if delegacion is not None:
         compromisos = compromisos.filter(usuario__delegacion=delegacion)
 
@@ -63,7 +64,7 @@ def dashboard(request):
 def semaforo(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
-    if not request.user.tiene_rol(['Admin', 'Coordinador', 'Delegado', 'Consulta']):
+    if not request.user.tiene_rol(['Admin', 'Coordinador', 'Delegado']):
         return acceso_denegado(request, 'Semáforo')
 
     codigo, delegacion, nombre = delegacion_seleccionada(request)
@@ -93,7 +94,7 @@ def semaforo(request):
 def resumen_delegacion(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
-    if not request.user.tiene_rol(['Admin', 'Coordinador', 'Delegado', 'Consulta']):
+    if not request.user.tiene_rol(['Admin', 'Coordinador', 'Delegado']):
         return acceso_denegado(request, 'Resumen de Delegación')
 
     codigo, delegacion, nombre = delegacion_seleccionada(request)
@@ -107,7 +108,7 @@ def resumen_delegacion(request):
         for cargo in cargos:
             integrantes = equipo.filter(cargo=cargo)
             cantidad = integrantes.count()
-            for meta in MetaDesempeno.objects.filter(cargo=cargo, periodo=periodo).select_related('item'):
+            for meta in metas_para(cargo.pk, periodo, delegacion.pk if delegacion else None):
                 meta_total = meta.valor_objetivo * cantidad
                 avance = Actividad.objects.filter(usuario__in=integrantes, item=meta.item, periodo=periodo, estado='VALIDADA').count()
                 if meta_total > 0:
@@ -140,61 +141,65 @@ def url_metas():
     return reverse('users:administracion') + '#goals'
 
 
+def mostrar_errores(request, form):
+    for errores in form.errors.values():
+        for error in errores:
+            messages.error(request, error)
+
+
 def guardar_metas(request):
+    """Crea una meta (o la actualiza si ya existe para ese cargo, ítem y alcance).
+    El Administrador define metas generales o de cualquier delegación; el Delegado, solo de la suya."""
     if not request.user.is_authenticated:
         return redirect('users:login')
-    if not request.user.puede_administrar():
+    if not request.user.puede_gestionar_metas():
         return acceso_denegado(request, 'Parametrización de Metas')
     if request.method != 'POST':
         return redirect(url_metas())
 
-    periodo = periodo_vigente()
-    id_cargo = request.POST.get('cargo', '')
-    id_item = request.POST.get('item', '')
-    # isdigit evita un error 500 si llega un valor que no es número
-    cargo = Cargo.objects.filter(pk=id_cargo, estado='ACTIVO').first() if id_cargo.isdigit() else None
-    item = Catalogo.objects.filter(pk=id_item, tipo='ITEM_GESTION', estado='ACTIVO').first() if id_item.isdigit() else None
-    valor = request.POST.get('valor_objetivo', '').strip()
-    ponderador = request.POST.get('ponderador', '').strip()
-
-    if periodo is None or cargo is None or item is None or not valor.isdigit() or ponderador == '':
-        if periodo is None:
-            messages.error(request, "No hay un periodo vigente. Créelo en Django Admin (Periodos) antes de definir metas.")
-        else:
-            messages.error(request, "Complete cargo, ítem, meta (número entero) y ponderador.")
+    form = MetaForm(request.POST, usuario=request.user, periodo=periodo_vigente())
+    if not form.is_valid():
+        mostrar_errores(request, form)
         return redirect(url_metas())
-
-    # El ponderador debe ser un número entre 0 (excluido) y 100. Se acepta coma decimal: 33,5
-    try:
-        ponderador = Decimal(ponderador.replace(',', '.'))
-    except InvalidOperation:
-        messages.error(request, "El ponderador debe ser un número (por ejemplo 40 o 33.5).")
-        return redirect(url_metas())
-    if ponderador <= 0 or ponderador > 100:
-        messages.error(request, "El ponderador debe ser mayor que 0 y no puede superar 100%.")
-        return redirect(url_metas())
-
-    meta = MetaDesempeno.objects.filter(cargo=cargo, item=item, periodo=periodo).first()
-    if meta is None:
-        meta = MetaDesempeno(cargo=cargo, item=item, periodo=periodo)
-        evento = 'CREACION'
-        antes = ''
-    else:
-        evento = 'MODIFICACION'
-        antes = f"{meta} = {meta.valor_objetivo} ({meta.ponderador}%)"
-
-    # Las metas de un cargo en el periodo no pueden sumar más de 100%
-    total = cargo.total_ponderadores(periodo, excluir=meta) + ponderador
-    if total > 100:
-        messages.error(request, f"Con esta meta los ponderadores del cargo {cargo} sumarían {total}%. "
-                                "El total no puede superar 100%.")
-        return redirect(url_metas())
-
-    meta.valor_objetivo = int(valor)
-    meta.ponderador = ponderador
-    meta.save()
+    meta, evento, antes = form.guardar()
     registrar_auditoria(request.user, evento, 'MetaDesempeno', meta.pk, antes, f"{meta} = {meta.valor_objetivo} ({meta.ponderador}%)")
     messages.success(request, "Meta guardada correctamente.")
-    if total < 100:
-        messages.warning(request, f"Los ponderadores del cargo {cargo} suman {total}%. Faltan {100 - total}% para completar 100%.")
+    if form.total < 100:
+        messages.warning(request, f"Los ponderadores del cargo {meta.cargo} suman {form.total}%. "
+                                  f"Faltan {100 - form.total}% para completar 100%.")
+    return redirect(url_metas())
+
+
+def meta_editar(request, pk):
+    if not request.user.is_authenticated:
+        return redirect('users:login')
+    meta = get_object_or_404(MetaDesempeno.objects.select_related('cargo', 'item', 'periodo', 'delegacion'), pk=pk)
+    if not request.user.puede_editar_meta(meta):
+        return acceso_denegado(request, 'Modificar meta')
+
+    if request.method == 'POST':
+        form = MetaForm(request.POST, usuario=request.user, periodo=meta.periodo, meta=meta)
+        if form.is_valid():
+            meta, evento, antes = form.guardar()
+            registrar_auditoria(request.user, evento, 'MetaDesempeno', meta.pk, antes,
+                                f"{meta} = {meta.valor_objetivo} ({meta.ponderador}%)")
+            messages.success(request, "Meta modificada.")
+            return redirect(url_metas())
+    else:
+        form = MetaForm(usuario=request.user, periodo=meta.periodo, meta=meta)
+    return render(request, 'indicadores/meta_form.html', {'form': form, 'meta': meta})
+
+
+def meta_eliminar(request, pk):
+    if not request.user.is_authenticated:
+        return redirect('users:login')
+    meta = get_object_or_404(MetaDesempeno, pk=pk)
+    if not request.user.puede_editar_meta(meta):
+        return acceso_denegado(request, 'Eliminar meta')
+    if request.method != 'POST':
+        return redirect(url_metas())
+    descripcion = f"{meta} = {meta.valor_objetivo} ({meta.ponderador}%)"
+    registrar_auditoria(request.user, 'ELIMINACION', 'MetaDesempeno', meta.pk, descripcion, '')
+    meta.delete()
+    messages.success(request, "Meta eliminada.")
     return redirect(url_metas())

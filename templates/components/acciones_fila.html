@@ -1,10 +1,10 @@
 {% comment %}
 Modificar y Eliminar de una fila (Django Admin). Solo se muestran a quien puede usarlos:
-Admin y Coordinador; con solo_admin=True, solo el Administrador (ej.: Auditoría).
-oculto=True los oculta siempre (ej.: un Coordinador frente a un Administrador).
+solo el Administrador, que es el único que entra a Django Admin.
+oculto=True los oculta siempre.
 {% endcomment %}
 {% if not oculto %}
-{% if solo_admin and request.user.es_administrador or not solo_admin and request.user.puede_administrar %}
+{% if solo_admin and request.user.es_administrador or not solo_admin and request.user.es_administrador %}
 <div class="btn-group btn-group-sm" role="group" aria-label="Acciones">
     <a href="{{ url_modificar|default:'#' }}" class="btn btn-outline-warning text-nowrap" title="Modificar">
         <i class="bi bi-pencil-square me-1"></i>Modificar

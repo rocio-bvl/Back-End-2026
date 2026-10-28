@@ -4,20 +4,20 @@
 
 {% block content %}
 <main class="container-fluid p-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="m-0 fw-bold"><i class="bi bi-kanban text-danger me-2"></i>Tubo de Trabajo y Compromisos Territoriales</h3>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h3 class="m-0 fw-bold"><i class="bi bi-kanban text-danger me-2"></i>Tubo de Trabajo</h3>
+        {% url 'admin:ActividadesApp_actividad_changelist' as url_buscar %}
         {% url 'actividades:actividad_crear' as url_crear %}
         {% with url_agregar=url_crear|add:"?tubo=1" %}
-        {% url 'admin:ActividadesApp_actividad_changelist' as url_buscar %}
-        {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Compromiso" registro_operativo=True %}
+        {% include 'components/barra_crud.html' with url_buscar=url_buscar url_agregar=url_agregar registro_operativo=True texto_agregar="Agregar al Tubo" %}
         {% endwith %}
     </div>
     <p class="text-muted small">
-        Un compromiso es una actividad registrada sin evidencia porque el funcionario necesita tiempo para realizarla.
-        Permanece aquí, con su fecha límite, hasta que el mismo funcionario la ejecute y suba la evidencia.
+        Aquí quedan las actividades que <strong>dependen de factores externos</strong> para realizarse. La fecha de ejecución es opcional:
+        si aún no se sabe, se agrega después desde el detalle de la actividad.
     </p>
 
-    <!-- Filtros de la agenda colectiva (HU-12) -->
+    <!-- Filtros de la agenda colectiva -->
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body py-3">
             <form method="get" class="row g-2 align-items-end" style="font-size: 0.85rem;">
@@ -33,7 +33,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label class="form-label fw-semibold mb-1" for="f_estado">Estado</label>
                     <select name="estado" id="f_estado" class="form-select form-select-sm">
                         {% for valor, texto in estados_filtro %}
@@ -41,17 +41,14 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label class="form-label fw-semibold mb-1" for="f_territorio">Territorio</label>
-                    <input type="text" name="territorio" id="f_territorio" value="{{ filtros.territorio }}" class="form-control form-control-sm" placeholder="Ej: Sector Alto">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold mb-1" for="f_desde">Fecha límite desde</label>
-                    <input type="date" name="desde" id="f_desde" value="{{ filtros.desde }}" class="form-control form-control-sm">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold mb-1" for="f_hasta">Hasta</label>
-                    <input type="date" name="hasta" id="f_hasta" value="{{ filtros.hasta }}" class="form-control form-control-sm">
+                    <select name="territorio" id="f_territorio" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for territorio in territorios %}
+                        <option value="{{ territorio.pk }}" {% if filtros.territorio == territorio.pk|stringformat:"s" %}selected{% endif %}>{{ territorio.nombre }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div class="col-md-1">
                     <div class="form-check mb-1">
@@ -59,7 +56,7 @@
                         <label class="form-check-label" for="f_mios">Solo míos</label>
                     </div>
                 </div>
-                <div class="col-12 d-flex gap-2 justify-content-end">
+                <div class="col-md-2 d-flex gap-2 justify-content-end">
                     <a href="{% url 'actividades:tubo_trabajo' %}{% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}?delegacion={{ codigo_delegacion }}{% endif %}" class="btn btn-sm btn-outline-secondary">Limpiar</a>
                     <button type="submit" class="btn btn-sm btn-muni"><i class="bi bi-funnel me-1"></i>Filtrar</button>
                 </div>
@@ -69,66 +66,73 @@
 
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-header bg-gris-0 fw-bold d-flex justify-content-between align-items-center py-3">
-            <span><i class="bi bi-calendar-event me-2 text-danger"></i>Agenda Colectiva y Estado de Compromisos</span>
-            <span class="badge bg-muni-b2">{{ delegacion_actual|default:"Delegación Las Compañías" }}</span>
+            <span><i class="bi bi-hourglass-split me-2 text-danger"></i>Actividades que esperan factores externos</span>
+            <span class="badge bg-muni-b2">{{ delegacion_actual }}</span>
         </div>
-            <div class="tarjeta-tabla table-responsive">
-                <table class="table table-hover tabla-sgr">
-                    <thead class="text-center">
+        <div class="tarjeta-tabla table-responsive">
+            <table class="table table-hover tabla-sgr">
+                <thead class="text-center">
                     <tr>
                         <th>CÓDIGO</th>
-                        <th>FECHA INGRESO</th>
-                        <th>SOLICITANTE / CONTACTO</th>
-                        <th>ACTIVIDAD COMPROMETIDA</th>
-                        <th>FECHA LÍMITE</th>
-                        <th>FUNCIONARIO</th>
+                        <th>FECHA DE INGRESO</th>
+                        <th>ACTIVIDAD</th>
+                        <th>TERRITORIO</th>
+                        <th>FECHA DE EJECUCIÓN</th>
+                        <th>RESPONSABLE</th>
                         <th>ESTADO</th>
                         <th>ACCIONES</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for compromiso in compromisos %}
+                    {% for act in actividades %}
                     <tr>
-                        <td class="fw-bold text-center" data-cell="CÓDIGO">{{ compromiso.folio }}</td>
-                        <td class="text-center" data-cell="FECHA">{{ compromiso.fecha_registro|date:"d/m/Y" }}</td>
-                        <td data-cell="SOLICITANTE">{{ compromiso.contacto }}<small class="d-block text-muted">{{ compromiso.territorio }}</small></td>
-                        <td data-cell="ACTIVIDAD"><span class="fw-semibold">{{ compromiso.accion }}</span><small class="d-block">{{ compromiso.descripcion }}</small></td>
-                        <td class="text-center" data-cell="FECHA LÍMITE">
-                            {{ compromiso.fecha_comprometida|date:"d/m/Y" }}
-                            {% if compromiso.vencido %}
-                            <span class="badge bg-danger d-block mt-1">VENCIDO</span>
-                            {% elif compromiso.proximo_a_vencer %}
-                            <span class="badge bg-warning text-dark d-block mt-1">POR VENCER</span>
+                        <td class="fw-bold text-center"><a href="{% url 'actividades:actividad_detalle' act.id %}">{{ act.folio }}</a></td>
+                        <td class="text-center">{{ act.fecha|date:"d/m/Y" }}</td>
+                        <td><span class="fw-semibold">{{ act.accion }}</span><small class="d-block">{{ act.solicitud_problema|truncatechars:90 }}</small>
+                            {% if act.solicitud %}
+                            <div class="mt-1"><span class="badge bg-muni-v2"><i class="bi bi-link-45deg"></i> Solicitud social {{ act.solicitud.codigo }}</span>
+                                <a href="{% url 'actividades:gestion_social' %}?solicitud={{ act.solicitud.pk }}" class="small ms-1">Ver solicitud</a></div>
                             {% endif %}
                         </td>
-                        <td data-cell="FUNCIONARIO">
-                            {{ compromiso.funcionario.get_full_name|default:compromiso.funcionario.username }}
-                            {% if compromiso.usuario_id == request.user.pk %}
-                            <span class="badge bg-muni-b2 d-block mt-1">SUYO</span>
+                        <td>{{ act.territorio }}</td>
+                        <td class="text-center">
+                            {% if act.fecha_realizacion %}
+                                {{ act.fecha_realizacion|date:"d/m/Y" }}
+                                {% if act.vencido %}<span class="badge bg-danger d-block mt-1">VENCIDA</span>
+                                {% elif act.proximo_a_vencer %}<span class="badge bg-warning text-dark d-block mt-1">PRÓXIMA</span>{% endif %}
+                            {% else %}
+                                <small class="text-muted">Aún no se ha agregado fecha de ejecución</small>
                             {% endif %}
                         </td>
-                        <td class="text-center" data-cell="ESTADO">
-                            {% include 'actividades/components/estado_actividad.html' with estado=compromiso.estado %}
+                        <td>
+                            {% if act.encargado %}
+                                {{ act.encargado.get_full_name|default:act.encargado.username }}
+                                <small class="d-block text-muted">Encargado. Registró: {{ act.funcionario.get_full_name|default:act.funcionario.username }}</small>
+                            {% else %}
+                                {{ act.funcionario.get_full_name|default:act.funcionario.username }}
+                                <small class="d-block text-muted">Sin encargado asignado</small>
+                            {% endif %}
                         </td>
-                        <td class="text-center" data-cell="ACCIONES">
+                        <td class="text-center">{% include 'actividades/components/estado_actividad.html' with estado=act.estado_codigo %}</td>
+                        <td class="text-center">
                             <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                <a href="{% url 'actividades:actividad_detalle' compromiso.pk %}" class="btn btn-sm {% if compromiso.usuario_id == request.user.pk and compromiso.estado == 'EN_TUBO' %}btn-muni-v2{% else %}btn-outline-dark{% endif %}" title="{% if compromiso.usuario_id == request.user.pk and compromiso.estado == 'EN_TUBO' %}Ejecutar: subir evidencia{% else %}Ver detalle{% endif %}">
-                                    {% if compromiso.usuario_id == request.user.pk and compromiso.estado == 'EN_TUBO' %}<i class="bi bi-upload me-1"></i>Ejecutar{% else %}<i class="bi bi-eye"></i>{% endif %}
+                                <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm {% if act.puede_ejecutar %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
+                                    {% if act.puede_ejecutar %}<i class="bi bi-check2-circle me-1"></i>Gestionar{% else %}<i class="bi bi-eye me-1"></i>Ver{% endif %}
                                 </a>
-                                {% url 'admin:ActividadesApp_actividad_change' compromiso.pk as url_modificar %}
-                                {% url 'admin:ActividadesApp_actividad_delete' compromiso.pk as url_eliminar %}
-                                {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                                {% url 'admin:ActividadesApp_actividad_change' act.id as url_modificar %}
+                                {% url 'admin:ActividadesApp_actividad_delete' act.id as url_eliminar %}
+                                {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar solo_admin=True %}
                             </div>
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-3">No hay compromisos que cumplan los filtros en esta delegación.</td>
+                        <td colspan="8" class="text-center text-muted py-3">No hay actividades que cumplan los filtros en esta delegación.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
-                </table>
-            </div>
+            </table>
+        </div>
     </div>
 </main>
 {% endblock %}

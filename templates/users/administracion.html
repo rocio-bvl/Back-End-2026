@@ -3,97 +3,267 @@
 {% block title %}Administración | Ilustre Municipalidad de La Serena{% endblock %}
 
 {% block content %}
+{% comment %}
+Una sola pantalla para tres roles (la vista envía 'vista'):
+- admin: pestaña "Gestión" (delegaciones y usuarios, con agregar, modificar, desactivar y eliminar) y "Metas".
+- coordinador: las mismas pestañas solo para visualizar; para él la primera se llama "Usuarios".
+- delegado: "Usuarios" (los Funcionarios de su delegación, filtro por territorio) y "Metas" de su delegación.
+Los formularios de eliminar llevan data-confirmar: base.html pide la confirmación con SweetAlert.
+{% endcomment %}
 <main class="container py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="fw-bold m-0">Administración del Sistema SGR</h3>
+        <h3 class="fw-bold m-0">{% if solo_mi_delegacion %}Mi Delegación: {{ request.user.delegacion }}{% else %}Administración del Sistema SGR{% endif %}</h3>
     </div>
 
-    <!-- Bloque de Mensajes y Alertas -->
     {% if messages %}
         {% for message in messages %}
             <div class="alert alert-{{ message.tags }} alert-dismissible fade show shadow-sm" role="alert">
                 {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
             </div>
         {% endfor %}
     {% endif %}
 
     <ul class="nav nav-tabs mb-4 ls-nav-tabs" id="adminTab" role="tablist">
         <li class="nav-item">
-            <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button">Gestión de Usuarios</button>
+            <button class="nav-link {% if pestana != 'metas' %}active{% endif %}" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button">
+                {% if vista == 'admin' %}Gestión{% else %}Usuarios{% endif %}
+            </button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="goals-tab" data-bs-toggle="tab" data-bs-target="#goals" type="button">Parametrización de Metas</button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#audit" type="button">Logs de Trazabilidad</button>
+            <button class="nav-link {% if pestana == 'metas' %}active{% endif %}" id="goals-tab" data-bs-toggle="tab" data-bs-target="#goals" type="button">Metas</button>
         </li>
     </ul>
 
     <div class="tab-content" id="adminTabContent">
-        <!-- Tab 1: Usuarios -->
-        <div class="tab-pane fade show active" id="users">
-            <div class="card shadow-sm border-0 p-3">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="m-0 fw-bold">Listado de Usuarios</h5>
-                    <div class="d-flex flex-wrap gap-2 align-items-center">
-                        <form method="get" action="{% url 'admin:UsuarioApp_usuario_changelist' %}" class="d-flex" role="search">
-                            <input type="search" name="q" class="form-control form-control-sm" placeholder="Buscar..." aria-label="Buscar">
-                            <button type="submit" class="btn btn-sm btn-outline-dark ms-1 text-nowrap"><i class="bi bi-search me-1"></i>Buscar</button>
-                        </form>
-                        <!-- Botón para abrir Modal o navegar a vista independiente -->
-                        <button type="button" class="btn btn-muni btn-sm" data-bs-toggle="modal" data-bs-target="#modalCrearUsuario">
-                            <i class="bi bi-person-plus me-1"></i>Agregar Usuario
-                        </button>
+        <!-- Pestaña 1: Gestión / Usuarios -->
+        <div class="tab-pane fade {% if pestana != 'metas' %}show active{% endif %}" id="users">
+
+            {% if vista != 'delegado' %}
+            <!-- Apartados: Delegaciones y Usuarios -->
+            <ul class="nav nav-pills mb-3" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link {% if pestana != 'usuarios' %}active{% endif %}" id="delegaciones-tab" data-bs-toggle="pill" data-bs-target="#apartado-delegaciones" type="button">
+                        <i class="bi bi-diagram-3 me-1"></i>Delegaciones
+                    </button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link {% if pestana == 'usuarios' %}active{% endif %}" id="usuarios-tab" data-bs-toggle="pill" data-bs-target="#apartado-usuarios" type="button">
+                        <i class="bi bi-people me-1"></i>Usuarios
+                    </button>
+                </li>
+            </ul>
+            {% endif %}
+
+            <div class="tab-content">
+                {% if vista != 'delegado' %}
+                <!-- Delegaciones: Delegado(s), territorios con sus Funcionarios -->
+                <div class="tab-pane fade {% if pestana != 'usuarios' %}show active{% endif %}" id="apartado-delegaciones">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="m-0 fw-bold">Delegaciones</h5>
+                        {% if vista == 'admin' %}
+                        <a href="{% url 'users:delegacion_crear' %}" class="btn btn-muni btn-sm"><i class="bi bi-plus-circle me-1"></i>Agregar delegación</a>
+                        {% endif %}
+                    </div>
+                    <div class="row g-3">
+                        {% for item in delegaciones %}
+                        <div class="col-lg-6">
+                            <div class="card shadow-sm border-0 h-100">
+                                <div class="card-header bg-muni-b1 text-white d-flex justify-content-between align-items-center">
+                                    <span class="fw-bold">{{ item.delegacion }}
+                                        <small class="fw-normal opacity-75">· {{ item.delegacion.ambito|default:"Sin ámbito" }} · {{ item.total_funcionarios }} funcionario{{ item.total_funcionarios|pluralize }}</small>
+                                    </span>
+                                    {% if item.delegacion.estado != 'ACTIVO' %}<span class="badge bg-gris-50">INACTIVA</span>{% endif %}
+                                </div>
+                                <div class="card-body small">
+                                    <p class="mb-2"><span class="text-muted">Delegado:</span>
+                                        {% for delegado in item.delegados %}
+                                            <strong>{{ delegado.get_full_name|default:delegado.username }}</strong>{% if vista == 'admin' %} <a href="{% url 'users:usuario_editar' delegado.pk %}" title="Modificar"><i class="bi bi-pencil-square"></i></a>{% endif %}{% if not forloop.last %}, {% endif %}
+                                        {% empty %}
+                                            <span class="text-danger">Sin Delegado asignado</span>
+                                        {% endfor %}
+                                    </p>
+                                    {% for bloque in item.territorios %}
+                                    <div class="border rounded p-2 mb-2">
+                                        <div class="fw-semibold"><i class="bi bi-geo-alt me-1 text-danger"></i>{{ bloque.territorio.nombre }}
+                                            {% if bloque.territorio.estado != 'ACTIVO' %}<span class="badge bg-gris-50 ms-1">Inactivo</span>{% endif %}</div>
+                                        {% for funcionario in bloque.funcionarios %}
+                                            <span class="badge bg-light text-dark border me-1 mt-1">{{ funcionario.get_full_name|default:funcionario.username }}{% if vista == 'admin' %} <a href="{% url 'users:usuario_editar' funcionario.pk %}" title="Modificar"><i class="bi bi-pencil-square"></i></a>{% endif %}</span>
+                                        {% empty %}
+                                            <span class="text-muted">Sin funcionarios asignados</span>
+                                        {% endfor %}
+                                    </div>
+                                    {% empty %}
+                                    <p class="text-muted mb-2">Sin territorios registrados.</p>
+                                    {% endfor %}
+                                    {% if item.sin_territorio %}
+                                    <div class="border border-warning rounded p-2 mb-2">
+                                        <div class="fw-semibold text-warning-emphasis">Funcionarios sin territorio</div>
+                                        {% for funcionario in item.sin_territorio %}
+                                            <span class="badge bg-light text-dark border me-1 mt-1">{{ funcionario.get_full_name|default:funcionario.username }}{% if vista == 'admin' %} <a href="{% url 'users:usuario_editar' funcionario.pk %}" title="Asignar territorio"><i class="bi bi-pencil-square"></i></a>{% endif %}</span>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                {% if vista == 'admin' %}
+                                <div class="card-footer bg-white d-flex justify-content-end gap-2">
+                                    <a href="{% url 'users:delegacion_editar' item.delegacion.pk %}" class="btn btn-sm btn-outline-warning"><i class="bi bi-pencil-square me-1"></i>Modificar</a>
+                                    <form method="post" action="{% url 'users:delegacion_eliminar' item.delegacion.pk %}" data-confirmar="¿Eliminar la delegación {{ item.delegacion }}? Esta acción no se puede deshacer.">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>Eliminar</button>
+                                    </form>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% empty %}
+                        <p class="text-muted">No hay delegaciones registradas.</p>
+                        {% endfor %}
                     </div>
                 </div>
+                {% endif %}
 
-                <ul class="list-group list-group-flush">
-                    {% for usr in lista_usuarios %}
-                    <li class="list-group-item d-flex justify-content-between align-items-center py-3">
-                        <div>
-                            <span class="fw-bold fs-6 text-dark">{{ usr.get_full_name|default:usr.username }}</span>
-                            {% if usr.rut %}
-                                <span class="badge bg-secondary ms-2">{{ usr.rut }}</span>
+                <!-- Usuarios con filtros -->
+                <div class="tab-pane fade {% if vista == 'delegado' or pestana == 'usuarios' %}show active{% endif %}" id="apartado-usuarios">
+                    <div class="card shadow-sm border-0 p-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                            <h5 class="m-0 fw-bold">{% if solo_mi_delegacion %}Funcionarios de mi delegación{% else %}Usuarios{% endif %}</h5>
+                            {% if request.user.puede_gestionar_usuarios %}
+                            <button type="button" class="btn btn-muni btn-sm" data-bs-toggle="modal" data-bs-target="#modalCrearUsuario">
+                                <i class="bi bi-person-plus me-1"></i>Agregar Usuario
+                            </button>
                             {% endif %}
-                            <br>
-                            <small class="text-muted">
-                                <i class="bi bi-envelope me-1"></i>{{ usr.email|default:"Sin correo" }} | 
-                                <strong>Rol:</strong> {{ usr.rol|default:"Funcionario" }} | 
-                                <strong>Delegación:</strong> {{ usr.delegacion|default:"General" }}
-                            </small>
                         </div>
-                        {% url 'users:usuario_editar' usr.pk as url_modificar %}
-                        {% url 'admin:UsuarioApp_usuario_delete' usr.pk as url_eliminar %}
-                        {% if usr.editable %}
-                        {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
-                        {% else %}
-                        {% include 'components/acciones_fila.html' with oculto=True %}
-                        {% endif %}
-                    </li>
-                    {% empty %}
-                    <li class="list-group-item text-center py-4 text-muted">
-                        No hay usuarios registrados en el sistema.
-                    </li>
-                    {% endfor %}
-                </ul>
+
+                        <form method="get" class="row g-2 align-items-end mb-3">
+                            <input type="hidden" name="pestana" value="usuarios">
+                            {% if not solo_mi_delegacion %}
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1" for="f_q">Buscar</label>
+                                <input type="search" name="q" id="f_q" value="{{ filtros.q }}" class="form-control form-control-sm" placeholder="Nombre, RUT o correo">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-1" for="f_cargo">Cargo</label>
+                                <select name="cargo" id="f_cargo" class="form-select form-select-sm">
+                                    <option value="">Todos</option>
+                                    {% for cargo in cargos %}
+                                    <option value="{{ cargo.pk }}" {% if filtros.cargo == cargo.pk|stringformat:"s" %}selected{% endif %}>{{ cargo.nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label small mb-1" for="f_delegacion_usuarios">Delegación</label>
+                                <select name="f_delegacion" id="f_delegacion_usuarios" class="form-select form-select-sm">
+                                    <option value="">Todas</option>
+                                    {% for valor, texto in opciones_delegacion %}{% if valor != 'GENERAL' %}
+                                    <option value="{{ valor }}" {% if filtros.delegacion == valor %}selected{% endif %}>{{ texto }}</option>
+                                    {% endif %}{% endfor %}
+                                </select>
+                            </div>
+                            {% endif %}
+                            <div class="col-md-3">
+                                <label class="form-label small mb-1" for="f_territorio">Territorio</label>
+                                <select name="territorio" id="f_territorio" class="form-select form-select-sm">
+                                    <option value="">Todos</option>
+                                    {% for territorio in territorios %}
+                                    <option value="{{ territorio.pk }}" {% if filtros.territorio == territorio.pk|stringformat:"s" %}selected{% endif %}>{{ territorio.nombre }}{% if not solo_mi_delegacion %} ({{ territorio.delegacion }}){% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2 d-flex gap-1">
+                                <button type="submit" class="btn btn-sm btn-muni flex-grow-1"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+                                <a href="?pestana=usuarios" class="btn btn-sm btn-outline-secondary">Limpiar</a>
+                            </div>
+                        </form>
+
+                        <div class="tarjeta-tabla table-responsive">
+                            <table class="table table-hover tabla-sgr align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>NOMBRE</th>
+                                        <th>ROL</th>
+                                        <th>CARGO</th>
+                                        <th>DELEGACIÓN</th>
+                                        <th>TERRITORIO</th>
+                                        <th>CONTACTO</th>
+                                        {% if request.user.puede_gestionar_usuarios %}<th class="text-center">ACCIONES</th>{% endif %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for usr in lista_usuarios %}
+                                    <tr>
+                                        <td>
+                                            <span class="fw-bold">{{ usr.get_full_name|default:usr.username }}</span>
+                                            {% if not usr.is_active %}<span class="badge bg-gris-50 ms-1">INACTIVO</span>{% endif %}
+                                            <small class="d-block text-muted">{{ usr.username }}</small>
+                                        </td>
+                                        <td>{{ usr.rol|default:"Sin rol" }}</td>
+                                        <td>{{ usr.cargo|default:"-" }}</td>
+                                        <td>{{ usr.delegacion|default:"General" }}</td>
+                                        <td>{{ usr.territorio|default:"-" }}</td>
+                                        <td><small>{{ usr.email|default:"-" }}<br>{{ usr.telefono|default:"Sin teléfono" }}</small></td>
+                                        {% if request.user.puede_gestionar_usuarios %}
+                                        <td class="text-center">
+                                            {% if usr.editable %}
+                                            <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                                <a href="{% url 'users:usuario_editar' usr.pk %}" class="btn btn-sm btn-outline-warning text-nowrap"><i class="bi bi-pencil-square me-1"></i>Modificar</a>
+                                                {% if usr.pk != request.user.pk %}
+                                                <form method="post" action="{% url 'users:usuario_desactivar' usr.pk %}">
+                                                    {% csrf_token %}
+                                                    {% if usr.is_active %}
+                                                    <button type="submit" class="btn btn-sm btn-outline-secondary text-nowrap"><i class="bi bi-person-slash me-1"></i>Desactivar</button>
+                                                    {% else %}
+                                                    <button type="submit" class="btn btn-sm btn-outline-success text-nowrap"><i class="bi bi-person-check me-1"></i>Activar</button>
+                                                    {% endif %}
+                                                </form>
+                                                {% endif %}
+                                                {% if usr.eliminable %}
+                                                <form method="post" action="{% url 'users:usuario_eliminar' usr.pk %}" data-confirmar="¿Eliminar a {{ usr.get_full_name|default:usr.username }}? Si tiene actividades registradas no se podrá eliminar; en ese caso, desactívelo.">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger text-nowrap"><i class="bi bi-trash me-1"></i>Eliminar</button>
+                                                </form>
+                                                {% endif %}
+                                            </div>
+                                            {% endif %}
+                                        </td>
+                                        {% endif %}
+                                    </tr>
+                                    {% empty %}
+                                    <tr><td colspan="7" class="text-center text-muted py-4">No hay usuarios que cumplan los filtros.</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Tab 2: Metas -->
-        <div class="tab-pane fade" id="goals">
-            <div class="card shadow-sm border-0 p-3">
-                <h5 class="fw-bold">Configuración de Ponderadores Trimestrales</h5>
+        <!-- Pestaña 2: Metas -->
+        <div class="tab-pane fade {% if pestana == 'metas' %}show active{% endif %}" id="goals">
+            {% if form_meta %}
+            <div class="card shadow-sm border-0 p-3 mb-4">
+                <h5 class="fw-bold">Agregar meta</h5>
                 <p class="text-muted small mb-0">
                     Cada meta indica cuántas actividades validadas debe lograr un cargo en el trimestre para un ítem.
-                    Los ponderadores de un mismo cargo deben sumar 100%. Si la meta ya existe, se actualiza.
+                    {% if solo_mi_delegacion %}Las metas de su delegación reemplazan a las generales para los cargos que defina.
+                    {% else %}Las metas generales valen para toda la municipalidad; una delegación con metas propias para un cargo usa las suyas.{% endif %}
+                    Los ponderadores de un cargo deben sumar 100%. Si la meta ya existe, se actualiza.
                 </p>
                 <form method="post" action="{% url 'indicadores:guardar_metas' %}" class="mt-3">
                     {% csrf_token %}
                     <div class="row g-3 align-items-end">
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="meta_periodo">Periodo trimestral</label>
-                            <input type="text" id="meta_periodo" class="form-control" value="{{ periodo_activo.nombre }}" readonly>
+                            <input type="text" id="meta_periodo" class="form-control" value="{{ periodo_activo.nombre|default:'Sin periodo vigente' }}" readonly>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="meta_alcance">Alcance</label>
+                            <select name="alcance" id="meta_alcance" class="form-select">
+                                {% for valor, texto in form_meta.fields.alcance.choices %}
+                                <option value="{{ valor }}">{{ texto }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="meta_cargo">Cargo destino</label>
@@ -113,15 +283,15 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-semibold" for="meta_valor">Meta del trimestre (actividades)</label>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold" for="meta_valor">Meta del trimestre</label>
                             <input type="number" name="valor_objetivo" id="meta_valor" class="form-control" min="1" step="1" placeholder="Ej: 30" required>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="form-label fw-semibold" for="meta_ponderador">Ponderador (%)</label>
                             <input type="number" name="ponderador" id="meta_ponderador" class="form-control" min="0.01" max="100" step="0.01" placeholder="Ej: 40" required>
                         </div>
-                        <div class="col-md-4 d-grid">
+                        <div class="col-md-2 d-grid">
                             <button type="submit" class="btn btn-muni fw-bold" {% if not hay_periodo %}disabled{% endif %}>
                                 <i class="bi bi-check-lg me-1"></i>Guardar meta
                             </button>
@@ -132,62 +302,74 @@
                     {% endif %}
                 </form>
             </div>
+            {% else %}
+            <div class="alert alert-light border small"><i class="bi bi-eye me-1"></i>Vista de consulta: las metas las definen el Administrador y cada Delegado para su delegación.</div>
+            {% endif %}
 
-            <!-- Metas vigentes por cargo -->
-            <div class="card shadow-sm border-0 p-3 mt-4">
+            <div class="card shadow-sm border-0 p-3">
                 <h5 class="fw-bold">Metas del periodo vigente</h5>
-                {% for grupo in metas_por_cargo %}
-                    <div class="tarjeta-tabla table-responsive mt-2 mb-3">
-                        <table class="table table-hover tabla-sgr">
-                            <thead>
+                {% for grupo in metas_agrupadas %}
+                <h6 class="fw-bold mt-3 {% if grupo.general %}text-danger{% endif %}"><i class="bi {% if grupo.general %}bi-building{% else %}bi-geo-alt{% endif %} me-1"></i>{{ grupo.nombre }}</h6>
+                {% for bloque in grupo.cargos %}
+                <div class="tarjeta-tabla table-responsive mt-2 mb-3">
+                    <table class="table table-hover tabla-sgr mb-0">
+                        <thead>
                             <tr>
-                                <th colspan="2">{{ grupo.cargo.nombre }}</th>
-                                <th class="text-center">
-                                    Total {{ grupo.total }}%
-                                    {% if grupo.total == 100 %}
-                                    <span class="badge bg-success ms-1">OK</span>
-                                    {% else %}
-                                    <span class="badge bg-warning text-dark ms-1">Debe sumar 100%</span>
-                                    {% endif %}
+                                <th colspan="2">{{ bloque.cargo.nombre }}</th>
+                                <th colspan="2" class="text-center">
+                                    Total {{ bloque.total }}%
+                                    {% if bloque.total == 100 %}<span class="badge bg-success ms-1">OK</span>
+                                    {% else %}<span class="badge bg-warning text-dark ms-1">Debe sumar 100%</span>{% endif %}
                                 </th>
                             </tr>
                             <tr class="text-center">
                                 <th>Ítem</th>
                                 <th>Meta</th>
                                 <th>Ponderador</th>
+                                <th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for meta in grupo.metas %}
+                            {% for meta in bloque.metas %}
                             <tr>
-                                <td data-cell="ÍTEM">{{ meta.item.nombre }}</td>
-                                <td class="text-center" data-cell="META">{{ meta.valor_objetivo }} {{ meta.unidad }}</td>
-                                <td class="text-center" data-cell="PONDERADOR">{{ meta.ponderador }}%</td>
+                                <td>{{ meta.item.nombre }}</td>
+                                <td class="text-center">{{ meta.valor_objetivo }} {{ meta.unidad }}</td>
+                                <td class="text-center">{{ meta.ponderador }}%</td>
+                                <td class="text-center">
+                                    {% if meta.editable %}
+                                    <div class="d-flex gap-1 justify-content-center">
+                                        <a href="{% url 'indicadores:meta_editar' meta.pk %}" class="btn btn-sm btn-outline-warning"><i class="bi bi-pencil-square me-1"></i>Modificar</a>
+                                        <form method="post" action="{% url 'indicadores:meta_eliminar' meta.pk %}" data-confirmar="¿Eliminar la meta de {{ meta.item.nombre }} para {{ bloque.cargo.nombre }}?">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>Eliminar</button>
+                                        </form>
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted small">Solo lectura</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
-                        </table>
-                    </div>
+                    </table>
+                </div>
+                {% endfor %}
                 {% empty %}
                 <p class="text-muted mb-0">Aún no hay metas definidas para el periodo vigente.</p>
                 {% endfor %}
             </div>
         </div>
-
-        <!-- Tab 3: Componente de Auditoría Integrado -->
-        <div class="tab-pane fade" id="audit">
-            {% include 'auditoria/components/tabla_logs.html' %}
-        </div>
     </div>
 </main>
 
-<!-- MODAL PARA CREAR USUARIO (EVITA REDIRECCIÓN DIRECTA Y ERRORES 403) -->
+{% if request.user.puede_gestionar_usuarios %}
+<!-- Modal para crear usuario -->
 <div class="modal fade" id="modalCrearUsuario" tabindex="-1" aria-labelledby="modalCrearUsuarioLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-muni text-white">
                 <h5 class="modal-title fw-bold" id="modalCrearUsuarioLabel"><i class="bi bi-person-plus me-2"></i>Registrar Nuevo Usuario SGR</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <form method="post" action="{% url 'users:usuario_crear' %}">
                 {% csrf_token %}
@@ -210,28 +392,49 @@
                             <input type="text" name="last_name" class="form-control" required>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label fw-semibold">Teléfono</label>
+                            <input type="text" name="telefono" maxlength="20" class="form-control" placeholder="Ej: 912345678">
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label fw-semibold">Rol del Sistema</label>
-                            <select name="rol" class="form-select" required>
+                            <select name="rol" id="crear_rol" class="form-select" required>
                                 {% for valor, texto in roles_asignables %}
                                 <option value="{{ valor }}" {% if valor == 'Funcionario' %}selected{% endif %}>{{ texto }}</option>
                                 {% endfor %}
                             </select>
-                            {% if not request.user.es_administrador %}
-                            <small class="text-muted">Solo el Administrador puede crear Coordinadores y Administradores.</small>
-                            {% endif %}
+                            {% if solo_mi_delegacion %}<small class="text-muted">El Delegado solo crea Funcionarios de su delegación.</small>{% endif %}
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Cargo Municipal</label>
-                            <input type="text" name="cargo" class="form-control" placeholder="Ej: Inspector Territorial">
+                            <select name="cargo" class="form-select">
+                                <option value="">Sin cargo</option>
+                                {% for cargo in cargos %}
+                                <option value="{{ cargo.codigo }}">{{ cargo.nombre }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Delegación</label>
-                            <select name="delegacion" class="form-select">
+                            {% if solo_mi_delegacion %}
+                            <input type="hidden" name="delegacion" id="crear_delegacion" value="{{ request.user.delegacion.nombre }}">
+                            <input type="text" class="form-control bg-light" value="{{ request.user.delegacion }}" readonly>
+                            {% else %}
+                            <select name="delegacion" id="crear_delegacion" class="form-select">
                                 {% for valor, texto in opciones_delegacion %}
                                 <option value="{{ valor }}" {% if valor == 'GENERAL' %}selected{% endif %}>{{ texto }}</option>
                                 {% endfor %}
                             </select>
                             <small class="text-muted">Funcionarios y Delegados deben tener delegación.</small>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6" id="bloque_territorio">
+                            <label class="form-label fw-semibold">Territorio (solo Funcionarios)</label>
+                            <select name="territorio" id="crear_territorio" class="form-select">
+                                <option value="">Sin territorio</option>
+                                {% for territorio in territorios %}
+                                <option value="{{ territorio.pk }}" data-delegacion="{{ territorio.delegacion.nombre }}">{{ territorio.nombre }}{% if not solo_mi_delegacion %} ({{ territorio.delegacion }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Contraseña</label>
@@ -251,6 +454,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -260,5 +464,27 @@
         var pestana = document.getElementById('goals-tab');
         if (pestana) { bootstrap.Tab.getOrCreateInstance(pestana).show(); }
     }
+
+    // En el modal: el territorio solo aplica a Funcionarios y debe ser de la delegación elegida
+    (function () {
+        var rol = document.getElementById('crear_rol');
+        var delegacion = document.getElementById('crear_delegacion');
+        var territorio = document.getElementById('crear_territorio');
+        var bloque = document.getElementById('bloque_territorio');
+        if (!rol || !territorio) { return; }
+        function actualizar() {
+            bloque.style.display = rol.value === 'Funcionario' ? '' : 'none';
+            var codigo = delegacion ? delegacion.value : '';
+            Array.prototype.forEach.call(territorio.options, function (opcion) {
+                if (!opcion.value) { return; }
+                opcion.hidden = opcion.dataset.delegacion !== codigo;
+            });
+            var elegida = territorio.options[territorio.selectedIndex];
+            if (elegida && elegida.hidden) { territorio.value = ''; }
+        }
+        rol.addEventListener('change', actualizar);
+        if (delegacion) { delegacion.addEventListener('change', actualizar); }
+        actualizar();
+    })();
 </script>
 {% endblock %}

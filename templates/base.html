@@ -57,31 +57,16 @@
                             style="min-width: 180px;" 
                             onchange="document.getElementById('formDelegacionNav').submit();">
                         
-                        <option value="GENERAL" {% if request.GET.delegacion == 'GENERAL' or not request.GET.delegacion and not user.delegacion or user.delegacion == 'GENERAL' %}selected{% endif %}>
-                            GENERAL
-                        </option>
-                        <option value="RURAL" {% if request.GET.delegacion == 'RURAL' or not request.GET.delegacion and user.delegacion == 'RURAL' %}selected{% endif %}>
-                            RURAL
-                        </option>
-                        <option value="LAS_COMPANIAS" {% if request.GET.delegacion == 'LAS_COMPANIAS' or not request.GET.delegacion and user.delegacion == 'LAS_COMPANIAS' %}selected{% endif %}>
-                            LAS COMPAÑÍAS
-                        </option>
-                        <option value="LA_PAMPA" {% if request.GET.delegacion == 'LA_PAMPA' or not request.GET.delegacion and user.delegacion == 'LA_PAMPA' %}selected{% endif %}>
-                            LA PAMPA
-                        </option>
-                        <option value="LA_ANTENA" {% if request.GET.delegacion == 'LA_ANTENA' or not request.GET.delegacion and user.delegacion == 'LA_ANTENA' %}selected{% endif %}>
-                            LA ANTENA
-                        </option>
-                        <option value="CENTRO" {% if request.GET.delegacion == 'CENTRO' or not request.GET.delegacion and user.delegacion == 'CENTRO' %}selected{% endif %}>
-                            CENTRO
-                        </option>
+                        {% for valor, texto in delegaciones_navbar %}
+                        <option value="{{ valor }}" {% if request.GET.delegacion == valor or not request.GET.delegacion and valor == 'GENERAL' %}selected{% endif %}>{% if valor == 'GENERAL' %}GENERAL{% else %}{{ texto|upper }}{% endif %}</option>
+                        {% endfor %}
                     </select>
                 </form>
             {% else %}
                 <!-- Delegados y Funcionarios: Badge fijo con su delegación asignada -->
                 <span class="badge bg-muni-b2 text-white fw-bold px-3 py-2 fs-6 shadow-sm border border-light-subtle">
-                    {% if user.delegacion and user.delegacion != 'GENERAL' %}
-                        {{ user.get_delegacion_display|default:user.delegacion }}
+                    {% if user.delegacion %}
+                        {{ user.delegacion }}
                     {% else %}
                         GENERAL
                     {% endif %}
@@ -97,9 +82,13 @@
             <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-center">
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle d-flex align-items-center bg-muni-b2 px-3 py-1 rounded-pill text-white" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        {% if request.user.foto %}
+                        <img src="{{ request.user.foto.url }}" alt="Foto de perfil" class="rounded-circle me-2" style="width: 30px; height: 30px; object-fit: cover;">
+                        {% else %}
                         <div class="bg-muni-v2 text-white rounded-circle d-flex align-items-center justify-content-center me-2 fw-bold" style="width: 30px; height: 30px; font-size: 0.8rem;">
                             {{ request.user.first_name|slice:":1" }}{{ request.user.last_name|slice:":1" }}
                         </div>
+                        {% endif %}
                         <div class="text-start me-1">
                             <span class="fw-bold d-block tx-2">{{ request.user.get_full_name|default:request.user.username|upper }}</span>
                             <small class="text-white-50 d-block tx-1">{{ request.user.rol|default:request.user.cargo|default:"FUNCIONARIO"|upper }}</small>
@@ -108,8 +97,8 @@
                     <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 mt-2">
                         <li><h6 class="dropdown-header text-secondary fw-semibold">Opciones de {{ request.user.rol|default:"Funcionario" }}</h6></li>
                         
-                        <li><a class="dropdown-item py-2" href="{% url 'actividades:mi_gestion' %}"><i class="bi bi-person-vcard text-danger me-2"></i>Mi Ficha / Metas Trimestrales</a></li>
-                        <li><a class="dropdown-item py-2" href="{% url 'actividades:mi_gestion' %}#registros"><i class="bi bi-card-checklist text-success me-2"></i>Mis Registros y Fotos (ORC/COM)</a></li>
+                        <li><a class="dropdown-item py-2" href="{% url 'actividades:mi_gestion' %}"><i class="bi bi-person-vcard text-danger me-2"></i>Mi perfil</a></li>
+                        <li><a class="dropdown-item py-2" href="{% url 'users:perfil_editar' %}"><i class="bi bi-pencil-square text-success me-2"></i>Editar foto y datos de contacto</a></li>
                         
                         {% if request.user.rol == 'Admin' or request.user.is_superuser %}
                             <li><hr class="dropdown-divider"></li>
@@ -172,16 +161,16 @@
             {% endif %}
 
             <!-- 5. Semáforo (Supervisores / Control) -->
-            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Delegado' or request.user.rol == 'Consulta' or request.user.is_superuser %}
+            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Delegado' or request.user.is_superuser %}
             <li class="nav-item">
                 <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'semaforo' %}active{% else %}text-dark{% endif %}" href="{% url 'indicadores:semaforo' %}">
-                    <i class="bi bi-traffic-light me-1 text-danger"></i> Semáforo
+                    <i class="bi bi-stoplights me-1 text-danger"></i> Semáforo
                 </a>
             </li>
             {% endif %}
 
             <!-- 6. Resumen Delegación (Directivos / Control) -->
-            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Delegado' or request.user.rol == 'Consulta' or request.user.is_superuser %}
+            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Delegado' or request.user.is_superuser %}
             <li class="nav-item">
                 <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'resumen_delegacion' %}active{% else %}text-dark{% endif %}" href="{% url 'indicadores:resumen_delegacion' %}">
                     <i class="bi bi-pie-chart me-1 text-danger"></i> Resumen
@@ -189,11 +178,11 @@
             </li>
             {% endif %}
 
-            <!-- 7. Administración (Administrador y Coordinador) -->
-            {% if request.user.puede_administrar %}
+            <!-- 7. Administración (Admin gestiona; Coordinador visualiza; el Delegado ve los Funcionarios de su delegación) -->
+            {% if request.user.puede_ver_usuarios %}
             <li class="nav-item">
                 <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'administracion' %}active{% else %}text-dark{% endif %}" href="{% url 'users:administracion' %}">
-                    <i class="bi bi-gear-fill me-1 text-danger"></i> Administración
+                    <i class="bi bi-gear-fill me-1 text-danger"></i> {% if request.user.es_delegado %}Mi Delegación{% else %}Administración{% endif %}
                 </a>
             </li>
             {% endif %}
@@ -253,6 +242,30 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<!-- SweetAlert2: confirmación antes de eliminar. Todo formulario con data-confirmar="mensaje" pide confirmar -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js"></script>
+<script>
+    document.addEventListener('submit', function (evento) {
+        var form = evento.target;
+        if (!form.dataset || !form.dataset.confirmar || form.dataset.confirmado === 'si') { return; }
+        evento.preventDefault();
+        Swal.fire({
+            title: '¿Está seguro?',
+            text: form.dataset.confirmar,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#AD0000',
+            reverseButtons: true
+        }).then(function (resultado) {
+            if (resultado.isConfirmed) {
+                form.dataset.confirmado = 'si';
+                form.submit();
+            }
+        });
+    });
+</script>
 {% block extra_js %}{% endblock %}
 </body>
 </html>

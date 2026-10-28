@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}{% if object %}Editar{% else %}Crear{% endif %} Usuario — SGR{% endblock %}
+{% block title %}{% if object %}Editar{% else %}Crear{% endif %} Usuario | SGR{% endblock %}
 
 {% block content %}
 <main class="container py-4">
@@ -58,10 +58,16 @@
                                 <input type="text" name="last_name" class="form-control" value="{{ form.last_name.value|default:'' }}" required>
                             </div>
 
+                            <!-- Teléfono -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Teléfono</label>
+                                <input type="text" name="telefono" maxlength="20" class="form-control" value="{{ form.telefono.value|default:'' }}" placeholder="Ej: 912345678">
+                            </div>
+
                             <!-- Rol de Sistema -->
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold">Rol de Sistema</label>
-                                <select name="rol" class="form-select" required>
+                                <select name="rol" id="editar_rol" class="form-select" required>
                                     {% for valor, texto in roles_permitidos %}
                                     <option value="{{ valor }}" {% if form.rol.value == valor %}selected{% endif %}>{{ texto }}</option>
                                     {% endfor %}
@@ -88,11 +94,29 @@
                             <!-- Delegación Asignada -->
                             <div class="col-md-4">
                                 <label class="form-label fw-semibold">Delegación Asignada</label>
-                                <select name="delegacion" class="form-select">
+                                {% if solo_mi_delegacion %}
+                                    <!-- El Delegado solo gestiona su propia delegación: el campo queda fijo -->
+                                    <input type="hidden" name="delegacion" id="editar_delegacion" value="{{ request.user.delegacion.nombre }}">
+                                    <input type="text" class="form-control bg-light" value="{{ request.user.delegacion }}" readonly>
+                                {% else %}
+                                <select name="delegacion" id="editar_delegacion" class="form-select">
                                     {% for valor, texto in opciones_delegacion %}
                                     <option value="{{ valor }}" {% if form.delegacion.value == valor %}selected{% endif %}>{{ texto }}</option>
                                     {% endfor %}
                                 </select>
+                                {% endif %}
+                            </div>
+
+                            <!-- Territorio (solo Funcionarios, de su delegación) -->
+                            <div class="col-md-6" id="bloque_territorio">
+                                <label class="form-label fw-semibold" for="editar_territorio">Territorio (solo Funcionarios)</label>
+                                <select name="territorio" id="editar_territorio" class="form-select {% if form.territorio.errors %}is-invalid{% endif %}">
+                                    <option value="">Sin territorio</option>
+                                    {% for territorio in territorios %}
+                                    <option value="{{ territorio.pk }}" data-delegacion="{{ territorio.delegacion.nombre }}" {% if form.territorio.value|stringformat:"s" == territorio.pk|stringformat:"s" %}selected{% endif %}>{{ territorio.nombre }}{% if not solo_mi_delegacion %} ({{ territorio.delegacion }}){% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                                {% for error in form.territorio.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                             </div>
 
                             <!-- Usuario Activo Switch -->
@@ -109,7 +133,7 @@
                         <hr class="my-4">
 
                         <div class="d-flex justify-content-end gap-2">
-                            <a href="{% url 'users:administracion' %}" class="btn btn-outline-secondary">Cancelar</a>
+                            <a href="{% url 'users:administracion' %}?pestana=usuarios" class="btn btn-outline-secondary">Cancelar</a>
                             <button type="submit" class="btn btn-primary px-4 fw-bold">
                                 <i class="bi bi-save me-1"></i> Guardar Cambios
                             </button>
@@ -120,4 +144,27 @@
         </div>
     </div>
 </main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // El territorio solo aplica a Funcionarios y debe ser de la delegación elegida
+    (function () {
+        var rol = document.getElementById('editar_rol');
+        var delegacion = document.getElementById('editar_delegacion');
+        var territorio = document.getElementById('editar_territorio');
+        var bloque = document.getElementById('bloque_territorio');
+        function actualizar() {
+            bloque.style.display = rol.value === 'Funcionario' ? '' : 'none';
+            Array.prototype.forEach.call(territorio.options, function (opcion) {
+                if (opcion.value) { opcion.hidden = opcion.dataset.delegacion !== delegacion.value; }
+            });
+            var elegida = territorio.options[territorio.selectedIndex];
+            if (elegida && elegida.hidden) { territorio.value = ''; }
+        }
+        rol.addEventListener('change', actualizar);
+        delegacion.addEventListener('change', actualizar);
+        actualizar();
+    })();
+</script>
 {% endblock %}

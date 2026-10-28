@@ -1,14 +1,15 @@
 {% extends 'base.html' %}
 
-{% block title %}Verificación — Ilustre Municipalidad de La Serena{% endblock %}
+{% block title %}Verificación | Ilustre Municipalidad de La Serena{% endblock %}
 
 {% block content %}
 <main class="container py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <h3 class="m-0 fw-bold"><i class="bi bi-shield-check text-danger me-2"></i>Verificación de Evidencias</h3>
-        {% url 'admin:ActividadesApp_evidencia_add' as url_agregar %}
+        <h3 class="m-0 fw-bold"><i class="bi bi-shield-check text-danger me-2"></i>Verificación de Actividades Ejecutadas</h3>
+        {# Buscar y Agregar en Django Admin: solo el Administrador (el Delegado valida desde esta pantalla) #}
         {% url 'admin:ActividadesApp_evidencia_changelist' as url_buscar %}
-        {% include 'components/barra_crud.html' with url_agregar=url_agregar url_buscar=url_buscar texto_agregar="Agregar Evidencia" %}
+        {% url 'admin:ActividadesApp_evidencia_add' as url_agregar %}
+        {% include 'components/barra_crud.html' with url_buscar=url_buscar url_agregar=url_agregar solo_admin=True %}
     </div>
 
     <div class="row g-4">
@@ -24,7 +25,7 @@
                     <small class="{% if evidencia.id == evidencia_seleccionada.id %}text-white-50{% else %}text-muted{% endif %}">Item: {{ evidencia.item }}</small>
                 </a>
                 {% empty %}
-                <div class="list-group-item p-3 text-muted text-center">No hay evidencias pendientes por auditar.</div>
+                <div class="list-group-item p-3 text-muted text-center">No hay ejecuciones pendientes de validar.</div>
                 {% endfor %}
             </div>
         </div>
@@ -38,22 +39,22 @@
                     {% if evidencia_seleccionada %}
                     <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                         <div>
-                            <p class="mb-1"><strong>Actividad:</strong> <a href="{% url 'actividades:actividad_detalle' evidencia_seleccionada.actividad_id %}">{{ evidencia_seleccionada.folio }}</a> · {{ evidencia_seleccionada.accion }} (versión {{ evidencia_seleccionada.version }} de la evidencia)</p>
+                            <p class="mb-1"><strong>Actividad:</strong> <a href="{% url 'actividades:actividad_detalle' evidencia_seleccionada.actividad_id %}">{{ evidencia_seleccionada.folio }}</a> · {{ evidencia_seleccionada.accion }} (versión {{ evidencia_seleccionada.version }} de la ejecución)</p>
                             <p class="mb-1"><strong>Descripción:</strong> {{ evidencia_seleccionada.descripcion }}</p>
-                            {% if evidencia_seleccionada.fue_compromiso %}<p class="mb-1 small text-muted">Venía del Tubo de Trabajo (fecha límite {{ evidencia_seleccionada.fecha_comprometida|date:"d/m/Y" }}).</p>{% endif %}
-                            {% if evidencia_seleccionada.comentario %}<p class="mb-0 small"><strong>Comentario del funcionario:</strong> {{ evidencia_seleccionada.comentario }}</p>{% endif %}
+                            <p class="mb-1 small text-muted">Realizada el {{ evidencia_seleccionada.fecha_realizacion|date:"d/m/Y"|default:"-" }}{% if evidencia_seleccionada.depende_externos %} · venía del Tubo de Trabajo{% endif %}{% if evidencia_seleccionada.encargado %} · encargado: {{ evidencia_seleccionada.encargado.get_full_name }}{% endif %}</p>
+                            <p class="mb-0"><strong>Lo que se hizo:</strong> {{ evidencia_seleccionada.comentario|default:"-" }}</p>
                         </div>
                         {% url 'admin:ActividadesApp_evidencia_change' evidencia_seleccionada.id as url_modificar %}
                         {% url 'admin:ActividadesApp_evidencia_delete' evidencia_seleccionada.id as url_eliminar %}
-                        {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar %}
+                        {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar solo_admin=True %}
                     </div>
 
                     <div class="bg-gris-90 text-white text-center p-4 rounded mb-3">
                         {% if evidencia_seleccionada.imagen %}
                         <img src="{{ evidencia_seleccionada.imagen.url }}" class="img-fluid rounded" alt="Evidencia">
                         {% else %}
-                        <i class="bi bi-file-earmark-image display-4 d-block mb-2"></i>
-                        <span>[ Vista Previa de Fotografía ]</span>
+                        <i class="bi bi-camera-video-off display-6 d-block mb-2"></i>
+                        <span>Esta ejecución se registró sin fotografía (es opcional).</span>
                         {% endif %}
                     </div>
 
@@ -61,20 +62,20 @@
                         {% csrf_token %}
                         <div class="mb-3">
                             <label class="form-label">Observaciones de Verificación</label>
-                            <textarea name="observacion" class="form-control" rows="2" placeholder="Obligatoria para rechazar: indique por qué la evidencia no es válida."></textarea>
-                            <small class="text-muted">Validar completa la actividad. Rechazar invalida solo la evidencia: la actividad sigue vigente y el funcionario debe subir una nueva.</small>
+                            <textarea name="observacion" class="form-control" rows="2" placeholder="Obligatoria para rechazar: indique el motivo."></textarea>
+                            <small class="text-muted">Validar completa la actividad. Rechazar no anula la actividad: el responsable debe registrar nuevamente la ejecución.</small>
                         </div>
                         <div class="d-flex gap-2">
                             <button type="submit" name="decision" value="APROBAR" class="btn btn-muni flex-fill">
                                 <i class="bi bi-check-circle me-1"></i> Validar (completar)
                             </button>
                             <button type="submit" name="decision" value="RECHAZAR" class="btn btn-muni-b5 flex-fill">
-                                <i class="bi bi-x-circle me-1"></i> Rechazar evidencia
+                                <i class="bi bi-x-circle me-1"></i> Rechazar
                             </button>
                         </div>
                     </form>
                     {% else %}
-                    <p class="text-muted text-center my-4">Seleccione una evidencia del listado lateral.</p>
+                    <p class="text-muted text-center my-4">Seleccione una ejecución del listado lateral.</p>
                     {% endif %}
                 </div>
             </div>

@@ -1,13 +1,13 @@
 from decimal import Decimal
 
-from IndicadoresApp.models import MetaDesempeno, IndicadorDesempeno
+from IndicadoresApp.models import IndicadorDesempeno, metas_para
 
 
 def indicadores_usuario(usuario, periodo, fecha):
     lista = []
     if periodo is None or usuario.cargo_id is None:
         return lista
-    metas = MetaDesempeno.objects.filter(cargo_id=usuario.cargo_id, periodo=periodo).select_related('item', 'periodo')
+    metas = metas_para(usuario.cargo_id, periodo, usuario.delegacion_id)
     for meta in metas:
         indicador = IndicadorDesempeno.objects.filter(usuario=usuario, meta=meta, fecha_calculo=fecha).first()
         if indicador is None:

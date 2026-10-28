@@ -4,17 +4,20 @@ roles = (
     ('Coordinador', 'Coordinador'),
     ('Delegado', 'Delegado'),
     ('Funcionario', 'Funcionario'),
-    ('Consulta', 'Usuario Consulta'),
 )
 
 # Orden de importancia
-orden_roles = ['Admin', 'Coordinador', 'Delegado', 'Funcionario', 'Consulta']
+orden_roles = ['Admin', 'Coordinador', 'Delegado', 'Funcionario']
 
 # Grupos de roles que usan las views y los templates (una sola fuente para los permisos)
-ROLES_ADMINISTRACION = ['Admin', 'Coordinador']          # usuarios, metas, auditoría, modificar y eliminar
-ROLES_REGISTRO = ['Admin', 'Coordinador', 'Funcionario']  # agregan actividades y compromisos
-ROLES_VERIFICACION = ['Admin', 'Coordinador', 'Delegado']  # validan evidencias y cambian estados del Tubo
-ROLES_RESERVADOS = ['Admin', 'Coordinador']              # solo el Admin puede asignarlos
+ROLES_ADMINISTRACION = ['Admin', 'Coordinador']             # metas, auditoría y todas las delegaciones
+ROLES_VER_USUARIOS = ['Admin', 'Coordinador', 'Delegado']  # ven la pantalla de usuarios (el Coordinador solo mira)
+ROLES_GESTION_USUARIOS = ['Admin', 'Delegado']             # crean y editan (el Delegado, solo Funcionarios de su delegación)
+ROLES_METAS = ['Admin', 'Delegado']                        # agregan y editan metas (el Delegado, las de su delegación)
+ROLES_REGISTRO = ['Admin', 'Funcionario']                  # agregan actividades (el Coordinador solo las ve)
+ROLES_VERIFICACION = ['Admin', 'Delegado']                 # validan la ejecución (el Delegado, en su delegación)
+ROLES_ASIGNAN_ENCARGADO = ['Admin', 'Coordinador', 'Delegado']  # asignan un Funcionario a una actividad pendiente
+ROLES_RESERVADOS = ['Admin', 'Coordinador']                # solo el Admin puede asignarlos
 
 # «enumeration» EstadoRegistro
 estados_registro = (
@@ -22,7 +25,8 @@ estados_registro = (
     ('INACTIVO', 'Inactivo'),
 )
 
-# Nombres de las delegaciones
+# Delegaciones iniciales (las usa la migración 0005). Desde ahí, el Administrador las agrega y edita en Gestión,
+# así que la lista para los <select> se arma desde la base de datos: UsuarioApp.funciones.opciones_delegacion()
 delegaciones = (
     ('RURAL', 'Rural'),
     ('LAS_COMPANIAS', 'Las Compañías'),
@@ -30,9 +34,6 @@ delegaciones = (
     ('LA_ANTENA', 'La Antena'),
     ('CENTRO', 'Centro'),
 )
-
-# Opción para ver todas las delegaciones juntas
-opciones_delegacion = (('GENERAL', 'General (Toda la Municipalidad)'),) + delegaciones
 
 # «enumeration» TipoCatalogo
 tipos_catalogo = (

@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+
+{% block title %}Editar perfil | SGR{% endblock %}
+
+{% block content %}
+{% comment %}
+Cada usuario edita sus propios datos de contacto y su foto. Nombre, cargo, rol y delegación
+no se editan aquí: los asigna quien administra los usuarios.
+{% endcomment %}
+<main class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-7">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni-b1 text-white fw-bold py-3 d-flex align-items-center">
+                    <i class="bi bi-person-circle me-2 fs-5"></i>
+                    <span>Editar mi perfil</span>
+                </div>
+                <div class="card-body p-4">
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>
+                    {% endif %}
+
+                    <form method="post" enctype="multipart/form-data" novalidate>
+                        {% csrf_token %}
+                        <div class="d-flex flex-wrap align-items-center gap-4 mb-4">
+                            {% if request.user.foto %}
+                            <img src="{{ request.user.foto.url }}" alt="Foto de perfil actual" class="perfil-avatar perfil-foto-previa" id="foto_previa">
+                            {% else %}
+                            <div class="perfil-avatar perfil-foto-previa perfil-iniciales bg-muni-v2" id="iniciales_previa">{{ request.user.first_name|slice:":1" }}{{ request.user.last_name|slice:":1" }}</div>
+                            <img src="" alt="Vista previa de la nueva foto" class="perfil-avatar perfil-foto-previa d-none" id="foto_previa">
+                            {% endif %}
+                            <div class="flex-grow-1">
+                                <h5 class="fw-bold mb-1">{{ request.user.get_full_name|default:request.user.username }}</h5>
+                                <p class="text-muted small mb-2">{{ request.user.cargo|default:"Sin cargo" }} · {{ request.user.delegacion|default:"Todas las delegaciones" }}</p>
+                                <label class="form-label fw-semibold" for="id_foto">{{ form.foto.label }}</label>
+                                <input type="file" name="foto" id="id_foto" accept=".jpg,.jpeg,.png" class="form-control {% if form.foto.errors %}is-invalid{% endif %}">
+                                {% for error in form.foto.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                {% if request.user.foto %}
+                                <div class="form-check mt-2">
+                                    <input class="form-check-input" type="checkbox" name="quitar_foto" id="id_quitar_foto">
+                                    <label class="form-check-label small" for="id_quitar_foto">{{ form.quitar_foto.label }}</label>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="id_email">{{ form.email.label }}</label>
+                                <input type="email" name="email" id="id_email" value="{{ form.email.value|default:'' }}" class="form-control {% if form.email.errors %}is-invalid{% endif %}" required>
+                                {% for error in form.email.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="id_telefono">{{ form.telefono.label }}</label>
+                                <input type="text" name="telefono" id="id_telefono" maxlength="20" value="{{ form.telefono.value|default:'' }}" class="form-control {% if form.telefono.errors %}is-invalid{% endif %}" placeholder="Ej: 912345678">
+                                {% for error in form.telefono.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+                        </div>
+
+                        <p class="small text-muted mt-3 mb-0"><i class="bi bi-info-circle me-1"></i>Para cambiar su nombre, cargo, rol o delegación, contacte a quien administra los usuarios de su delegación.</p>
+
+                        <hr class="my-4">
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'actividades:mi_gestion' %}" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-muni fw-bold px-4"><i class="bi bi-save me-1"></i>Guardar cambios</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Vista previa de la foto elegida antes de guardar (solo ayuda visual)
+    (function () {
+        var input = document.getElementById('id_foto');
+        var previa = document.getElementById('foto_previa');
+        var iniciales = document.getElementById('iniciales_previa');
+        input.addEventListener('change', function () {
+            if (!input.files || !input.files[0]) { return; }
+            previa.src = URL.createObjectURL(input.files[0]);
+            previa.classList.remove('d-none');
+            if (iniciales) { iniciales.classList.add('d-none'); }
+        });
+    })();
+</script>
+{% endblock %}
