@@ -5,6 +5,9 @@ from django.shortcuts import redirect
 from AuditoriaApp.registro import registrar_auditoria
 from UsuarioApp.models import Delegacion
 
+from functools import wraps
+from django.contrib.auth.decorators import login_required
+
 
 def limpiar_rut(rut):
     rut = rut.replace('.', '').replace(' ', '').upper()
@@ -57,6 +60,18 @@ def acceso_denegado(request, pantalla):
                         '', f"Intento de acceso a {pantalla}")
     messages.error(request, f"No tienes permisos para acceder a {pantalla}.")
     return redirect('actividades:mi_gestion')
+
+def permiso_requerido(permiso, pantalla):
+    """Pide sesión y el permiso de Django (ej. 'IndicadoresApp.view_metadesempeno').
+    Sin sesión manda al login; sin permiso, lo anota en auditoría y vuelve a Mi Gestión."""
+    def decorador(vista):
+        @wraps(vista)
+        def envoltura(request, *args, **kwargs):
+            if not request.user.has_perm(permiso):
+                return acceso_denegado(request, pantalla)
+            return vista(request, *args, **kwargs)
+        return login_required(envoltura)
+    return decorador
 
 
 def opciones_delegacion():

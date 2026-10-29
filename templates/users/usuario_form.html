@@ -66,7 +66,7 @@
 
                             <!-- Rol de Sistema -->
                             <div class="col-md-4">
-                                <label class="form-label fw-semibold">Rol de Sistema</label>
+                                <label class="form-label fw-semibold">Perfil (grupo)</label>
                                 <select name="rol" id="editar_rol" class="form-select" required>
                                     {% for valor, texto in roles_permitidos %}
                                     <option value="{{ valor }}" {% if form.rol.value == valor %}selected{% endif %}>{{ texto }}</option>
