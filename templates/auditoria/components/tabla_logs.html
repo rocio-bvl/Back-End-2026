@@ -2,10 +2,6 @@
     <div class="d-flex justify-content-end align-items-center mb-3">
         <div class="d-flex flex-wrap align-items-center gap-2">
             <span class="badge bg-muni-b5">Trazabilidad Total</span>
-            {% comment %} Agregar, Modificar y Eliminar solo para el Administrador (superusuario en Django Admin). Para el Coordinador la auditoría es de solo lectura. {% endcomment %}
-            {% url 'admin:AuditoriaApp_auditoria_changelist' as url_buscar %}
-            {% url 'admin:AuditoriaApp_auditoria_add' as url_agregar %}
-            {% include 'components/barra_crud.html' with url_buscar=url_buscar url_agregar=url_agregar solo_admin=True %}
         </div>
     </div>
 
@@ -20,7 +16,6 @@
                     <th>ID RECURSO</th>
                     <th>VALOR ANTERIOR</th>
                     <th>VALOR NUEVO</th>
-                    {% if request.user.es_administrador %}<th>ACCIONES</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -43,17 +38,10 @@
                     <td class="text-center fw-bold" data-cell="ID">{{ log.id_entidad }}</td>
                     <td class="text-muted text-truncate" style="max-width: 180px;" data-cell="ANTERIOR">{{ log.valor_anterior|default:"-" }}</td>
                     <td class="fw-semibold text-truncate" style="max-width: 180px;" data-cell="NUEVO">{{ log.valor_nuevo|default:"-" }}</td>
-                    {% if request.user.es_administrador %}
-                    <td class="text-center" data-cell="ACCIONES">
-                        {% url 'admin:AuditoriaApp_auditoria_change' log.pk as url_modificar %}
-                        {% url 'admin:AuditoriaApp_auditoria_delete' log.pk as url_eliminar %}
-                        {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar solo_admin=True %}
-                    </td>
-                    {% endif %}
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-3">No hay registros de auditoría almacenados.</td>
+                    <td colspan="7" class="text-center text-muted py-3">No hay registros de auditoría almacenados.</td>
                 </tr>
                 {% endfor %}
             </tbody>
