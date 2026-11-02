@@ -71,7 +71,7 @@ class UsuarioCrearForm(forms.Form):
 
 
 class UsuarioEditarForm(forms.ModelForm):
-    rol = forms.ChoiceField(choices=roles, label="Rol")
+    rol = forms.ChoiceField(choices=roles, label="Perfil (grupo)")
     delegacion = forms.ChoiceField(choices=opciones_delegacion, label="Delegación")
 
     class Meta:
