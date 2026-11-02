@@ -11,7 +11,7 @@ from ActividadesApp.choices import ESTADOS_PENDIENTES
 from ActividadesApp.forms import (ActividadForm, EjecucionForm, FechaRealizacionForm, ComentarioForm, EncargadoForm,
                                   AtencionForm, solicitudes_para, validar_imagen)
 from ActividadesApp.models import (Actividad, Evidencia, Validacion, AtencionSocial, ComentarioActividad,
-                                   DIAS_POR_VENCER)
+                                   Territorio, DIAS_POR_VENCER)
 from AuditoriaApp.registro import registrar_auditoria
 from IndicadoresApp.calculos import indicadores_usuario, total_ponderado
 from IndicadoresApp.models import periodo_vigente
@@ -450,27 +450,44 @@ def tubo_trabajo(request):
         return acceso_denegado(request, 'Tubo de Trabajo')
 
     codigo, delegacion, nombre = delegacion_seleccionada(request)
-    # El Tubo son las actividades que dependen de factores externos: se registran sin fecha
+    usuario = request.user
+    # El Funcionario solo ve lo suyo (lo que registró o donde es encargado), igual que en Mi Gestión,
+    # y solo filtra por estado. Admin y Coordinador ven todo o la delegación elegida; el Delegado, la suya.
+    solo_lo_suyo = not usuario.tiene_rol(['Admin', 'Coordinador', 'Delegado'])
+    # El Tubo son las actividades que dependen de factores externos
     actividades = Actividad.objects.filter(depende_externos=True).select_related('usuario', 'encargado', 'territorio', 'item')
-    if delegacion is not None:
-        # Todos los de la delegación ven la agenda colectiva
+    if solo_lo_suyo:
+        actividades = actividades.filter(Q(usuario=usuario) | Q(encargado=usuario))
+    elif delegacion is not None:
         actividades = actividades.filter(usuario__delegacion=delegacion)
-    elif not request.user.tiene_rol(['Admin', 'Coordinador']):
-        # Sin delegación asignada: solo lo propio
-        actividades = actividades.filter(Q(usuario=request.user) | Q(encargado=request.user))
+    elif not usuario.tiene_rol(['Admin', 'Coordinador']):
+        # Delegado sin delegación asignada: solo lo propio
+        actividades = actividades.filter(Q(usuario=usuario) | Q(encargado=usuario))
 
     filtros = {
-        'responsable': request.GET.get('responsable', ''),
+        'responsable': request.GET.get('responsable', '').strip(),
         'estado': request.GET.get('estado', ''),
         'territorio': request.GET.get('territorio', ''),
         'mios': request.GET.get('mios', ''),
     }
-    responsables = Usuario.objects.filter(Q(pk__in=actividades.values('usuario')) | Q(pk__in=actividades.values('encargado'))).order_by('first_name', 'last_name')
-    territorios = sorted({a.territorio for a in actividades if a.territorio}, key=lambda t: t.nombre)
+    if solo_lo_suyo:
+        # Aunque lleguen en la dirección, el Funcionario no usa estos filtros
+        filtros.update({'responsable': '', 'territorio': '', 'mios': ''})
+
+    # Territorios del filtro: los de la delegación elegida, o los de todas si está en GENERAL
+    territorios = Territorio.objects.filter(estado='ACTIVO').select_related('delegacion')
+    if delegacion is not None:
+        territorios = territorios.filter(delegacion=delegacion)
+    territorios = territorios.order_by('delegacion__nombre_visible', 'nombre')
 
     hoy = timezone.localdate()
-    if filtros['responsable'].isdigit():
-        actividades = actividades.filter(Q(usuario_id=filtros['responsable']) | Q(encargado_id=filtros['responsable']))
+    if filtros['responsable']:
+        # Buscador: nombre, apellido o RUT de quien la registró o de su encargado
+        texto = filtros['responsable']
+        actividades = actividades.filter(
+            Q(usuario__first_name__icontains=texto) | Q(usuario__last_name__icontains=texto) |
+            Q(usuario__username__icontains=texto) | Q(encargado__first_name__icontains=texto) |
+            Q(encargado__last_name__icontains=texto) | Q(encargado__username__icontains=texto)).distinct()
     if filtros['estado'] == 'SIN_FECHA':
         actividades = actividades.filter(estado='EN_TUBO')
     elif filtros['estado'] == 'CON_FECHA':
@@ -496,9 +513,10 @@ def tubo_trabajo(request):
         'delegacion_actual': f"Delegación {nombre}",
         'codigo_delegacion': codigo,
         'filtros': filtros,
-        'responsables': responsables,
         'territorios': territorios,
         'estados_filtro': ESTADOS_FILTRO_TUBO,
+        'solo_lo_suyo': solo_lo_suyo,
+        'por_delegacion': delegacion is None,  # en GENERAL los territorios se agrupan por delegación
     }
     return render(request, 'actividades/tubo_trabajo.html', data)
 
