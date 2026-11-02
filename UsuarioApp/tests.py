@@ -112,7 +112,9 @@ class RequisitosEvaluacionTest(TestCase):
         self.client.login(username='11111111-1', password=CLAVE)
         for nombre in ['actividades:mi_gestion', 'actividades:tubo_trabajo', 'actividades:gestion_social', 'actividades:verificacion', 'indicadores:semaforo', 'indicadores:resumen_delegacion','users:administracion', 'auditoria:logs']:
             html = self.client.get(reverse(nombre)).content.decode()
-            for texto in ['Agregar', 'Buscar']:
+            # El Semáforo no tiene Agregar: sus indicadores se calculan solos (J4). Sí tiene su buscador propio
+            textos = ['Buscar'] if nombre == 'indicadores:semaforo' else ['Agregar', 'Buscar']
+            for texto in textos:
                 self.assertIn(texto, html, f"{nombre}: falta {texto}")
 
 
@@ -397,11 +399,13 @@ class BotonesSegunRolTest(TestCase):
 
     def test_delegado_no_ve_botones_crud(self):
         for rut, pantalla in [('33333333-3', 'actividades:mi_gestion'), ('33333333-3', 'actividades:verificacion'),
-                              ('33333333-3', 'actividades:tubo_trabajo'), ('33333333-3', 'indicadores:semaforo'),
-                              ('33333333-3', 'indicadores:resumen_delegacion')]:
+                              ('33333333-3', 'actividades:tubo_trabajo')]:
             html = self.html(rut, pantalla)
             for texto in ['Agregar', 'Modificar', 'Eliminar', 'Buscar']:
                 self.assertNotIn(texto, html, f"{pantalla}: {texto}")
+        # Semáforo y Resumen (J4): el Delegado gestiona su equipo y sus metas desde pantallas propias, nunca /admin/
+        for pantalla in ['indicadores:semaforo', 'indicadores:resumen_delegacion']:
+            self.assertNotIn('/admin/', self.html('33333333-3', pantalla), pantalla)
 
     def test_admin_ve_todo_y_actividades_registradas_no_duplica_agregar(self):
         html = self.html('11111111-1', 'actividades:mi_gestion')
@@ -710,3 +714,153 @@ class ProteccionVistasTest(TestCase):
         self.client.login(username='22222222-2', password=CLAVE)  # Supervisor: ve, pero no crea
         self.assertEqual(self.client.get(reverse('users:administracion')).status_code, 200)
         self.assertRedirects(self.client.get(reverse('users:usuario_crear')), reverse('actividades:mi_gestion'))
+
+
+class RecuperacionContrasenaTest(TestCase):
+    """J3: recuperar la contraseña por correo con las vistas de Django."""
+
+    def setUp(self):
+        crear_datos_base()
+        self.func = crear_usuario('55555555-5', 'Funcionario')
+
+    def test_flujo_completo(self):
+        from django.core import mail
+        self.assertContains(self.client.get(reverse('users:login')), reverse('users:recuperar'))
+        respuesta = self.client.post(reverse('users:recuperar'), {'email': self.func.email})
+        self.assertRedirects(respuesta, reverse('users:recuperar_enviado'))
+        self.assertEqual(len(mail.outbox), 1)
+        correo = mail.outbox[0]
+        self.assertEqual(correo.to, [self.func.email])
+        # El enlace del correo lleva uid y token; Django lo cambia por una dirección sin el token y pide la clave nueva
+        enlace = [linea for linea in correo.body.splitlines() if '/usuarios/recuperar/' in linea][0].strip()
+        ruta = enlace.split('testserver', 1)[1]
+        formulario = self.client.get(ruta, follow=True)
+        self.assertTrue(formulario.context['validlink'])
+        url_formulario = formulario.redirect_chain[-1][0]
+        respuesta = self.client.post(url_formulario, {'new_password1': 'NuevaClave#2026', 'new_password2': 'NuevaClave#2026'})
+        self.assertRedirects(respuesta, reverse('users:recuperar_listo'))
+        self.assertTrue(self.client.login(username='55555555-5', password='NuevaClave#2026'))
+        # El enlace es de un solo uso
+        self.client.logout()
+        self.assertFalse(self.client.get(ruta, follow=True).context['validlink'])
+
+    def test_correo_inexistente_no_revela_nada(self):
+        from django.core import mail
+        respuesta = self.client.post(reverse('users:recuperar'), {'email': 'nadie@laserena.cl'})
+        self.assertRedirects(respuesta, reverse('users:recuperar_enviado'))
+        self.assertEqual(len(mail.outbox), 0)
+
+
+class ResumenSinDjangoAdminTest(TestCase):
+    """J4: Resumen y Semáforo usan pantallas propias."""
+
+    def setUp(self):
+        self.datos = crear_datos_base()
+        self.admin = crear_usuario('11111111-1', 'Admin')
+        self.func = crear_usuario('55555555-5', 'Funcionario', self.datos['delegacion'], self.datos['cargo'])
+        self.client.login(username='11111111-1', password=CLAVE)
+
+    def test_resumen_apunta_a_pantallas_propias(self):
+        meta = MetaDesempeno.objects.first()
+        html = self.client.get(reverse('indicadores:resumen_delegacion')).content.decode()
+        self.assertNotIn('/admin/', html)
+        for url in [reverse('users:administracion') + '?pestana=metas', reverse('indicadores:meta_editar', args=[meta.pk]),
+                    reverse('indicadores:meta_eliminar', args=[meta.pk]), reverse('users:usuario_editar', args=[self.func.pk]),
+                    reverse('users:usuario_eliminar', args=[self.func.pk])]:
+            self.assertIn(url, html)
+        self.assertIn('data-confirmar', html)
+
+    def test_semaforo_sin_admin_y_con_buscador(self):
+        html = self.client.get(reverse('indicadores:semaforo')).content.decode()
+        self.assertNotIn('/admin/', html)
+        self.assertNotIn('Agregar', html)
+        filas = self.client.get(reverse('indicadores:semaforo'), {'q': 'zzz'}).context['seguimiento']
+        self.assertEqual(filas, [])
+        filas = self.client.get(reverse('indicadores:semaforo'), {'q': '55555555'}).context['seguimiento']
+        self.assertEqual(len(filas), 1)
+
+
+class TableroPorPerfilTest(TestCase):
+    """J5: cada grupo ve un tablero distinto."""
+
+    def setUp(self):
+        self.datos = crear_datos_base()
+        crear_usuario('11111111-1', 'Admin')
+        crear_usuario('22222222-2', 'Coordinador')
+        crear_usuario('33333333-3', 'Delegado', self.datos['delegacion'])
+        crear_usuario('55555555-5', 'Funcionario', self.datos['delegacion'], self.datos['cargo'])
+
+    def tablero(self, rut):
+        self.client.login(username=rut, password=CLAVE)
+        return self.client.get(reverse('indicadores:dashboard'))
+
+    def test_plantilla_segun_grupo(self):
+        for rut, plantilla in [('11111111-1', 'indicadores/dashboard_admin.html'),
+                               ('22222222-2', 'indicadores/dashboard_coordinador.html'),
+                               ('33333333-3', 'indicadores/dashboard_delegado.html'),
+                               ('55555555-5', 'indicadores/dashboard_administrativo.html')]:
+            self.assertTemplateUsed(self.tablero(rut), plantilla)
+
+    def test_coordinador_compara_delegaciones(self):
+        respuesta = self.tablero('22222222-2')
+        filas = respuesta.context['delegaciones']
+        self.assertEqual([str(fila['delegacion']) for fila in filas], ['Las Compañías', 'Rural'])
+        self.assertEqual(filas[0]['responsables'], 1)  # el Funcionario con cargo de Las Compañías
+        html = respuesta.content.decode()
+        self.assertIn(reverse('indicadores:semaforo') + '?delegacion=RURAL', html)
+        self.assertNotIn('/admin/', html)
+        # El selector de la barra filtra las tarjetas de arriba; la tabla sigue mostrando todas
+        rural = self.client.get(reverse('indicadores:dashboard'), {'delegacion': 'RURAL'})
+        self.assertEqual(rural.context['delegacion_actual'], 'Delegación Rural')
+        self.assertEqual(len(rural.context['delegaciones']), 2)
+        self.assertEqual(respuesta.context['delegacion_actual'], 'Toda la municipalidad')
+
+    def test_accesos_segun_permisos(self):
+        html = self.tablero('11111111-1').content.decode()
+        for url in [reverse('users:administracion') + '?pestana=usuarios', reverse('users:administracion') + '?pestana=metas',
+                    reverse('actividades:gestion_social'), reverse('auditoria:logs')]:
+            self.assertIn(url, html)
+        html = self.tablero('22222222-2').content.decode()  # Supervisor: semáforo y resumen, pero no verifica
+        self.assertIn(reverse('indicadores:semaforo'), html)
+        self.assertNotIn(reverse('actividades:verificacion') + '"', html.split('<main role="main">')[1])
+        html = self.tablero('55555555-5').content.decode()  # Administrativo: lo suyo
+        self.assertIn(reverse('actividades:actividad_crear'), html)
+        self.assertNotIn(reverse('indicadores:semaforo'), html.split('<main role="main">')[1])
+
+
+class ValidadorContrasenaTest(TestCase):
+    """La contraseña debe combinar mayúscula, minúscula, número y símbolo (UsuarioApp/validators.py)."""
+
+    def test_reglas_de_complejidad(self):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError
+        validate_password('Serena2026!')  # la de los datos de prueba cumple todo
+        with self.assertRaises(ValidationError) as error:
+            validate_password('serenacasa')
+        self.assertIn('una letra mayúscula, un número y un símbolo especial', ' '.join(error.exception.messages))
+        for clave in ['SERENA2026!', 'serena2026!', 'Serena!casa', 'Serena2026x']:
+            with self.assertRaises(ValidationError, msg=clave):
+                validate_password(clave)
+
+    def test_crear_usuario_con_clave_debil_no_se_guarda(self):
+        crear_datos_base()
+        crear_usuario('11111111-1', 'Admin')
+        self.client.login(username='11111111-1', password=CLAVE)
+        self.client.post(reverse('users:usuario_crear'), {
+            'rut': '12.345.678-5', 'email': 'nuevo@laserena.cl', 'first_name': 'A', 'last_name': 'B',
+            'rol': 'Funcionario', 'cargo': 'TERR', 'delegacion': 'LAS_COMPANIAS', 'territorio': '',
+            'password1': 'serenacasa', 'password2': 'serenacasa'})
+        self.assertFalse(Usuario.objects.filter(username='12345678-5').exists())
+
+    def test_recuperacion_rechaza_clave_debil(self):
+        from django.core import mail
+        crear_datos_base()
+        func = crear_usuario('55555555-5', 'Funcionario')
+        self.client.post(reverse('users:recuperar'), {'email': func.email})
+        enlace = [l for l in mail.outbox[0].body.splitlines() if '/usuarios/recuperar/' in l][0].strip()
+        formulario = self.client.get(enlace.split('testserver', 1)[1], follow=True)
+        url = formulario.redirect_chain[-1][0]
+        respuesta = self.client.post(url, {'new_password1': 'serenacasa', 'new_password2': 'serenacasa'})
+        self.assertEqual(respuesta.status_code, 200)  # vuelve al formulario con el error
+        self.assertContains(respuesta, 'una letra mayúscula')
+        self.assertTrue(self.client.login(username='55555555-5', password=CLAVE))  # la clave anterior sigue vigente

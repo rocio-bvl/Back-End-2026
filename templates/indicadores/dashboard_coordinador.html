@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+
+{% block title %}Tablero del Coordinador | Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+{% comment %}
+Tablero del grupo Supervisor (Coordinador): supervisa toda la comuna y solo visualiza.
+Compara las delegaciones entre sí para ver dónde hay que apoyar.
+{% endcomment %}
+<main class="container-fluid px-md-4 py-4">
+    <h2 class="mb-4">Tablero del Coordinador - {{ delegacion_actual }}</h2>
+
+    {% include 'indicadores/components/tarjetas_resumen.html' %}
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-muni text-white fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <span>Comparación entre delegaciones</span>
+            <span class="badge bg-light text-dark">Actividades por validar en la comuna: {{ por_validar }}</span>
+        </div>
+        <div class="tarjeta-tabla table-responsive">
+            <table class="table table-hover tabla-sgr tabla-compacta text-center mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-start">DELEGACIÓN</th>
+                        <th>RESPONSABLES</th>
+                        <th>PENDIENTES</th>
+                        <th>POR VALIDAR</th>
+                        <th>AVANCE PROMEDIO</th>
+                        <th>SEMÁFORO</th>
+                        <th>VER</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fila in delegaciones %}
+                    <tr {% if fila.delegacion == delegacion_elegida %}class="table-warning"{% endif %}>
+                        <td class="text-start fw-bold" data-cell="DELEGACIÓN">{{ fila.delegacion }}</td>
+                        <td data-cell="RESPONSABLES">{{ fila.responsables }}</td>
+                        <td data-cell="PENDIENTES">{{ fila.compromisos_pendientes_count }}</td>
+                        <td data-cell="POR VALIDAR">{{ fila.por_validar }}</td>
+                        <td class="fw-bold" data-cell="AVANCE">{{ fila.avance_periodo_porcentaje }}</td>
+                        <td data-cell="SEMÁFORO">
+                            {% if fila.semaforo_color == 'VERDE' %}<span class="badge bg-success">VERDE</span>
+                            {% elif fila.semaforo_color == 'AMBAR' %}<span class="badge bg-warning text-dark">ÁMBAR</span>
+                            {% elif fila.semaforo_color == 'ROJO' %}<span class="badge bg-danger">ROJO</span>
+                            {% else %}<span class="badge bg-secondary">SIN PERIODO</span>{% endif %}
+                        </td>
+                        <td data-cell="VER">
+                            {# El Coordinador elige la delegación con ?delegacion=; Semáforo y Resumen ya la respetan #}
+                            <a href="{% url 'indicadores:semaforo' %}?delegacion={{ fila.delegacion.nombre }}" class="btn btn-sm btn-outline-dark" title="Semáforo de {{ fila.delegacion }}"><i class="bi bi-stoplights"></i></a>
+                            <a href="{% url 'indicadores:resumen_delegacion' %}?delegacion={{ fila.delegacion.nombre }}" class="btn btn-sm btn-outline-dark" title="Resumen de {{ fila.delegacion }}"><i class="bi bi-building-gear"></i></a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-muted py-3">No hay delegaciones activas.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        {% if perms.IndicadoresApp.view_metadesempeno %}
+        {% url 'indicadores:semaforo' as url_semaforo %}
+        {% include 'indicadores/components/acceso.html' with url=url_semaforo icono='bi-stoplights' titulo='Semáforo' texto='Avance al día de cada responsable.' %}
+        {% endif %}
+        {% if perms.UsuarioApp.view_usuario %}
+        {% url 'users:administracion' as url_usuarios %}
+        {% include 'indicadores/components/acceso.html' with url=url_usuarios icono='bi-people' titulo='Usuarios y metas' texto='Todas las delegaciones, solo para visualizar.' %}
+        {% endif %}
+        {% if perms.ActividadesApp.view_atencionsocial %}
+        {% url 'actividades:gestion_social' as url_atenciones %}
+        {% include 'indicadores/components/acceso.html' with url=url_atenciones icono='bi-person-vcard' titulo='Registro de Atenciones' texto='Solicitudes sociales de toda la comuna.' %}
+        {% endif %}
+        {% if perms.AuditoriaApp.view_auditoria %}
+        {% url 'auditoria:logs' as url_auditoria %}
+        {% include 'indicadores/components/acceso.html' with url=url_auditoria icono='bi-clock-history' titulo='Auditoría' texto='Quién hizo qué y cuándo.' %}
+        {% endif %}
+    </div>
+</main>
+{% endblock %}

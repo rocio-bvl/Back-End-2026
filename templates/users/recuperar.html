@@ -1,0 +1,26 @@
+{% extends 'users/base_acceso.html' %}
+
+{% block title %}Recuperar contraseña{% endblock %}
+{% block encabezado %}Recuperar contraseña{% endblock %}
+
+{% block contenido %}
+<p class="text-muted small text-center mb-4">Escriba el correo registrado en su cuenta. Le enviaremos un enlace para crear una contraseña nueva.</p>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.email.errors %}
+    <div class="alert alert-danger py-2 small mb-3">{% for error in form.email.errors %}{{ error }} {% endfor %}</div>
+    {% endif %}
+    <div class="form-floating mb-4">
+        <input type="email" name="email" class="form-control" id="id_email" placeholder="correo@laserena.cl" value="{{ form.email.value|default:'' }}" maxlength="254" required autofocus>
+        <label for="id_email"><i class="bi bi-envelope me-1"></i> Correo electrónico</label>
+    </div>
+    <button type="submit" class="btn btn-muni w-100 py-2 fw-bold shadow-sm">
+        <i class="bi bi-send me-1"></i> Enviar enlace
+    </button>
+</form>
+
+<div class="text-center mt-3">
+    <a href="{% url 'users:login' %}" class="small text-decoration-none"><i class="bi bi-arrow-left me-1"></i>Volver al inicio de sesión</a>
+</div>
+{% endblock %}

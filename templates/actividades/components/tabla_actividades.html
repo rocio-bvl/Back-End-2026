@@ -53,8 +53,8 @@ Parámetros: filas (lista de fila_actividad), vacio (texto si no hay filas), con
                 {% endif %}
                 <td class="text-center">{% include 'actividades/components/estado_actividad.html' with estado=act.estado_codigo %}</td>
                 <td class="text-center">
-                    <div class="d-flex flex-wrap gap-1 justify-content-center">
-                        <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm {% if act.puede_ejecutar %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
+                    <div class="d-flex flex-nowrap gap-1 justify-content-center align-items-center">
+                        <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm text-nowrap {% if act.puede_ejecutar %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
                             {% if act.puede_ejecutar %}<i class="bi bi-check2-circle me-1"></i>Gestionar{% else %}<i class="bi bi-eye me-1"></i>Ver{% endif %}
                         </a>
                         {% url 'admin:ActividadesApp_actividad_change' act.id as url_modificar %}

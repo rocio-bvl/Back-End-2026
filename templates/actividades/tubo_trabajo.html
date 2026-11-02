@@ -17,22 +17,20 @@
         si aún no se sabe, se agrega después desde el detalle de la actividad.
     </p>
 
-    <!-- Filtros de la agenda colectiva -->
+    <!-- Filtros: el Funcionario ve solo lo suyo y filtra por estado; los demás también por funcionario y territorio -->
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body py-3">
             <form method="get" class="row g-2 align-items-end" style="font-size: 0.85rem;">
                 {% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}
                 <input type="hidden" name="delegacion" value="{{ codigo_delegacion }}">
                 {% endif %}
+                {% if not solo_lo_suyo %}
+                {# Buscador (no lista): el Tubo puede tener a muchos funcionarios #}
                 <div class="col-md-3">
                     <label class="form-label fw-semibold mb-1" for="f_responsable">Funcionario</label>
-                    <select name="responsable" id="f_responsable" class="form-select form-select-sm">
-                        <option value="">Todos</option>
-                        {% for usuario in responsables %}
-                        <option value="{{ usuario.pk }}" {% if filtros.responsable == usuario.pk|stringformat:"s" %}selected{% endif %}>{{ usuario.get_full_name|default:usuario.username }}</option>
-                        {% endfor %}
-                    </select>
+                    <input type="search" name="responsable" id="f_responsable" value="{{ filtros.responsable }}" class="form-control form-control-sm" placeholder="Nombre o RUT (registró o encargado)">
                 </div>
+                {% endif %}
                 <div class="col-md-3">
                     <label class="form-label fw-semibold mb-1" for="f_estado">Estado</label>
                     <select name="estado" id="f_estado" class="form-select form-select-sm">
@@ -41,13 +39,26 @@
                         {% endfor %}
                     </select>
                 </div>
+                {% if not solo_lo_suyo %}
                 <div class="col-md-3">
                     <label class="form-label fw-semibold mb-1" for="f_territorio">Territorio</label>
                     <select name="territorio" id="f_territorio" class="form-select form-select-sm">
                         <option value="">Todos</option>
+                        {% if por_delegacion %}
+                        {# En GENERAL: los territorios de todas las delegaciones, agrupados #}
+                        {% regroup territorios by delegacion as grupos %}
+                        {% for grupo in grupos %}
+                        <optgroup label="{{ grupo.grouper|default:'Sin delegación' }}">
+                            {% for territorio in grupo.list %}
+                            <option value="{{ territorio.pk }}" {% if filtros.territorio == territorio.pk|stringformat:"s" %}selected{% endif %}>{{ territorio.nombre }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endfor %}
+                        {% else %}
                         {% for territorio in territorios %}
                         <option value="{{ territorio.pk }}" {% if filtros.territorio == territorio.pk|stringformat:"s" %}selected{% endif %}>{{ territorio.nombre }}</option>
                         {% endfor %}
+                        {% endif %}
                     </select>
                 </div>
                 <div class="col-md-1">
@@ -56,7 +67,8 @@
                         <label class="form-check-label" for="f_mios">Solo míos</label>
                     </div>
                 </div>
-                <div class="col-md-2 d-flex gap-2 justify-content-end">
+                {% endif %}
+                <div class="{% if solo_lo_suyo %}col-md-9{% else %}col-md-2{% endif %} d-flex gap-2 justify-content-end">
                     <a href="{% url 'actividades:tubo_trabajo' %}{% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}?delegacion={{ codigo_delegacion }}{% endif %}" class="btn btn-sm btn-outline-secondary">Limpiar</a>
                     <button type="submit" class="btn btn-sm btn-muni"><i class="bi bi-funnel me-1"></i>Filtrar</button>
                 </div>
@@ -67,7 +79,7 @@
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-header bg-gris-0 fw-bold d-flex justify-content-between align-items-center py-3">
             <span><i class="bi bi-hourglass-split me-2 text-danger"></i>Actividades que esperan factores externos</span>
-            <span class="badge bg-muni-b2">{{ delegacion_actual }}</span>
+            <span class="badge bg-muni-b2">{% if solo_lo_suyo %}Mis actividades{% else %}{{ delegacion_actual }}{% endif %}</span>
         </div>
         <div class="tarjeta-tabla table-responsive">
             <table class="table table-hover tabla-sgr">
@@ -115,8 +127,8 @@
                         </td>
                         <td class="text-center">{% include 'actividades/components/estado_actividad.html' with estado=act.estado_codigo %}</td>
                         <td class="text-center">
-                            <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm {% if act.puede_ejecutar %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
+                            <div class="d-flex flex-nowrap gap-1 justify-content-center align-items-center">
+                                <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm text-nowrap {% if act.puede_ejecutar %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
                                     {% if act.puede_ejecutar %}<i class="bi bi-check2-circle me-1"></i>Gestionar{% else %}<i class="bi bi-eye me-1"></i>Ver{% endif %}
                                 </a>
                                 {% url 'admin:ActividadesApp_actividad_change' act.id as url_modificar %}

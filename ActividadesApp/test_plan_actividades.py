@@ -251,9 +251,11 @@ class PlanCompromisosTest(BasePlan):
     def test_cp_com_005_tubo_filtro_por_responsable(self):
         propio = self.crear('EN_TUBO')
         ajeno = self.crear('EN_TUBO', usuario=self.companero)
+        # Filtra quien supervisa (el Delegado): el Funcionario ya ve solo lo suyo
+        self.entrar('33333333-3')
+        self.assertEqual(self.folios_tubo(responsable='77777777'), [ajeno.folio()])  # buscador por RUT o nombre
         self.entrar('55555555-5')
-        self.assertEqual(self.folios_tubo(responsable=str(self.companero.pk)), [ajeno.folio()])
-        self.assertEqual(self.folios_tubo(mios='1'), [propio.folio()])
+        self.assertEqual(self.folios_tubo(), [propio.folio()])
 
     def test_cp_com_006_tubo_filtro_por_estado(self):
         pendiente = self.crear('EN_TUBO')
@@ -267,7 +269,7 @@ class PlanCompromisosTest(BasePlan):
     def test_cp_com_007_tubo_filtro_por_territorio(self):
         alto = self.crear('EN_TUBO')
         self.crear('EN_TUBO', territorio=self.territorio_bajo)
-        self.entrar('55555555-5')
+        self.entrar('33333333-3')  # el filtro por territorio es de quien supervisa
         self.assertEqual(self.folios_tubo(territorio=self.territorio.pk), [alto.folio()])
 
     def test_cp_com_008_asignacion_de_encargado_queda_en_auditoria(self):

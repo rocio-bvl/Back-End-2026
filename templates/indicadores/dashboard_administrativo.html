@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+
+{% block title %}Mi Tablero | Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+{# Tablero del grupo Administrativo: su propio avance y sus pendientes #}
+<main class="container-fluid px-md-4 py-4">
+    <h2 class="mb-4">Mi Tablero - {{ request.user.get_full_name|default:request.user.username }}</h2>
+
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm border-start border-4 border-{% if mi_avance.color == 'VERDE' %}success{% elif mi_avance.color == 'AMBAR' %}warning{% elif mi_avance.color == 'ROJO' %}danger{% else %}secondary{% endif %} p-3 h-100">
+                <span class="text-muted small">Mi avance del periodo</span>
+                {% if mi_avance %}
+                <h3 class="fw-bold mb-0">{{ mi_avance.avance_logrado }}%</h3>
+                <small class="text-muted">Objetivo hoy: {{ mi_avance.objetivo_hoy }}%</small>
+                {% else %}
+                <h3 class="fw-bold mb-0 text-secondary">-</h3>
+                <small class="text-muted">Sin cargo o sin periodo vigente</small>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-danger p-3 h-100"><span class="text-muted small">Mis pendientes</span><h3 class="fw-bold mb-0 text-danger">{{ mis_pendientes_count }}</h3></div></div>
+        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-primary p-3 h-100"><span class="text-muted small">En revisión</span><h3 class="fw-bold mb-0 text-primary">{{ en_revision_count }}</h3></div></div>
+        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-warning p-3 h-100"><span class="text-muted small">Rechazadas (por corregir)</span><h3 class="fw-bold mb-0 text-warning">{{ rechazadas_count }}</h3></div></div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-muni text-white fw-bold">Mis próximas actividades pendientes</div>
+        <div class="tarjeta-tabla table-responsive">
+            <table class="table table-hover tabla-sgr tabla-compacta mb-0">
+                <thead><tr><th>FOLIO</th><th>ACCIÓN</th><th>FECHA DE EJECUCIÓN</th><th>ESTADO</th></tr></thead>
+                <tbody>
+                    {% for actividad in mis_pendientes %}
+                    <tr>
+                        <td><a href="{% url 'actividades:actividad_detalle' actividad.pk %}" class="fw-bold">{{ actividad.folio }}</a></td>
+                        <td>{{ actividad.accion }}</td>
+                        <td>{{ actividad.fecha_realizacion|date:"d/m/Y"|default:"Aún no se ha agregado fecha de ejecución" }}</td>
+                        <td>{% include 'actividades/components/estado_actividad.html' with estado=actividad.estado %}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-muted text-center py-3">No tiene actividades pendientes.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        {% if perms.ActividadesApp.add_actividad %}
+        {% url 'actividades:actividad_crear' as url_crear %}
+        {% include 'indicadores/components/acceso.html' with url=url_crear icono='bi-plus-circle' titulo='Agregar actividad' texto='Registrar lo que hizo hoy o un compromiso.' %}
+        {% endif %}
+        {% url 'actividades:mi_gestion' as url_mi_gestion %}
+        {% include 'indicadores/components/acceso.html' with url=url_mi_gestion icono='bi-list-check' titulo='Mi Gestión' texto='Todas mis actividades.' %}
+        {% if perms.ActividadesApp.add_atencionsocial %}
+        {% url 'actividades:atencion_crear' as url_atencion %}
+        {% include 'indicadores/components/acceso.html' with url=url_atencion icono='bi-person-vcard' titulo='Agregar atención' texto='Registrar una solicitud social.' %}
+        {% endif %}
+    </div>
+</main>
+{% endblock %}

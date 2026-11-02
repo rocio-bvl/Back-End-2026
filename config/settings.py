@@ -3,6 +3,9 @@ import os
 from dotenv import load_dotenv
 from django.contrib.messages import constants as message_constants
 
+# Carga las variables definidas en tu archivo .env
+load_dotenv()
+
 # Ruta base del proyecto (carpeta donde está manage.py)
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -95,6 +98,26 @@ AUTH_USER_MODEL = 'UsuarioApp.Usuario'
 # Si alguien entra sin sesión, se le envía al login
 LOGIN_URL = 'users:login'
 
+# Correo (recuperación de contraseña). Usuario y clave se leen del .env: en Gmail es una
+# "contraseña de aplicación" (requiere verificación en dos pasos). Si el .env no trae usuario,
+# el correo se imprime en la terminal (backend de consola), útil mientras se programa.
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+if EMAIL_HOST_USER:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT') or '587')  # 'or': si en el .env queda EMAIL_PORT= vacío, usa 587
+# 587 usa TLS (STARTTLS). Si la red bloquea el 587, se puede usar 465 con SSL: EMAIL_PORT=465 en el .env
+EMAIL_USE_SSL = EMAIL_PORT == 465
+EMAIL_USE_TLS = not EMAIL_USE_SSL
+EMAIL_TIMEOUT = 20  # segundos: si el servidor de correo no responde, falla rápido en vez de colgar la página
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'no-responder@laserena.cl')
+
+# El enlace para crear una contraseña nueva vence en 2 horas (en segundos)
+PASSWORD_RESET_TIMEOUT = 2 * 60 * 60
+
 
 # Password validation
 
@@ -110,6 +133,10 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+    {
+        # Propio: mayúscula, minúscula, número y símbolo especial (UsuarioApp/validators.py)
+        'NAME': 'UsuarioApp.validators.ContrasenaSeguraValidator',
     },
 ]
 
