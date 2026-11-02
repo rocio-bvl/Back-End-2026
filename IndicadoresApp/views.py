@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
@@ -10,7 +11,7 @@ from AuditoriaApp.registro import registrar_auditoria
 from IndicadoresApp.calculos import seguimiento_usuario
 from IndicadoresApp.forms import MetaForm
 from IndicadoresApp.models import MetaDesempeno, periodo_vigente, metas_para
-from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado
+from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado, permiso_requerido
 from UsuarioApp.models import Usuario, Cargo, Catalogo
 
 
@@ -21,9 +22,8 @@ def usuarios_evaluados(delegacion):
     return usuarios
 
 
+@login_required
 def dashboard(request):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
 
     codigo, delegacion, nombre = delegacion_seleccionada(request)
     hoy = timezone.localdate()
@@ -61,11 +61,8 @@ def dashboard(request):
     return render(request, 'indicadores/dashboard.html', data)
 
 
+@permiso_requerido('IndicadoresApp.view_metadesempeno', 'Semáforo')
 def semaforo(request):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.tiene_rol(['Admin', 'Coordinador', 'Delegado']):
-        return acceso_denegado(request, 'Semáforo')
 
     codigo, delegacion, nombre = delegacion_seleccionada(request)
     hoy = timezone.localdate()
@@ -91,11 +88,8 @@ def semaforo(request):
     return render(request, 'indicadores/semaforo.html', data)
 
 
+@permiso_requerido('IndicadoresApp.view_metadesempeno', 'Resumen de Delegación')
 def resumen_delegacion(request):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.tiene_rol(['Admin', 'Coordinador', 'Delegado']):
-        return acceso_denegado(request, 'Resumen de Delegación')
 
     codigo, delegacion, nombre = delegacion_seleccionada(request)
     periodo = periodo_vigente()
@@ -147,13 +141,10 @@ def mostrar_errores(request, form):
             messages.error(request, error)
 
 
+@permiso_requerido('IndicadoresApp.add_metadesempeno', 'Parametrización de Metas')
 def guardar_metas(request):
     """Crea una meta (o la actualiza si ya existe para ese cargo, ítem y alcance).
     El Administrador define metas generales o de cualquier delegación; el Delegado, solo de la suya."""
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.puede_gestionar_metas():
-        return acceso_denegado(request, 'Parametrización de Metas')
     if request.method != 'POST':
         return redirect(url_metas())
 
@@ -170,9 +161,8 @@ def guardar_metas(request):
     return redirect(url_metas())
 
 
+@permiso_requerido('IndicadoresApp.change_metadesempeno', 'Modificar meta')
 def meta_editar(request, pk):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
     meta = get_object_or_404(MetaDesempeno.objects.select_related('cargo', 'item', 'periodo', 'delegacion'), pk=pk)
     if not request.user.puede_editar_meta(meta):
         return acceso_denegado(request, 'Modificar meta')
@@ -190,9 +180,8 @@ def meta_editar(request, pk):
     return render(request, 'indicadores/meta_form.html', {'form': form, 'meta': meta})
 
 
+@permiso_requerido('IndicadoresApp.delete_metadesempeno', 'Eliminar meta')
 def meta_eliminar(request, pk):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
     meta = get_object_or_404(MetaDesempeno, pk=pk)
     if not request.user.puede_editar_meta(meta):
         return acceso_denegado(request, 'Eliminar meta')

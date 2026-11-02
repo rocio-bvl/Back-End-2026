@@ -11,9 +11,10 @@ from ActividadesApp.models import Territorio
 from IndicadoresApp.forms import MetaForm
 from IndicadoresApp.models import MetaDesempeno, periodo_vigente
 from UsuarioApp.forms import UsuarioCrearForm, UsuarioEditarForm, PerfilForm, DelegacionForm, TerritorioFormSet
-from UsuarioApp.funciones import limpiar_rut, acceso_denegado
-from UsuarioApp.funciones import opciones_delegacion
+from UsuarioApp.funciones import limpiar_rut, acceso_denegado, opciones_delegacion, permiso_requerido
 from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion, Catalogo
+
+from django.contrib.auth.decorators import login_required
 
 
 def inicio(request):
@@ -110,15 +111,11 @@ def delegaciones_con_equipo():
         })
     return lista
 
-
+@permiso_requerido('UsuarioApp.view_usuario', 'Administración')
 def administracion(request):
     """Admin: Gestión (delegaciones y usuarios, con todos los cambios) y Metas.
     Coordinador: lo mismo, solo para visualizar (para él la pestaña se llama Usuarios).
     Delegado: los Funcionarios de su delegación (filtra por territorio) y las metas de su delegación."""
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.puede_ver_usuarios():
-        return acceso_denegado(request, 'Administración')
 
     usuario = request.user
     periodo = periodo_vigente()
@@ -177,12 +174,8 @@ def administracion(request):
     }
     return render(request, 'users/administracion.html', data)
 
-
+@permiso_requerido('UsuarioApp.add_usuario', 'Crear Usuario')
 def usuario_crear(request):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.puede_gestionar_usuarios():
-        return acceso_denegado(request, 'Crear Usuario')
     if request.method != 'POST':
         return redirect('users:administracion')
 
@@ -226,12 +219,8 @@ def usuario_crear(request):
     messages.success(request, f"Usuario {usuario.get_full_name()} creado correctamente.")
     return redirect('users:administracion')
 
-
+@permiso_requerido('UsuarioApp.change_usuario', 'Editar Usuario')
 def usuario_editar(request, pk):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.puede_gestionar_usuarios():
-        return acceso_denegado(request, 'Editar Usuario')
 
     usuario = get_object_or_404(Usuario, pk=pk)
     if not request.user.puede_editar_usuario(usuario):
@@ -292,12 +281,10 @@ def territorios_para_formulario(usuario):
         territorios = territorios.filter(delegacion_id=usuario.delegacion_id)
     return territorios
 
-
+@permiso_requerido('UsuarioApp.delete_usuario', 'Eliminar Usuario')
 def usuario_eliminar(request, pk):
     """Elimina de verdad (solo el Administrador, con confirmación). Si el usuario tiene actividades, validaciones
     u otros registros que dependen de él, la base de datos no deja borrarlo: en ese caso se sugiere desactivarlo."""
-    if not request.user.is_authenticated:
-        return redirect('users:login')
     usuario = get_object_or_404(Usuario, pk=pk)
     if not request.user.puede_eliminar_usuario(usuario):
         return acceso_denegado(request, 'Eliminar Usuario')
@@ -340,28 +327,16 @@ def delegacion_form(request, delegacion=None):
         formset = TerritorioFormSet(instance=delegacion or Delegacion())
     return render(request, 'users/delegacion_form.html', {'form': form, 'formset': formset, 'object': delegacion})
 
-
+@permiso_requerido('UsuarioApp.add_delegacion', 'Agregar Delegación')
 def delegacion_crear(request):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.es_administrador():
-        return acceso_denegado(request, 'Agregar Delegación')
     return delegacion_form(request)
 
-
+@permiso_requerido('UsuarioApp.change_delegacion', 'Modificar Delegación')
 def delegacion_editar(request, pk):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.es_administrador():
-        return acceso_denegado(request, 'Modificar Delegación')
     return delegacion_form(request, get_object_or_404(Delegacion, pk=pk))
 
-
+@permiso_requerido('UsuarioApp.delete_delegacion', 'Eliminar Delegación')
 def delegacion_eliminar(request, pk):
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.es_administrador():
-        return acceso_denegado(request, 'Eliminar Delegación')
     delegacion = get_object_or_404(Delegacion, pk=pk)
     if request.method != 'POST':
         return redirect('users:administracion')
@@ -376,13 +351,9 @@ def delegacion_eliminar(request, pk):
     messages.success(request, f"Delegación {nombre} eliminada.")
     return redirect(reverse('users:administracion') + '?pestana=delegaciones')
 
-
+@permiso_requerido('UsuarioApp.change_usuario', 'Desactivar Usuario')
 def usuario_desactivar(request, pk):
     """Activa o desactiva un usuario (no se borra: conserva su historial de actividades y auditoría)."""
-    if not request.user.is_authenticated:
-        return redirect('users:login')
-    if not request.user.puede_gestionar_usuarios():
-        return acceso_denegado(request, 'Desactivar Usuario')
     usuario = get_object_or_404(Usuario, pk=pk)
     if request.method != 'POST':
         return redirect('users:administracion')
@@ -398,11 +369,9 @@ def usuario_desactivar(request, pk):
     messages.success(request, f"Usuario {usuario.get_full_name()} {estado}.")
     return redirect('users:administracion')
 
-
+@login_required
 def perfil_editar(request):
     """Cada usuario edita su propia foto, teléfono y correo."""
-    if not request.user.is_authenticated:
-        return redirect('users:login')
     usuario = request.user
     antes = resumen_usuario(usuario)
     if request.method == 'POST':

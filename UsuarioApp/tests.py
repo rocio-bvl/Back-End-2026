@@ -676,3 +676,37 @@ class GruposYPermisosTest(TestCase):
         negado = pedir(Usuario.objects.get(pk=self.func.pk))
         self.assertEqual(negado['Location'], reverse('actividades:mi_gestion'))
         self.assertIn('/login', pedir(AnonymousUser())['Location'].lower())
+
+
+class ProteccionVistasTest(TestCase):
+    """J2: toda vista de UsuarioApp e IndicadoresApp pide sesión y, si corresponde, el permiso del grupo."""
+
+    def setUp(self):
+        self.datos = crear_datos_base()
+        self.func = crear_usuario('55555555-5', 'Funcionario', self.datos['delegacion'], self.datos['cargo'])
+        self.coord = crear_usuario('22222222-2', 'Coordinador')
+
+    def test_sin_sesion_todas_mandan_al_login(self):
+        meta = MetaDesempeno.objects.first()
+        urls = [reverse('users:administracion'), reverse('users:usuario_crear'),
+                reverse('users:usuario_editar', args=[self.func.pk]),
+                reverse('users:usuario_desactivar', args=[self.func.pk]),
+                reverse('users:usuario_eliminar', args=[self.func.pk]),
+                reverse('users:delegacion_crear'),
+                reverse('users:delegacion_editar', args=[self.datos['delegacion'].pk]),
+                reverse('users:delegacion_eliminar', args=[self.datos['delegacion'].pk]),
+                reverse('users:perfil_editar'), reverse('indicadores:dashboard'), reverse('indicadores:semaforo'),
+                reverse('indicadores:resumen_delegacion'), reverse('indicadores:guardar_metas'),
+                reverse('indicadores:meta_editar', args=[meta.pk]), reverse('indicadores:meta_eliminar', args=[meta.pk])]
+        for url in urls:
+            respuesta = self.client.get(url)
+            self.assertEqual(respuesta.status_code, 302, url)
+            self.assertTrue(respuesta['Location'].startswith(reverse('users:login')), url)
+
+    def test_sin_permiso_vuelve_a_mi_gestion(self):
+        self.client.login(username='55555555-5', password=CLAVE)  # Administrativo: no ve usuarios ni metas
+        for nombre in ['users:administracion', 'indicadores:semaforo', 'indicadores:resumen_delegacion']:
+            self.assertRedirects(self.client.get(reverse(nombre)), reverse('actividades:mi_gestion'), msg_prefix=nombre)
+        self.client.login(username='22222222-2', password=CLAVE)  # Supervisor: ve, pero no crea
+        self.assertEqual(self.client.get(reverse('users:administracion')).status_code, 200)
+        self.assertRedirects(self.client.get(reverse('users:usuario_crear')), reverse('actividades:mi_gestion'))

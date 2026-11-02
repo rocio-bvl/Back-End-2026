@@ -66,4 +66,6 @@ class PlanSinAutenticacionTest(TestCase):
         for nombre in ['indicadores:dashboard', 'actividades:mi_gestion', 'actividades:actividad_crear',
                        'actividades:tubo_trabajo', 'actividades:verificacion', 'users:administracion', 'auditoria:logs']:
             respuesta = self.client.get(reverse(nombre))
-            self.assertRedirects(respuesta, reverse('users:login'), msg_prefix=nombre)
+            # @login_required agrega ?next=<página pedida> a la dirección del login
+            self.assertEqual(respuesta.status_code, 302, nombre)
+            self.assertTrue(respuesta['Location'].startswith(reverse('users:login')), nombre)
