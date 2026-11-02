@@ -5,12 +5,13 @@ oculto=True los oculta siempre.
 {% endcomment %}
 {% if not oculto %}
 {% if solo_admin and request.user.es_administrador or not solo_admin and request.user.es_administrador %}
+{# Solo íconos: así caben en la misma línea que Ver o Gestionar. El texto queda en title (al pasar el mouse) y aria-label #}
 <div class="btn-group btn-group-sm" role="group" aria-label="Acciones">
-    <a href="{{ url_modificar|default:'#' }}" class="btn btn-outline-warning text-nowrap" title="Modificar">
-        <i class="bi bi-pencil-square me-1"></i>Modificar
+    <a href="{{ url_modificar|default:'#' }}" class="btn btn-outline-warning" title="Modificar" aria-label="Modificar">
+        <i class="bi bi-pencil-square"></i>
     </a>
-    <a href="{{ url_eliminar|default:'#' }}" class="btn btn-outline-danger text-nowrap" title="Eliminar">
-        <i class="bi bi-trash me-1"></i>Eliminar
+    <a href="{{ url_eliminar|default:'#' }}" class="btn btn-outline-danger" title="Eliminar" aria-label="Eliminar">
+        <i class="bi bi-trash"></i>
     </a>
 </div>
 {% endif %}
