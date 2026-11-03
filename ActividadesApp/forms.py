@@ -50,25 +50,25 @@ class ActividadForm(forms.Form):
     - hoy o antes: se registra ejecutada (comentario obligatorio, foto opcional);
     - después de hoy: queda como compromiso pendiente (PROGRAMADA);
     - si depende de factores externos, va al Tubo de Trabajo. Ahí la fecha de ejecución es opcional:
-      sin fecha queda EN_TUBO (se agrega después); con fecha queda PROGRAMADA, sin salir del Tubo."""
+    sin fecha queda EN_TUBO (se agrega después); con fecha queda PROGRAMADA, sin salir del Tubo."""
     solicitud_problema = forms.CharField(label="Descripción de la actividad / solicitud / problema",
-                                         widget=forms.Textarea(attrs={'rows': 3}))
+                                        widget=forms.Textarea(attrs={'rows': 3}))
     accion = forms.CharField(max_length=255, label="Acción")
     item = forms.ModelChoiceField(queryset=Catalogo.objects.none(), label="Ítem / comisión a medir",
-                                  empty_label="Seleccione una opción...")
+                                empty_label="Seleccione una opción...")
     territorio = forms.ModelChoiceField(queryset=Territorio.objects.none(), label="Territorio / sector",
                                         empty_label="Seleccione un territorio...")
     depende_externos = forms.BooleanField(required=False,
-                                          label="Depende de factores externos: pasa al Tubo de Trabajo")
+                                        label="Depende de factores externos: pasa al Tubo de Trabajo")
     fecha_realizacion = forms.DateField(required=False, label="Fecha de ejecución",
                                         widget=forms.DateInput(attrs={'type': 'date'}))
     comentario = forms.CharField(required=False, label="Comentario de lo que se hizo",
-                                 widget=forms.Textarea(attrs={'rows': 2}))
+                                widget=forms.Textarea(attrs={'rows': 2}))
     imagen = forms.ImageField(required=False, label="Fotografía (opcional)")
     encargado = forms.ModelChoiceField(queryset=Usuario.objects.none(), required=False, label="Encargado de la actividad",
-                                       empty_label="Yo mismo (quien registra)")
+                                    empty_label="Yo mismo (quien registra)")
     solicitud = forms.ModelChoiceField(queryset=AtencionSocial.objects.none(), required=False,
-                                       label="Vincular a una solicitud social")
+                                    label="Vincular a una solicitud social")
 
     def __init__(self, *args, usuario=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -181,9 +181,9 @@ class AtencionForm(forms.ModelForm):
     class Meta:
         model = AtencionSocial
         fields = ['nombre_solicitante', 'rut_solicitante', 'telefono_solicitante', 'tipo_atencion', 'subtipo_atencion',
-                  'requiere_visita']
+                'requiere_visita']
         labels = {'nombre_solicitante': "Nombre del solicitante", 'rut_solicitante': "RUT del solicitante",
-                  'telefono_solicitante': "Teléfono", 'requiere_visita': "Requiere visita domiciliaria"}
+                'telefono_solicitante': "Teléfono", 'requiere_visita': "Requiere visita domiciliaria"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Registrar Actividad | SGR{% endblock %}
+{% block title %}{% if modo_edicion %}Modificar Actividad{% else %}Registrar Actividad{% endif %} | SGR {% endblock %}
 
 {% block content %}
 <main class="container py-4">
@@ -9,7 +9,7 @@
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-muni text-white fw-bold py-3 d-flex align-items-center">
                     <i class="bi bi-journal-plus me-2 fs-5"></i>
-                    <span>Registrar Actividad Territorial</span>
+                    <span>{% if modo_edicion %}Modificar Actividad {{ actividad.folio }} {% else %}Registrar Actividad Territorial{% endif %}</span>
                 </div>
                 <div class="card-body p-4">
                     <div class="alert alert-light border small mb-4" role="note">
@@ -185,7 +185,7 @@
             bloqueEjecucion.style.display = (alTubo || futura) ? 'none' : '';
             if (alTubo) { texto.textContent = 'Ingresar al Tubo de Trabajo'; }
             else if (futura) { texto.textContent = 'Programar compromiso'; }
-            else { texto.textContent = 'Registrar Actividad'; }
+            else { texto.textContent = '{% if modo_edicion %}Guardar cambios{% else %}Registrar Actividad {% endif %}'; }
         }
         // Al marcar el Tubo, la fecha de hoy que viene por defecto se borra (la fecha es opcional ahí)
         tubo.addEventListener('change', function () {

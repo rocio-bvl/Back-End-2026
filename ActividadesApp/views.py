@@ -9,14 +9,14 @@ from django.utils import timezone
 from ActividadesApp.choices import ESTADOS_PENDIENTES
 # validar_imagen se importa aquí porque las pruebas la usan como ActividadesApp.views.validar_imagen
 from ActividadesApp.forms import (ActividadForm, EjecucionForm, FechaRealizacionForm, ComentarioForm, EncargadoForm,
-                                  AtencionForm, solicitudes_para, validar_imagen)
+                                AtencionForm, solicitudes_para, validar_imagen)
 from ActividadesApp.models import (Actividad, Evidencia, Validacion, AtencionSocial, ComentarioActividad,
-                                   Territorio, DIAS_POR_VENCER)
+                                Territorio, DIAS_POR_VENCER)
 from AuditoriaApp.registro import registrar_auditoria
 from IndicadoresApp.calculos import indicadores_usuario, total_ponderado
 from IndicadoresApp.models import periodo_vigente
 from UsuarioApp.funciones import opciones_delegacion
-from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado
+from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado, permiso_requerido
 from UsuarioApp.models import Usuario
 
 
@@ -96,6 +96,7 @@ def fila_actividad(actividad, usuario):
 # ---------------------------------------------------------------------------
 # Mi Gestión: el perfil del usuario conectado
 # ---------------------------------------------------------------------------
+@permiso_requerido('ActividadesApp.view_actividad', 'Mi Gestión')
 def mi_gestion(request):
     """Una sola vista para los cuatro roles. Lo que cambia entre roles no son plantillas distintas:
     son las consultas (qué actividades se traen) y los {% if %} de la plantilla (qué se muestra)."""
@@ -208,6 +209,7 @@ def guardar_ejecucion(actividad, usuario, comentario, imagen):
     return ejecucion
 
 
+@permiso_requerido('ActividadesApp.add_actividad', 'Registrar Actividad')
 def actividad_crear(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -247,18 +249,18 @@ def actividad_crear(request):
                 guardar_ejecucion(actividad, request.user, datos['comentario'].strip(), datos['imagen'])
                 actividad.sincronizar_estado()
                 messages.success(request, f"Actividad {actividad.folio()} registrada como ejecutada. "
-                                          "Queda a la espera de la validación del Delegado.")
+                                        "Queda a la espera de la validación del Delegado.")
                 return redirect('actividades:mi_gestion')
             if actividad.depende_externos:
                 if actividad.fecha_realizacion:
                     messages.success(request, f"Actividad {actividad.folio()} ingresada al Tubo de Trabajo con fecha de "
-                                              f"ejecución {actividad.fecha_realizacion:%d/%m/%Y}.")
+                                            f"ejecución {actividad.fecha_realizacion:%d/%m/%Y}.")
                 else:
                     messages.success(request, f"Actividad {actividad.folio()} ingresada al Tubo de Trabajo. "
-                                              "La fecha de ejecución se puede agregar después.")
+                                            "La fecha de ejecución se puede agregar después.")
                 return redirect('actividades:tubo_trabajo')
             messages.success(request, f"Actividad {actividad.folio()} programada para el "
-                                      f"{actividad.fecha_realizacion:%d/%m/%Y}. Queda pendiente hasta que se ejecute.")
+                                    f"{actividad.fecha_realizacion:%d/%m/%Y}. Queda pendiente hasta que se ejecute.")
             return redirect('actividades:mi_gestion')
     else:
         inicial = {'depende_externos': request.GET.get('tubo') == '1'}
@@ -272,8 +274,131 @@ def actividad_crear(request):
 
 
 # ---------------------------------------------------------------------------
+# Editar actividad
+# ---------------------------------------------------------------------------
+@permiso_requerido('ActividadesApp.change_actividad', 'Editar Actividad')
+def actividad_editar(request, pk):
+    if not request.user.is_authenticated:
+        return redirect('users:login')
+
+    if not request.user.tiene_rol(['Admin']):
+        return acceso_denegado(
+            request, 'Editar Actividad'
+        )
+    actividad = get_object_or_404(Actividad, pk=pk)
+
+    if actividad.completada():
+        messages.error(
+            request, 'Las actividades validadas no pueden modificarse.'
+        )
+        return redirect('actividades:mi_gestion')
+
+    if request.method == 'POST':
+        form = ActividadForm(
+            request.POST,
+            request.FILES,
+            usuario=request.user
+        )
+
+        if form.is_valid():
+            datos = form.cleaned_data
+            antes = str(actividad)
+
+            actividad.solicitud_problema = datos['solicitud_problema'].strip()
+            actividad.accion = datos['accion'].strip()
+            actividad.item = datos['item']
+            actividad.territorio = datos['territorio']
+            actividad.depende_externos = datos['depende_externos']
+            actividad.fecha_realizacion = datos['fecha_realizacion']
+            actividad.encargado = datos['encargado']
+            actividad.solicitud = datos['solicitud']
+            actividad.save()
+            # Si queda con fecha de hoy o anterior y aún no tenía ejecución, se registra como en actividad_crear            
+            if datos['comentario'] and actividad.ejecucion_vigente() is None:                
+                guardar_ejecucion(actividad, request.user, datos['comentario'].strip(), datos['imagen'])            
+            # El estado se recalcula según la fecha, el Tubo y la ejecución (EN_TUBO, PROGRAMADA, REGISTRADA...)            
+            actividad.sincronizar_estado()
+
+            registrar_auditoria(
+                request.user,
+                'MODIFICACION',
+                'Actividad',
+                actividad.pk,
+                antes,
+                str(actividad)
+            )
+            messages.success(
+                request, 'Actividad actualizada correctamente.'
+            )
+            return redirect('actividades:mi_gestion')
+    else:
+        form = ActividadForm(
+            usuario=request.user,
+            initial={
+                'solicitud_problema': actividad.solicitud_problema,
+                'accion': actividad.accion,
+                'item': actividad.item,
+                'territorio': actividad.territorio,
+                'depende_externos': actividad.depende_externos,
+                'fecha_realizacion': actividad.fecha_realizacion,
+                'encargado': actividad.encargado,
+                'solicitud': actividad.solicitud,
+                'comentario': actividad.ejecucion_vigente().comentario if actividad.ejecucion_vigente() else '',
+            })
+
+    return render(request,
+        'actividades/actividad_form.html',
+        {
+            'form': form,
+            'actividad': actividad,
+            'modo_edicion': True,
+            'hoy': timezone.localdate(),
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Eliminar actividad
+# ---------------------------------------------------------------------------
+@permiso_requerido('ActividadesApp.delete_actividad', 'Eliminar Actividad')
+def actividad_eliminar(request, pk):
+    if not request.user.tiene_rol(["Admin"]):
+        return acceso_denegado(
+            request, "No tiene permisos para eliminar actividades."
+        )
+
+    actividad = get_object_or_404(
+        Actividad, pk=pk
+    )
+
+    if actividad.completada():
+        messages.error(
+            request, "Una actividad validada no puede eliminarse."
+        )
+        return redirect(
+            "actividades:mi_gestion"
+        )
+    # Solo se elimina con POST (formulario con confirmación); un link o una recarga no borran nada    
+    if request.method != 'POST':        
+        return redirect('actividades:actividad_detalle', pk=actividad.pk)    
+    
+    descripcion = str(actividad)    
+    actividad.delete()    
+    registrar_auditoria(request.user, 'ELIMINACION', 'Actividad', pk, descripcion, '')
+
+    messages.success(
+        request, "Actividad eliminada correctamente."
+    )
+
+    return redirect(
+        "actividades:mi_gestion"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Detalle de la actividad: ejecución, fecha, encargado y bitácora
 # ---------------------------------------------------------------------------
+@permiso_requerido('ActividadesApp.view_actividad', 'Detalle Actividad')
 def actividad_detalle(request, pk):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -321,6 +446,7 @@ def mostrar_errores(request, form):
             messages.error(request, error)
 
 
+@permiso_requerido('ActividadesApp.add_actividad', 'Registrar Ejecución')
 def registrar_ejecucion(request, pk):
     """Quien registró la actividad o su encargado deja constancia de que se hizo (comentario + foto opcional).
     Sirve para un compromiso, una actividad del Tubo o una ejecución rechazada."""
@@ -357,6 +483,7 @@ def registrar_ejecucion(request, pk):
     return redirect('actividades:actividad_detalle', pk=actividad.pk)
 
 
+@permiso_requerido('ActividadesApp.view_actividad', 'Asignar Fecha')
 def asignar_fecha(request, pk):
     """Asigna la fecha a una actividad del Tubo (pasa a PROGRAMADA) o cambia la de un compromiso."""
     if not request.user.is_authenticated:
@@ -383,6 +510,7 @@ def asignar_fecha(request, pk):
     return redirect('actividades:actividad_detalle', pk=actividad.pk)
 
 
+@permiso_requerido('ActividadesApp.asignar_encargado', 'Asignar Encargado')
 def asignar_encargado(request, pk):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -407,6 +535,7 @@ def asignar_encargado(request, pk):
     return redirect('actividades:actividad_detalle', pk=actividad.pk)
 
 
+@permiso_requerido('ActividadesApp.add_comentarioactividad', 'Comentar Actividad')
 def comentar_actividad(request, pk):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -443,6 +572,7 @@ ESTADOS_FILTRO_TUBO = [
 ]
 
 
+@permiso_requerido('ActividadesApp.view_actividad', 'Tubo de Trabajo')
 def tubo_trabajo(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -468,7 +598,7 @@ def tubo_trabajo(request):
         'responsable': request.GET.get('responsable', '').strip(),
         'estado': request.GET.get('estado', ''),
         'territorio': request.GET.get('territorio', ''),
-        'mios': request.GET.get('mios', ''),
+        'mios': request.GET.get('mios', '')
     }
     if solo_lo_suyo:
         # Aunque lleguen en la dirección, el Funcionario no usa estos filtros
@@ -540,6 +670,7 @@ def puede_editar_atencion(usuario, atencion):
     return usuario.es_administrador() or (usuario.puede_registrar() and atencion.usuario_id == usuario.pk)
 
 
+@permiso_requerido('ActividadesApp.view_atencionsocial', 'Gestión Social')
 def gestion_social(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -605,6 +736,7 @@ def atencion_form(request, atencion=None):
     return render(request, 'actividades/atencion_form.html', {'form': form, 'object': atencion})
 
 
+@permiso_requerido('ActividadesApp.add_atencionsocial', 'Crear Atención Social')
 def atencion_crear(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -614,6 +746,7 @@ def atencion_crear(request):
     return atencion_form(request)
 
 
+@permiso_requerido('ActividadesApp.add_atencionsocial', 'Editar Atención Social')
 def atencion_editar(request, pk):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -623,6 +756,7 @@ def atencion_editar(request, pk):
     return atencion_form(request, atencion)
 
 
+@permiso_requerido('ActividadesApp.delete_atencionsocial', 'Eliminar Atención Social')
 def atencion_eliminar(request, pk):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -640,6 +774,7 @@ def atencion_eliminar(request, pk):
 # ---------------------------------------------------------------------------
 # Verificación de evidencias
 # ---------------------------------------------------------------------------
+@permiso_requerido('ActividadesApp.validar_evidencia', 'Verificación')
 def verificacion(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -691,6 +826,7 @@ def verificacion(request):
     return render(request, 'actividades/verificacion.html', data)
 
 
+@permiso_requerido('ActividadesApp.validar_evidencia', 'Validar Evidencia')
 def validar_evidencia(request, pk):
     if not request.user.is_authenticated:
         return redirect('users:login')

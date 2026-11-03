@@ -124,6 +124,9 @@ class Actividad(models.Model):
         verbose_name = "Actividad"
         verbose_name_plural = "Actividades"
         ordering = ["-fecha"]
+        permissions = [
+            ("asignar_encargado", "Puede asignar encargado")
+        ]
 
 
 class ComentarioActividad(models.Model):
@@ -165,6 +168,9 @@ class Evidencia(models.Model):
         verbose_name = "Evidencia"
         verbose_name_plural = "Evidencias"
         ordering = ["-fecha"]
+        permissions = [
+            ("validar_evidencia", "Puede validar la ejecución")
+        ]
 
 
 class Validacion(models.Model):

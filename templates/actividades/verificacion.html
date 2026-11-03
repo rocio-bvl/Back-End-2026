@@ -6,10 +6,6 @@
 <main class="container py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <h3 class="m-0 fw-bold"><i class="bi bi-shield-check text-danger me-2"></i>Verificación de Actividades Ejecutadas</h3>
-        {# Buscar y Agregar en Django Admin: solo el Administrador (el Delegado valida desde esta pantalla) #}
-        {% url 'admin:ActividadesApp_evidencia_changelist' as url_buscar %}
-        {% url 'admin:ActividadesApp_evidencia_add' as url_agregar %}
-        {% include 'components/barra_crud.html' with url_buscar=url_buscar url_agregar=url_agregar solo_admin=True %}
     </div>
 
     <div class="row g-4">
@@ -44,9 +40,6 @@
                             <p class="mb-1 small text-muted">Realizada el {{ evidencia_seleccionada.fecha_realizacion|date:"d/m/Y"|default:"-" }}{% if evidencia_seleccionada.depende_externos %} · venía del Tubo de Trabajo{% endif %}{% if evidencia_seleccionada.encargado %} · encargado: {{ evidencia_seleccionada.encargado.get_full_name }}{% endif %}</p>
                             <p class="mb-0"><strong>Lo que se hizo:</strong> {{ evidencia_seleccionada.comentario|default:"-" }}</p>
                         </div>
-                        {% url 'admin:ActividadesApp_evidencia_change' evidencia_seleccionada.id as url_modificar %}
-                        {% url 'admin:ActividadesApp_evidencia_delete' evidencia_seleccionada.id as url_eliminar %}
-                        {% include 'components/acciones_fila.html' with url_modificar=url_modificar url_eliminar=url_eliminar solo_admin=True %}
                     </div>
 
                     <div class="bg-gris-90 text-white text-center p-4 rounded mb-3">

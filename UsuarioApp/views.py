@@ -141,7 +141,7 @@ def administracion(request):
             usuarios = usuarios.filter(delegacion__nombre=filtros['delegacion'])
         if filtros['q']:
             usuarios = usuarios.filter(Q(username__icontains=filtros['q']) | Q(first_name__icontains=filtros['q'])
-                                       | Q(last_name__icontains=filtros['q']) | Q(email__icontains=filtros['q']))
+                                    | Q(last_name__icontains=filtros['q']) | Q(email__icontains=filtros['q']))
     usuarios = list(usuarios)
     for usr in usuarios:
         usr.editable = usuario.puede_editar_usuario(usr)
