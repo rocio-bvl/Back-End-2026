@@ -1,4 +1,5 @@
 from datetime import timedelta
+from urllib.parse import quote
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -67,7 +68,8 @@ class LoginYPermisosTest(TestCase):
 
     def test_sin_sesion_redirige_al_login(self):
         respuesta = self.client.get(reverse('actividades:mi_gestion'))
-        self.assertRedirects(respuesta, reverse('users:login'))
+        # @permiso_requerido agrega ?next= para volver a la pantalla después de iniciar sesión
+        self.assertRedirects(respuesta, reverse('users:login') + '?next=' + quote(reverse('actividades:mi_gestion'), safe=''))
 
     def test_funcionario_no_entra_a_administracion(self):
         self.client.login(username='55555555-5', password=CLAVE)
@@ -110,10 +112,17 @@ class RequisitosEvaluacionTest(TestCase):
         crear_datos_base()
         crear_usuario('11111111-1', 'Admin')
         self.client.login(username='11111111-1', password=CLAVE)
-        for nombre in ['actividades:mi_gestion', 'actividades:tubo_trabajo', 'actividades:gestion_social', 'actividades:verificacion', 'indicadores:semaforo', 'indicadores:resumen_delegacion','users:administracion', 'auditoria:logs']:
+        # Auditoría (solo lectura) y Verificación (solo se valida) no tienen Agregar ni Buscar
+        esperados = {
+            'actividades:mi_gestion': ['Agregar', 'Buscar'],
+            'actividades:tubo_trabajo': ['Agregar'],      # sus filtros reemplazan a Buscar
+            'actividades:gestion_social': ['Agregar', 'Buscar'],
+            'indicadores:semaforo': ['Buscar'],           # sus indicadores se calculan solos (J4)
+            'indicadores:resumen_delegacion': ['Agregar', 'Buscar'],
+            'users:administracion': ['Agregar', 'Buscar'],
+        }
+        for nombre, textos in esperados.items():
             html = self.client.get(reverse(nombre)).content.decode()
-            # El Semáforo no tiene Agregar: sus indicadores se calculan solos (J4). Sí tiene su buscador propio
-            textos = ['Buscar'] if nombre == 'indicadores:semaforo' else ['Agregar', 'Buscar']
             for texto in textos:
                 self.assertIn(texto, html, f"{nombre}: falta {texto}")
 
@@ -412,13 +421,12 @@ class BotonesSegunRolTest(TestCase):
         self.assertEqual(html.count('Agregar Actividad'), 1)
         self.assertIn('Modificar', html)
 
-    def test_auditoria_botones_solo_para_admin(self):
-        html = self.html('22222222-2', 'auditoria:logs')
-        for texto in ['Buscar', 'Agregar', 'Modificar', 'Eliminar']:
-            self.assertNotIn(texto, html)
-        html = self.html('11111111-1', 'auditoria:logs')
-        for texto in ['Agregar', 'Modificar', 'Eliminar', 'Buscar']:
-            self.assertIn(texto, html)
+    def test_auditoria_es_solo_lectura(self):
+        # Ningún rol, ni el Administrador, agrega, modifica o elimina registros de auditoría
+        for rut in ['22222222-2', '11111111-1']:
+            html = self.html(rut, 'auditoria:logs')
+            for texto in ['Agregar', 'Modificar', 'Eliminar']:
+                self.assertNotIn(texto, html, rut)
 
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
@@ -477,6 +485,25 @@ class MetasPorDelegacionTest(TestCase):
         return self.client.post(reverse('indicadores:guardar_metas'), {
             'alcance': alcance, 'cargo': self.datos['cargo'].pk, 'item': item,
             'valor_objetivo': valor, 'ponderador': ponderador})
+
+    def test_coordinador_filtra_metas_con_el_selector_de_delegacion(self):
+        self.guardar('11111111-1', 'LAS_COMPANIAS')  # meta propia de Las Compañías (ítem 2)
+        self.client.login(username='22222222-2', password=CLAVE)
+        url = reverse('users:administracion')
+
+        def alcances(respuesta):
+            return [grupo['nombre'] for grupo in respuesta.context['metas_agrupadas']]
+
+        general = self.client.get(url, {'pestana': 'metas'})  # sin selector = GENERAL
+        self.assertEqual(alcances(general), ['General (toda la municipalidad)'])
+        self.assertEqual(general.context['aviso_metas'], '')
+        compania = self.client.get(url, {'pestana': 'metas', 'delegacion': 'LAS_COMPANIAS'})
+        self.assertEqual(alcances(compania), ['Las Compañías'])
+        self.assertEqual(compania.context['pestana'], 'metas')  # vuelve a la pestaña Metas
+        # Rural no tiene metas propias: aviso y las generales, que son las que se le aplican
+        rural = self.client.get(url, {'pestana': 'metas', 'delegacion': 'RURAL'})
+        self.assertEqual(alcances(rural), ['General (toda la municipalidad)'])
+        self.assertIn('Rural no tiene metas propias', rural.context['aviso_metas'])
 
     def test_delegado_define_metas_solo_de_su_delegacion(self):
         from IndicadoresApp.calculos import indicadores_usuario
