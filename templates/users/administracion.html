@@ -65,6 +65,17 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                         <a href="{% url 'users:delegacion_crear' %}" class="btn btn-muni btn-sm"><i class="bi bi-plus-circle me-1"></i>Agregar delegación</a>
                         {% endif %}
                     </div>
+                    {# Buscador de delegaciones: por nombre, ámbito o nombre de un territorio #}
+                    <form method="get" class="row g-2 align-items-end mb-3">
+                        <div class="col-md-5">
+                            <label class="form-label small mb-1" for="f_q_delegacion">Buscar</label>
+                            <input type="search" name="q_delegacion" id="f_q_delegacion" value="{{ buscar_delegacion }}" class="form-control form-control-sm" placeholder="Nombre, ámbito o territorio">
+                        </div>
+                        <div class="col-md-3 d-flex gap-1">
+                            <button type="submit" class="btn btn-sm btn-muni flex-grow-1"><i class="bi bi-search me-1"></i>Buscar</button>
+                            <a href="?" class="btn btn-sm btn-outline-secondary">Limpiar</a>
+                        </div>
+                    </form>
                     <div class="row g-3">
                         {% for item in delegaciones %}
                         <div class="col-lg-6">
@@ -117,7 +128,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                             </div>
                         </div>
                         {% empty %}
-                        <p class="text-muted">No hay delegaciones registradas.</p>
+                        <p class="text-muted">{% if buscar_delegacion %}Ninguna delegación coincide con "{{ buscar_delegacion }}".{% else %}No hay delegaciones registradas.{% endif %}</p>
                         {% endfor %}
                     </div>
                 </div>
@@ -308,6 +319,19 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
 
             <div class="card shadow-sm border-0 p-3">
                 <h5 class="fw-bold">Metas del periodo vigente</h5>
+                {# Buscador de metas: por cargo o ítem. Conserva la delegación elegida en la barra superior #}
+                <form method="get" class="row g-2 align-items-end mb-2">
+                    <input type="hidden" name="pestana" value="metas">
+                    {% if request.GET.delegacion %}<input type="hidden" name="delegacion" value="{{ request.GET.delegacion }}">{% endif %}
+                    <div class="col-md-5">
+                        <label class="form-label small mb-1" for="f_q_meta">Buscar</label>
+                        <input type="search" name="q_meta" id="f_q_meta" value="{{ buscar_meta }}" class="form-control form-control-sm" placeholder="Cargo o ítem de gestión">
+                    </div>
+                    <div class="col-md-3 d-flex gap-1">
+                        <button type="submit" class="btn btn-sm btn-muni flex-grow-1"><i class="bi bi-search me-1"></i>Buscar</button>
+                        <a href="?pestana=metas{% if request.GET.delegacion %}&delegacion={{ request.GET.delegacion }}{% endif %}" class="btn btn-sm btn-outline-secondary">Limpiar</a>
+                    </div>
+                </form>
                 {% if aviso_metas %}
                 <div class="alert alert-warning small mb-2"><i class="bi bi-info-circle me-1"></i>{{ aviso_metas }}</div>
                 {% endif %}
@@ -358,7 +382,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                 </div>
                 {% endfor %}
                 {% empty %}
-                <p class="text-muted mb-0">Aún no hay metas definidas para el periodo vigente.</p>
+                <p class="text-muted mb-0">{% if buscar_meta %}Ninguna meta coincide con "{{ buscar_meta }}".{% else %}Aún no hay metas definidas para el periodo vigente.{% endif %}</p>
                 {% endfor %}
             </div>
         </div>
