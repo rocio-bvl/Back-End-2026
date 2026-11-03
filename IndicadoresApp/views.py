@@ -239,9 +239,13 @@ def resumen_delegacion(request):
     return render(request, 'indicadores/resumen_delegacion.html', data)
 
 
-def url_metas():
-    """Vuelve al panel de administración con la pestaña de metas abierta."""
-    return reverse('users:administracion') + '#goals'
+def url_metas(meta=None):
+    """Vuelve al panel de administración con la pestaña de metas abierta.
+    Con una meta, el selector queda en su delegación (o en GENERAL), para que se vea lo que se acaba de guardar."""
+    if meta is None:
+        return reverse('users:administracion') + '#goals'
+    codigo = meta.delegacion.nombre if meta.delegacion else 'GENERAL'
+    return reverse('users:administracion') + f"?pestana=metas&delegacion={codigo}#goals"
 
 
 def mostrar_errores(request, form):
@@ -267,7 +271,7 @@ def guardar_metas(request):
     if form.total < 100:
         messages.warning(request, f"Los ponderadores del cargo {meta.cargo} suman {form.total}%. "
                                   f"Faltan {100 - form.total}% para completar 100%.")
-    return redirect(url_metas())
+    return redirect(url_metas(meta))
 
 
 @permiso_requerido('IndicadoresApp.change_metadesempeno', 'Modificar meta')
@@ -283,7 +287,7 @@ def meta_editar(request, pk):
             registrar_auditoria(request.user, evento, 'MetaDesempeno', meta.pk, antes,
                                 f"{meta} = {meta.valor_objetivo} ({meta.ponderador}%)")
             messages.success(request, "Meta modificada.")
-            return redirect(url_metas())
+            return redirect(url_metas(meta))
     else:
         form = MetaForm(usuario=request.user, periodo=meta.periodo, meta=meta)
     return render(request, 'indicadores/meta_form.html', {'form': form, 'meta': meta})
@@ -300,4 +304,4 @@ def meta_eliminar(request, pk):
     registrar_auditoria(request.user, 'ELIMINACION', 'MetaDesempeno', meta.pk, descripcion, '')
     meta.delete()
     messages.success(request, "Meta eliminada.")
-    return redirect(url_metas())
+    return redirect(url_metas(meta))

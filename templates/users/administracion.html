@@ -308,6 +308,9 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
 
             <div class="card shadow-sm border-0 p-3">
                 <h5 class="fw-bold">Metas del periodo vigente</h5>
+                {% if aviso_metas %}
+                <div class="alert alert-warning small mb-2"><i class="bi bi-info-circle me-1"></i>{{ aviso_metas }}</div>
+                {% endif %}
                 {% for grupo in metas_agrupadas %}
                 <h6 class="fw-bold mt-3 {% if grupo.general %}text-danger{% endif %}"><i class="bi {% if grupo.general %}bi-building{% else %}bi-geo-alt{% endif %} me-1"></i>{{ grupo.nombre }}</h6>
                 {% for bloque in grupo.cargos %}
@@ -460,6 +463,19 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
 
 {% block extra_js %}
 <script>
+    // El selector de delegación de la barra recarga la página: se guarda la pestaña abierta (Metas o Usuarios)
+    // en el campo oculto "pestana" de ese formulario, para volver a la misma pestaña después de filtrar.
+    (function () {
+        var campo = document.getElementById('navPestana');
+        var metas = document.getElementById('goals-tab');
+        var usuarios = document.getElementById('users-tab');
+        if (!campo || !metas) { return; }
+        metas.addEventListener('shown.bs.tab', function () { campo.value = 'metas'; campo.disabled = false; });
+        if (usuarios) {
+            usuarios.addEventListener('shown.bs.tab', function () { campo.value = ''; campo.disabled = true; });
+        }
+    })();
+
     // Después de guardar una meta se vuelve con #goals: se abre esa pestaña
     if (window.location.hash === '#goals') {
         var pestana = document.getElementById('goals-tab');

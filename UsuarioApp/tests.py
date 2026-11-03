@@ -1,4 +1,5 @@
 from datetime import timedelta
+from urllib.parse import quote
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -67,7 +68,8 @@ class LoginYPermisosTest(TestCase):
 
     def test_sin_sesion_redirige_al_login(self):
         respuesta = self.client.get(reverse('actividades:mi_gestion'))
-        self.assertRedirects(respuesta, reverse('users:login'))
+        # @permiso_requerido agrega ?next= para volver a la pantalla después de iniciar sesión
+        self.assertRedirects(respuesta, reverse('users:login') + '?next=' + quote(reverse('actividades:mi_gestion'), safe=''))
 
     def test_funcionario_no_entra_a_administracion(self):
         self.client.login(username='55555555-5', password=CLAVE)
@@ -110,10 +112,17 @@ class RequisitosEvaluacionTest(TestCase):
         crear_datos_base()
         crear_usuario('11111111-1', 'Admin')
         self.client.login(username='11111111-1', password=CLAVE)
-        for nombre in ['actividades:mi_gestion', 'actividades:tubo_trabajo', 'actividades:gestion_social', 'actividades:verificacion', 'indicadores:semaforo', 'indicadores:resumen_delegacion','users:administracion', 'auditoria:logs']:
+        # Auditoría (solo lectura) y Verificación (solo se valida) no tienen Agregar ni Buscar
+        esperados = {
+            'actividades:mi_gestion': ['Agregar', 'Buscar'],
+            'actividades:tubo_trabajo': ['Agregar'],      # sus filtros reemplazan a Buscar
+            'actividades:gestion_social': ['Agregar', 'Buscar'],
+            'indicadores:semaforo': ['Buscar'],           # sus indicadores se calculan solos (J4)
+            'indicadores:resumen_delegacion': ['Agregar', 'Buscar'],
+            'users:administracion': ['Agregar', 'Buscar'],
+        }
+        for nombre, textos in esperados.items():
             html = self.client.get(reverse(nombre)).content.decode()
-            # El Semáforo no tiene Agregar: sus indicadores se calculan solos (J4). Sí tiene su buscador propio
-            textos = ['Buscar'] if nombre == 'indicadores:semaforo' else ['Agregar', 'Buscar']
             for texto in textos:
                 self.assertIn(texto, html, f"{nombre}: falta {texto}")
 
@@ -363,7 +372,8 @@ class MetasYFechasInlineTest(TestCase):
         MetaDesempeno.objects.all().delete()
         respuesta = self.client.post(reverse('indicadores:guardar_metas'), {
             'cargo': self.datos['cargo'].pk, 'item': 2, 'valor_objetivo': '30', 'ponderador': '40'})
-        self.assertEqual(respuesta['Location'], reverse('users:administracion') + '#goals')
+        # Meta general: vuelve a Metas con el selector en GENERAL, para que se vea lo que se guardó
+        self.assertEqual(respuesta['Location'], reverse('users:administracion') + '?pestana=metas&delegacion=GENERAL#goals')
         meta = MetaDesempeno.objects.get()
         self.assertEqual((meta.valor_objetivo, meta.ponderador), (30, 40))
         # Valores que no son número no provocan error 500
@@ -412,13 +422,12 @@ class BotonesSegunRolTest(TestCase):
         self.assertEqual(html.count('Agregar Actividad'), 1)
         self.assertIn('Modificar', html)
 
-    def test_auditoria_botones_solo_para_admin(self):
-        html = self.html('22222222-2', 'auditoria:logs')
-        for texto in ['Buscar', 'Agregar', 'Modificar', 'Eliminar']:
-            self.assertNotIn(texto, html)
-        html = self.html('11111111-1', 'auditoria:logs')
-        for texto in ['Agregar', 'Modificar', 'Eliminar', 'Buscar']:
-            self.assertIn(texto, html)
+    def test_auditoria_es_solo_lectura(self):
+        # Ningún rol, ni el Administrador, agrega, modifica o elimina registros de auditoría
+        for rut in ['22222222-2', '11111111-1']:
+            html = self.html(rut, 'auditoria:logs')
+            for texto in ['Agregar', 'Modificar', 'Eliminar']:
+                self.assertNotIn(texto, html, rut)
 
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
@@ -477,6 +486,50 @@ class MetasPorDelegacionTest(TestCase):
         return self.client.post(reverse('indicadores:guardar_metas'), {
             'alcance': alcance, 'cargo': self.datos['cargo'].pk, 'item': item,
             'valor_objetivo': valor, 'ponderador': ponderador})
+
+    def test_coordinador_filtra_metas_con_el_selector_de_delegacion(self):
+        self.guardar('11111111-1', 'LAS_COMPANIAS')  # meta propia de Las Compañías (ítem 2)
+        self.client.login(username='22222222-2', password=CLAVE)
+        url = reverse('users:administracion')
+
+        def alcances(respuesta):
+            return [grupo['nombre'] for grupo in respuesta.context['metas_agrupadas']]
+
+        general = self.client.get(url, {'pestana': 'metas'})  # sin selector = GENERAL
+        self.assertEqual(alcances(general), ['General (toda la municipalidad)'])
+        self.assertEqual(general.context['aviso_metas'], '')
+        compania = self.client.get(url, {'pestana': 'metas', 'delegacion': 'LAS_COMPANIAS'})
+        self.assertEqual(alcances(compania), ['Las Compañías'])
+        self.assertEqual(compania.context['pestana'], 'metas')  # vuelve a la pestaña Metas
+        # Rural no tiene metas propias: aviso y las generales, que son las que se le aplican
+        rural = self.client.get(url, {'pestana': 'metas', 'delegacion': 'RURAL'})
+        self.assertEqual(alcances(rural), ['General (toda la municipalidad)'])
+        self.assertIn('Rural no tiene metas propias', rural.context['aviso_metas'])
+
+    def test_admin_filtra_metas_con_el_selector_de_delegacion(self):
+        self.guardar('11111111-1', 'LAS_COMPANIAS')
+        url = reverse('users:administracion')
+        nombres = lambda r: [grupo['nombre'] for grupo in r.context['metas_agrupadas']]
+        self.assertEqual(nombres(self.client.get(url)), ['General (toda la municipalidad)'])
+        self.assertEqual(nombres(self.client.get(url, {'delegacion': 'LAS_COMPANIAS'})), ['Las Compañías'])
+
+    def test_delegado_elige_entre_general_y_su_delegacion(self):
+        self.guardar('11111111-1', 'LAS_COMPANIAS')
+        self.client.login(username='33333333-3', password=CLAVE)
+        url = reverse('users:administracion')
+        nombres = lambda r: [grupo['nombre'] for grupo in r.context['metas_agrupadas']]
+        propia = self.client.get(url)  # por defecto, su delegación
+        self.assertEqual(nombres(propia), ['Las Compañías'])
+        self.assertEqual([valor for valor, texto in propia.context['delegaciones_navbar']], ['GENERAL', 'LAS_COMPANIAS'])
+        self.assertEqual(nombres(self.client.get(url, {'delegacion': 'GENERAL'})), ['General (toda la municipalidad)'])
+        # Otra delegación no se puede ver: se queda en la suya
+        self.assertEqual(nombres(self.client.get(url, {'delegacion': 'RURAL'})), ['Las Compañías'])
+        # Fuera de Administración no tiene selector
+        self.assertNotIn('delegaciones_navbar', self.client.get(reverse('actividades:mi_gestion')).context)
+
+    def test_al_guardar_meta_vuelve_filtrado_en_su_delegacion(self):
+        respuesta = self.guardar('11111111-1', 'LAS_COMPANIAS')
+        self.assertEqual(respuesta.url, reverse('users:administracion') + '?pestana=metas&delegacion=LAS_COMPANIAS#goals')
 
     def test_delegado_define_metas_solo_de_su_delegacion(self):
         from IndicadoresApp.calculos import indicadores_usuario
@@ -583,8 +636,7 @@ class GestionDelegacionesYUsuariosTest(TestCase):
 
     def test_admin_elimina_usuario_sin_registros_y_no_uno_con_actividades(self):
         from ActividadesApp.models import Actividad
-        Actividad.objects.create(solicitud_problema='x', accion='y', item=self.datos['item'],
-                                 periodo=self.datos['periodo'], usuario=self.func)
+        Actividad.objects.create(solicitud_problema='x', accion='y', item=self.datos['item'], periodo=self.datos['periodo'], usuario=self.func)
         self.entrar('11111111-1')
         self.client.post(reverse('users:usuario_eliminar', args=[self.otro.pk]))
         self.client.post(reverse('users:usuario_eliminar', args=[self.func.pk]))
@@ -795,10 +847,7 @@ class TableroPorPerfilTest(TestCase):
         return self.client.get(reverse('indicadores:dashboard'))
 
     def test_plantilla_segun_grupo(self):
-        for rut, plantilla in [('11111111-1', 'indicadores/dashboard_admin.html'),
-                               ('22222222-2', 'indicadores/dashboard_coordinador.html'),
-                               ('33333333-3', 'indicadores/dashboard_delegado.html'),
-                               ('55555555-5', 'indicadores/dashboard_administrativo.html')]:
+        for rut, plantilla in [('11111111-1', 'indicadores/dashboard_admin.html'), ('22222222-2', 'indicadores/dashboard_coordinador.html'), ('33333333-3', 'indicadores/dashboard_delegado.html'), ('55555555-5', 'indicadores/dashboard_administrativo.html')]:
             self.assertTemplateUsed(self.tablero(rut), plantilla)
 
     def test_coordinador_compara_delegaciones(self):
