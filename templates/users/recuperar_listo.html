@@ -1,0 +1,12 @@
+{% extends 'users/base_acceso.html' %}
+
+{% block title %}Contraseña actualizada{% endblock %}
+{% block encabezado %}Contraseña actualizada{% endblock %}
+
+{% block contenido %}
+<div class="text-center">
+    <i class="bi bi-shield-check text-success" style="font-size: 3rem;"></i>
+    <p class="mt-3">Contraseña actualizada con éxito. Ya puede iniciar sesión con la clave nueva.</p>
+    <a href="{% url 'users:login' %}" class="btn btn-muni w-100 py-2 fw-bold mt-2"><i class="bi bi-box-arrow-in-right me-1"></i> Iniciar sesión</a>
+</div>
+{% endblock %}

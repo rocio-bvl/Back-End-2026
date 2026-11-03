@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
@@ -15,6 +16,13 @@ from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado, permi
 from UsuarioApp.models import Usuario, Cargo, Catalogo
 
 
+def filtrar_por_nombre(usuarios, q):
+    """Buscador propio de Semáforo y Resumen: nombre, apellido o RUT."""
+    if not q:
+        return usuarios
+    return usuarios.filter(Q(first_name__icontains=q) | Q(last_name__icontains=q) | Q(username__icontains=q))
+
+
 def usuarios_evaluados(delegacion):
     usuarios = Usuario.objects.filter(is_active=True, cargo__isnull=False).select_related('cargo', 'cargo__area')
     if delegacion is not None:
@@ -22,13 +30,23 @@ def usuarios_evaluados(delegacion):
     return usuarios
 
 
-@login_required
-def dashboard(request):
+def tipo_tablero(usuario):
+    """Qué tablero ve cada perfil, según su grupo de Django (J1). Cada uno de los 4 perfiles tiene el suyo:
+    Administrador: totales del sistema. Supervisor (Coordinador): comparación entre delegaciones.
+    Delegado: su delegación. Administrativo (Funcionario): lo suyo."""
+    grupos = set(usuario.groups.values_list('name', flat=True))
+    if usuario.is_superuser or 'Administrador' in grupos:
+        return 'admin'
+    if 'Supervisor' in grupos:
+        return 'coordinador'
+    if 'Delegado' in grupos:
+        return 'delegado'
+    return 'administrativo'
 
-    codigo, delegacion, nombre = delegacion_seleccionada(request)
-    hoy = timezone.localdate()
-    periodo = periodo_vigente(hoy)
 
+def resumen_delegacion_tablero(delegacion, periodo, hoy):
+    """Las tres tarjetas de siempre: pendientes, avance promedio y semáforo de la delegación elegida
+    (delegacion=None: toda la municipalidad). semaforo_color guarda el código (VERDE, AMBAR, ROJO o vacío)."""
     # Actividades pendientes = compromisos programados y actividades del Tubo (todavía sin ejecutar)
     compromisos = Actividad.objects.filter(estado__in=['PROGRAMADA', 'EN_TUBO'])
     if delegacion is not None:
@@ -36,6 +54,7 @@ def dashboard(request):
 
     avance = Decimal('0')
     semaforo = 'Sin periodo vigente'
+    color = ''
     if periodo is not None:
         filas = []
         for usuario in usuarios_evaluados(delegacion):
@@ -51,14 +70,91 @@ def dashboard(request):
         else:
             color = 'VERDE'
         semaforo = {'VERDE': 'Verde', 'AMBAR': 'Ámbar', 'ROJO': 'Rojo'}[color]
-
-    data = {
-        'delegacion_actual': f"Delegación {nombre}",
+    return {
         'compromisos_pendientes_count': compromisos.count(),
         'avance_periodo_porcentaje': f"{avance}%",
+        'avance': avance,
         'semaforo_estado': semaforo,
+        'semaforo_color': color,
     }
-    return render(request, 'indicadores/dashboard.html', data)
+
+
+def comparacion_delegaciones(periodo, hoy):
+    """Tablero del Coordinador: una fila por delegación activa con su avance, semáforo y pendientes."""
+    from UsuarioApp.models import Delegacion
+    filas = []
+    for delegacion in Delegacion.objects.filter(estado='ACTIVO').order_by('nombre_visible'):
+        fila = resumen_delegacion_tablero(delegacion, periodo, hoy)
+        fila['delegacion'] = delegacion
+        fila['responsables'] = usuarios_evaluados(delegacion).count()
+        fila['por_validar'] = Actividad.objects.filter(estado='REGISTRADA', usuario__delegacion=delegacion).count()
+        filas.append(fila)
+    return filas
+
+
+@login_required
+def dashboard(request):
+    """Tablero distinto por perfil (J5): elige la plantilla según el grupo del usuario."""
+    from ActividadesApp.models import AtencionSocial
+    from UsuarioApp.models import Delegacion
+
+    usuario = request.user
+    codigo, delegacion, nombre = delegacion_seleccionada(request)
+    hoy = timezone.localdate()
+    periodo = periodo_vigente(hoy)
+    tipo = tipo_tablero(usuario)
+
+    data = {'delegacion_actual': f"Delegación {nombre}", 'periodo': periodo, 'tipo_tablero': tipo}
+
+    if tipo == 'admin':
+        data.update(resumen_delegacion_tablero(delegacion, periodo, hoy))
+        data.update({
+            'total_usuarios': Usuario.objects.filter(is_active=True).count(),
+            'total_delegaciones': Delegacion.objects.filter(estado='ACTIVO').count(),
+            'total_actividades': Actividad.objects.filter(periodo=periodo).count() if periodo else 0,
+            'total_atenciones': AtencionSocial.objects.count(),
+            'por_validar': Actividad.objects.filter(estado='REGISTRADA').count(),
+            'total_metas': MetaDesempeno.objects.filter(periodo=periodo).count() if periodo else 0,
+        })
+        return render(request, 'indicadores/dashboard_admin.html', data)
+
+    if tipo == 'coordinador':
+        # Las tarjetas siguen al selector de la barra (GENERAL = toda la comuna); la tabla compara todas las
+        # delegaciones y marca la elegida
+        data.update(resumen_delegacion_tablero(delegacion, periodo, hoy))
+        if delegacion is None:
+            data['delegacion_actual'] = 'Toda la municipalidad'
+        data['delegacion_elegida'] = delegacion
+        data['delegaciones'] = comparacion_delegaciones(periodo, hoy)
+        data['por_validar'] = Actividad.objects.filter(estado='REGISTRADA').count()
+        return render(request, 'indicadores/dashboard_coordinador.html', data)
+
+    if tipo == 'delegado':
+        data.update(resumen_delegacion_tablero(delegacion, periodo, hoy))
+        por_validar = Actividad.objects.filter(estado='REGISTRADA')
+        if delegacion is not None:
+            por_validar = por_validar.filter(usuario__delegacion=delegacion)
+        data['por_validar'] = por_validar.count()
+        # Los 5 responsables más atrasados de la delegación (para saber a quién apoyar primero)
+        atrasados = []
+        if periodo is not None:
+            for evaluado in usuarios_evaluados(delegacion):
+                atrasados.append(seguimiento_usuario(evaluado, periodo, hoy))
+            atrasados.sort(key=lambda fila: fila['avance_logrado'])
+        data['atrasados'] = atrasados[:5]
+        return render(request, 'indicadores/dashboard_delegado.html', data)
+
+    # Administrativo: su propio avance y lo que tiene pendiente
+    mias = Actividad.objects.filter(usuario=usuario) | Actividad.objects.filter(encargado=usuario)
+    data.update({
+        'mi_avance': seguimiento_usuario(usuario, periodo, hoy) if periodo and usuario.cargo_id else None,
+        'mis_pendientes': mias.filter(estado__in=['PROGRAMADA', 'EN_TUBO']).distinct().order_by('fecha_realizacion')[:5],
+        'mis_pendientes_count': mias.filter(estado__in=['PROGRAMADA', 'EN_TUBO']).distinct().count(),
+        'en_revision_count': mias.filter(estado='REGISTRADA').distinct().count(),
+        'rechazadas_count': mias.filter(estado='RECHAZADA').distinct().count(),
+        'validadas_count': mias.filter(estado='VALIDADA', periodo=periodo).distinct().count() if periodo else 0,
+    })
+    return render(request, 'indicadores/dashboard_administrativo.html', data)
 
 
 @permiso_requerido('IndicadoresApp.view_metadesempeno', 'Semáforo')
@@ -68,19 +164,21 @@ def semaforo(request):
     hoy = timezone.localdate()
     periodo = periodo_vigente(hoy)
 
+    q = request.GET.get('q', '').strip()
     seguimiento = []
     dias_transcurridos = 0
     porcentaje_esperado = 0
     if periodo is not None:
         dias_transcurridos = periodo.calcular_dias_transcurridos(hoy)
         porcentaje_esperado = periodo.porcentaje_transcurrido(hoy)
-        for usuario in usuarios_evaluados(delegacion):
+        for usuario in filtrar_por_nombre(usuarios_evaluados(delegacion), q):
             seguimiento.append(seguimiento_usuario(usuario, periodo, hoy))
     else:
         messages.warning(request, "No hay un periodo vigente para la fecha de hoy.")
 
     data = {
         'seguimiento': seguimiento,
+        'q': q,
         'dias_transcurridos': dias_transcurridos,
         'porcentaje_esperado': porcentaje_esperado,
         'periodo': periodo,
@@ -120,12 +218,23 @@ def resumen_delegacion(request):
                     'avance': avance,
                     'porcentaje_cumplimiento': porcentaje,
                     'total_ponderado': round(porcentaje * meta.ponderador / 100, 1),
+                    # Botones Modificar / Eliminar: solo si quien mira puede editar esta meta
+                    'editable': request.user.puede_editar_meta(meta),
                 })
+
+    # Equipo: cada integrante sabe si quien mira puede modificarlo o eliminarlo (pantallas propias, no Django Admin).
+    # El buscador filtra solo la tabla del equipo; las comisiones siguen calculadas con toda la delegación.
+    q = request.GET.get('q', '').strip()
+    integrantes = list(filtrar_por_nombre(equipo, q))
+    for integrante in integrantes:
+        integrante.editable = request.user.puede_editar_usuario(integrante)
+        integrante.eliminable = request.user.puede_eliminar_usuario(integrante)
 
     data = {
         'delegacion_nombre': f"Delegación {nombre}",
         'comisiones': comisiones,
-        'equipo': equipo,
+        'equipo': integrantes,
+        'q': q,
     }
     return render(request, 'indicadores/resumen_delegacion.html', data)
 

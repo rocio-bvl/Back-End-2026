@@ -13,8 +13,7 @@ DIAS_POR_VENCER = 3
 class Territorio(models.Model):
     """Sector o territorio de una delegación. El formulario de actividades lo ofrece como lista."""
     nombre = models.CharField(max_length=150, verbose_name="Nombre")
-    delegacion = models.ForeignKey('UsuarioApp.Delegacion', on_delete=models.PROTECT, null=True, blank=True,
-                                related_name='territorios', verbose_name="Delegación")
+    delegacion = models.ForeignKey('UsuarioApp.Delegacion', on_delete=models.PROTECT, null=True, blank=True, related_name='territorios', verbose_name="Delegación")
     estado = models.CharField(max_length=10, choices=estados_registro, default='ACTIVO', verbose_name="Estado")
 
     def __str__(self):
@@ -39,8 +38,7 @@ class Actividad(models.Model):
     fecha = models.DateTimeField(default=timezone.now, verbose_name="Fecha de ingreso")
     solicitud_problema = models.TextField(verbose_name="Actividad / solicitud / problema")
     accion = models.CharField(max_length=255, verbose_name="Acción")
-    territorio = models.ForeignKey(Territorio, on_delete=models.PROTECT, null=True, blank=True,
-                                related_name='actividades', verbose_name="Territorio / sector")
+    territorio = models.ForeignKey(Territorio, on_delete=models.PROTECT, null=True, blank=True, related_name='actividades', verbose_name="Territorio / sector")
     depende_externos = models.BooleanField(default=False, verbose_name="¿Depende de factores externos? (Tubo de Trabajo)")
     # Fecha de ejecución: la elige quien registra. En el Tubo puede quedar vacía y agregarse después
     fecha_realizacion = models.DateField(null=True, blank=True, verbose_name="Fecha de ejecución")
@@ -49,10 +47,8 @@ class Actividad(models.Model):
     periodo = models.ForeignKey('IndicadoresApp.Periodo', on_delete=models.PROTECT, related_name='actividades', verbose_name="Periodo")
     servicio = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, null=True, blank=True, related_name='actividades_servicio', limit_choices_to={'tipo': 'SERVICIO'}, verbose_name="Servicio")
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='actividades', verbose_name="Registrada por")
-    encargado = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
-                                related_name='actividades_a_cargo', verbose_name="Encargado")
-    solicitud = models.ForeignKey('AtencionSocial', on_delete=models.SET_NULL, null=True, blank=True,
-                                related_name='actividades', verbose_name="Solicitud social vinculada")
+    encargado = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='actividades_a_cargo', verbose_name="Encargado")
+    solicitud = models.ForeignKey('AtencionSocial', on_delete=models.SET_NULL, null=True, blank=True, related_name='actividades', verbose_name="Solicitud social vinculada")
 
     def __str__(self):
         return f"{self.folio()} - {self.accion}"

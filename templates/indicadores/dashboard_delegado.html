@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}Tablero del Delegado | Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+{# Tablero del grupo Delegado: semáforo, pendientes y equipo de su delegación #}
+<main class="container-fluid px-md-4 py-4">
+    <h2 class="mb-4">Tablero del Delegado - {{ delegacion_actual }}</h2>
+
+    {% include 'indicadores/components/tarjetas_resumen.html' %}
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni text-white fw-bold">Responsables con menor avance</div>
+                <div class="tarjeta-tabla table-responsive">
+                    <table class="table table-hover tabla-sgr tabla-compacta text-center mb-0">
+                        <thead>
+                            <tr><th class="text-start">RESPONSABLE</th><th>OBJETIVO HOY</th><th>AVANCE</th><th>SEMÁFORO</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for fila in atrasados %}
+                            <tr>
+                                <td class="text-start">{{ fila.responsable }}</td>
+                                <td>{{ fila.objetivo_hoy }}%</td>
+                                <td class="fw-bold">{{ fila.avance_logrado }}%</td>
+                                <td>
+                                    <span class="badge {% if fila.color == 'VERDE' %}bg-success{% elif fila.color == 'AMBAR' %}bg-warning text-dark{% else %}bg-danger{% endif %}">{{ fila.color }}</span>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-muted py-3">Sin responsables con metas en el periodo vigente.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm border-start border-4 border-primary p-3">
+                <span class="text-muted small">Actividades ejecutadas por validar</span>
+                <h3 class="fw-bold mb-0 text-primary">{{ por_validar }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        {% if perms.IndicadoresApp.view_metadesempeno %}
+        {% url 'indicadores:semaforo' as url_semaforo %}
+        {% include 'indicadores/components/acceso.html' with url=url_semaforo icono='bi-stoplights' titulo='Semáforo' texto='Avance al día de cada responsable.' %}
+        {% url 'indicadores:resumen_delegacion' as url_resumen %}
+        {% include 'indicadores/components/acceso.html' with url=url_resumen icono='bi-building-gear' titulo='Resumen de la delegación' texto='Metas, cumplimiento y equipo.' %}
+        {% endif %}
+        {% if request.user.puede_verificar %}
+        {# Cuando exista el permiso propio validar_evidencia (R1) se puede cambiar por perms.ActividadesApp.validar_evidencia #}
+        {% url 'actividades:verificacion' as url_verificacion %}
+        {% include 'indicadores/components/acceso.html' with url=url_verificacion icono='bi-patch-check' titulo='Verificación' texto='Validar o rechazar lo ejecutado.' %}
+        {% endif %}
+        {% if perms.UsuarioApp.view_usuario %}
+        {% url 'users:administracion' as url_usuarios %}
+        {% include 'indicadores/components/acceso.html' with url=url_usuarios icono='bi-people' titulo='Usuarios' texto='Equipo y metas de la delegación.' %}
+        {% endif %}
+    </div>
+</main>
+{% endblock %}

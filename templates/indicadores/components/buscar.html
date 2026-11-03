@@ -1,0 +1,7 @@
+{# Buscador propio (no Django Admin): filtra la tabla por nombre o RUT. Conserva la delegación elegida en la barra superior #}
+<form method="get" class="d-flex bg-white rounded p-1" role="search">
+    {% if request.GET.delegacion %}<input type="hidden" name="delegacion" value="{{ request.GET.delegacion }}">{% endif %}
+    <input type="search" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="{{ texto|default:'Nombre o RUT' }}" aria-label="Buscar">
+    <button type="submit" class="btn btn-sm btn-outline-dark ms-1 text-nowrap"><i class="bi bi-search me-1"></i>Buscar</button>
+    {% if q %}<a href="?{% if request.GET.delegacion %}delegacion={{ request.GET.delegacion }}{% endif %}" class="btn btn-sm btn-link text-nowrap">Limpiar</a>{% endif %}
+</form>
