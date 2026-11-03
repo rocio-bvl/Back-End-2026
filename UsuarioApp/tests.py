@@ -527,6 +527,33 @@ class MetasPorDelegacionTest(TestCase):
         # Fuera de Administración no tiene selector
         self.assertNotIn('delegaciones_navbar', self.client.get(reverse('actividades:mi_gestion')).context)
 
+    def test_buscador_de_metas_por_cargo_o_item(self):
+        MetaDesempeno.objects.create(valor_objetivo=5, ponderador=0, cargo=self.datos['cargo'],
+                                     item=Catalogo.objects.get(id=2), periodo=self.datos['periodo'])  # general: Visitas
+        self.client.login(username='11111111-1', password=CLAVE)
+        url = reverse('users:administracion')
+        items = lambda r: [m.item.nombre for g in r.context['metas_agrupadas'] for b in g['cargos'] for m in b['metas']]
+        self.assertEqual(sorted(items(self.client.get(url, {'pestana': 'metas'}))), ['Atención de Usuario', 'Visitas'])
+        self.assertEqual(items(self.client.get(url, {'pestana': 'metas', 'q_meta': 'visit'})), ['Visitas'])
+        self.assertEqual(len(items(self.client.get(url, {'pestana': 'metas', 'q_meta': 'territorial'}))), 2)  # por cargo
+        vacio = self.client.get(url, {'pestana': 'metas', 'q_meta': 'zzz'})
+        self.assertEqual(vacio.context['metas_agrupadas'], [])
+        self.assertContains(vacio, 'Ninguna meta coincide con')
+        # Con una delegación sin coincidencias no aparece el aviso de "no tiene metas propias"
+        self.guardar('11111111-1', 'LAS_COMPANIAS')
+        compania = self.client.get(url, {'pestana': 'metas', 'delegacion': 'LAS_COMPANIAS', 'q_meta': 'zzz'})
+        self.assertEqual(compania.context['aviso_metas'], '')
+
+    def test_buscador_de_delegaciones(self):
+        self.client.login(username='11111111-1', password=CLAVE)
+        url = reverse('users:administracion')
+        nombres = lambda r: [str(item['delegacion']) for item in r.context['delegaciones']]
+        self.assertEqual(nombres(self.client.get(url)), ['Las Compañías', 'Rural'])
+        self.assertEqual(nombres(self.client.get(url, {'q_delegacion': 'compa'})), ['Las Compañías'])
+        self.assertEqual(nombres(self.client.get(url, {'q_delegacion': 'norte'})), ['Rural'])  # por territorio
+        self.assertEqual(nombres(self.client.get(url, {'q_delegacion': 'rural'})), ['Rural'])  # por ámbito o nombre
+        self.assertContains(self.client.get(url, {'q_delegacion': 'zzz'}), 'Ninguna delegación coincide con')
+
     def test_al_guardar_meta_vuelve_filtrado_en_su_delegacion(self):
         respuesta = self.guardar('11111111-1', 'LAS_COMPANIAS')
         self.assertEqual(respuesta.url, reverse('users:administracion') + '?pestana=metas&delegacion=LAS_COMPANIAS#goals')

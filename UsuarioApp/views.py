@@ -64,10 +64,11 @@ def asignar_rol(usuario, codigo, asignado_por):
     usuario.sincronizar_grupo()  # grupo de Django del rol (hereda sus permisos)
 
 
-def metas_agrupadas(periodo, usuario, solo_alcance=False, alcance=None):
+def metas_agrupadas(periodo, usuario, solo_alcance=False, alcance=None, texto=''):
     """Metas del periodo agrupadas por alcance (General y cada delegación) y, dentro, por cargo.
     El Delegado ve las generales y las de su delegación.
-    solo_alcance=True: solo las de un alcance (alcance=None son las generales; si no, las de esa delegación)."""
+    solo_alcance=True: solo las de un alcance (alcance=None son las generales; si no, las de esa delegación).
+    texto: buscador de la pestaña Metas (cargo o ítem de gestión)."""
     grupos = []
     if periodo is None:
         return grupos
@@ -76,6 +77,8 @@ def metas_agrupadas(periodo, usuario, solo_alcance=False, alcance=None):
         metas = metas.filter(delegacion=alcance)
     elif usuario.es_delegado():
         metas = metas.filter(Q(delegacion__isnull=True) | Q(delegacion_id=usuario.delegacion_id))
+    if texto:
+        metas = metas.filter(Q(cargo__nombre__icontains=texto) | Q(item__nombre__icontains=texto))
     alcance_actual = None
     cargo_actual = None
     for meta in metas.order_by('delegacion__nombre_visible', 'cargo__nombre', 'item__id'):
@@ -95,11 +98,16 @@ def metas_agrupadas(periodo, usuario, solo_alcance=False, alcance=None):
     return grupos
 
 
-def delegaciones_con_equipo():
+def delegaciones_con_equipo(texto=''):
     """Cada delegación con su(s) Delegado(s), sus territorios con los Funcionarios de cada uno, y los
-    Funcionarios que todavía no tienen territorio."""
+    Funcionarios que todavía no tienen territorio.
+    texto: buscador de la pestaña Delegaciones (nombre, ámbito o nombre de uno de sus territorios)."""
+    delegaciones = Delegacion.objects.order_by('nombre_visible')
+    if texto:
+        delegaciones = delegaciones.filter(Q(nombre_visible__icontains=texto) | Q(ambito__icontains=texto)
+                                           | Q(territorios__nombre__icontains=texto)).distinct()
     lista = []
-    for delegacion in Delegacion.objects.order_by('nombre_visible'):
+    for delegacion in delegaciones:
         funcionarios = list(delegacion.funcionarios().select_related('territorio', 'cargo'))
         territorios = []
         for territorio in Territorio.objects.filter(delegacion=delegacion).order_by('nombre'):
@@ -170,17 +178,22 @@ def administracion(request):
     else:
         codigo, delegacion_elegida, nombre_delegacion = delegacion_seleccionada(request)
     aviso_metas = ''
-    grupos_metas = metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=delegacion_elegida)
-    if delegacion_elegida is not None and not grupos_metas:
+    if delegacion_elegida is not None and not metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=delegacion_elegida):
         aviso_metas = f"{nombre_delegacion} no tiene metas propias: se le aplican las metas generales de la municipalidad."
-        grupos_metas = metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=None)
+        delegacion_elegida = None
+    # El buscador se aplica después de decidir el alcance: así no confunde "sin resultados" con "sin metas propias"
+    buscar_meta = request.GET.get('q_meta', '').strip()
+    grupos_metas = metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=delegacion_elegida, texto=buscar_meta)
+    buscar_delegacion = request.GET.get('q_delegacion', '').strip()
 
     data = {
         'vista': vista,
         'solo_mi_delegacion': usuario.es_delegado(),
         'lista_usuarios': usuarios,
         'filtros': filtros,
-        'delegaciones': delegaciones_con_equipo() if vista != 'delegado' else [],
+        'delegaciones': delegaciones_con_equipo(buscar_delegacion) if vista != 'delegado' else [],
+        'buscar_delegacion': buscar_delegacion,
+        'buscar_meta': buscar_meta,
         'territorios': territorios,
         'periodo_activo': periodo,
         'hay_periodo': periodo is not None,
