@@ -49,8 +49,8 @@
         </label>
 
         {% if user.is_authenticated %}
-            {% if user.is_superuser or user.rol == 'Admin' or user.rol == 'ADMINISTRADOR' or user.rol == 'Coordinador' or user.rol == 'COORDINADOR' %}
-                <!-- Administradores y Coordinadores: Selector de Delegación (por defecto GENERAL) -->
+            {% if delegaciones_navbar %}
+                <!-- Selector de Delegación: Admin y Coordinador (por defecto GENERAL); Delegado en Administración (por defecto la suya) -->
                 <form method="GET" action="" id="formDelegacionNav">
                     {# Pestaña abierta en Administración (la actualiza administracion.html): al filtrar se vuelve a ella #}
                     <input type="hidden" name="pestana" id="navPestana" value="{{ request.GET.pestana }}" {% if not request.GET.pestana %}disabled{% endif %}>
@@ -60,12 +60,12 @@
                             onchange="document.getElementById('formDelegacionNav').submit();">
                         
                         {% for valor, texto in delegaciones_navbar %}
-                        <option value="{{ valor }}" {% if request.GET.delegacion == valor or not request.GET.delegacion and valor == 'GENERAL' %}selected{% endif %}>{% if valor == 'GENERAL' %}GENERAL{% else %}{{ texto|upper }}{% endif %}</option>
+                        <option value="{{ valor }}" {% if request.GET.delegacion == valor or not request.GET.delegacion and valor == delegacion_por_defecto %}selected{% endif %}>{% if valor == 'GENERAL' %}GENERAL{% else %}{{ texto|upper }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </form>
             {% else %}
-                <!-- Delegados y Funcionarios: Badge fijo con su delegación asignada -->
+                <!-- Funcionarios (y Delegados fuera de Administración): Badge fijo con su delegación asignada -->
                 <span class="badge bg-muni-b2 text-white fw-bold px-3 py-2 fs-6 shadow-sm border border-light-subtle">
                     {% if user.delegacion %}
                         {{ user.delegacion }}

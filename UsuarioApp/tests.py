@@ -372,7 +372,8 @@ class MetasYFechasInlineTest(TestCase):
         MetaDesempeno.objects.all().delete()
         respuesta = self.client.post(reverse('indicadores:guardar_metas'), {
             'cargo': self.datos['cargo'].pk, 'item': 2, 'valor_objetivo': '30', 'ponderador': '40'})
-        self.assertEqual(respuesta['Location'], reverse('users:administracion') + '#goals')
+        # Meta general: vuelve a Metas con el selector en GENERAL, para que se vea lo que se guardó
+        self.assertEqual(respuesta['Location'], reverse('users:administracion') + '?pestana=metas&delegacion=GENERAL#goals')
         meta = MetaDesempeno.objects.get()
         self.assertEqual((meta.valor_objetivo, meta.ponderador), (30, 40))
         # Valores que no son número no provocan error 500
@@ -505,6 +506,31 @@ class MetasPorDelegacionTest(TestCase):
         self.assertEqual(alcances(rural), ['General (toda la municipalidad)'])
         self.assertIn('Rural no tiene metas propias', rural.context['aviso_metas'])
 
+    def test_admin_filtra_metas_con_el_selector_de_delegacion(self):
+        self.guardar('11111111-1', 'LAS_COMPANIAS')
+        url = reverse('users:administracion')
+        nombres = lambda r: [grupo['nombre'] for grupo in r.context['metas_agrupadas']]
+        self.assertEqual(nombres(self.client.get(url)), ['General (toda la municipalidad)'])
+        self.assertEqual(nombres(self.client.get(url, {'delegacion': 'LAS_COMPANIAS'})), ['Las Compañías'])
+
+    def test_delegado_elige_entre_general_y_su_delegacion(self):
+        self.guardar('11111111-1', 'LAS_COMPANIAS')
+        self.client.login(username='33333333-3', password=CLAVE)
+        url = reverse('users:administracion')
+        nombres = lambda r: [grupo['nombre'] for grupo in r.context['metas_agrupadas']]
+        propia = self.client.get(url)  # por defecto, su delegación
+        self.assertEqual(nombres(propia), ['Las Compañías'])
+        self.assertEqual([valor for valor, texto in propia.context['delegaciones_navbar']], ['GENERAL', 'LAS_COMPANIAS'])
+        self.assertEqual(nombres(self.client.get(url, {'delegacion': 'GENERAL'})), ['General (toda la municipalidad)'])
+        # Otra delegación no se puede ver: se queda en la suya
+        self.assertEqual(nombres(self.client.get(url, {'delegacion': 'RURAL'})), ['Las Compañías'])
+        # Fuera de Administración no tiene selector
+        self.assertNotIn('delegaciones_navbar', self.client.get(reverse('actividades:mi_gestion')).context)
+
+    def test_al_guardar_meta_vuelve_filtrado_en_su_delegacion(self):
+        respuesta = self.guardar('11111111-1', 'LAS_COMPANIAS')
+        self.assertEqual(respuesta.url, reverse('users:administracion') + '?pestana=metas&delegacion=LAS_COMPANIAS#goals')
+
     def test_delegado_define_metas_solo_de_su_delegacion(self):
         from IndicadoresApp.calculos import indicadores_usuario
         self.guardar('33333333-3', 'GENERAL')  # pide general: se le impone su delegación (la elección no es válida)
@@ -610,8 +636,7 @@ class GestionDelegacionesYUsuariosTest(TestCase):
 
     def test_admin_elimina_usuario_sin_registros_y_no_uno_con_actividades(self):
         from ActividadesApp.models import Actividad
-        Actividad.objects.create(solicitud_problema='x', accion='y', item=self.datos['item'],
-                                 periodo=self.datos['periodo'], usuario=self.func)
+        Actividad.objects.create(solicitud_problema='x', accion='y', item=self.datos['item'], periodo=self.datos['periodo'], usuario=self.func)
         self.entrar('11111111-1')
         self.client.post(reverse('users:usuario_eliminar', args=[self.otro.pk]))
         self.client.post(reverse('users:usuario_eliminar', args=[self.func.pk]))
@@ -822,10 +847,7 @@ class TableroPorPerfilTest(TestCase):
         return self.client.get(reverse('indicadores:dashboard'))
 
     def test_plantilla_segun_grupo(self):
-        for rut, plantilla in [('11111111-1', 'indicadores/dashboard_admin.html'),
-                               ('22222222-2', 'indicadores/dashboard_coordinador.html'),
-                               ('33333333-3', 'indicadores/dashboard_delegado.html'),
-                               ('55555555-5', 'indicadores/dashboard_administrativo.html')]:
+        for rut, plantilla in [('11111111-1', 'indicadores/dashboard_admin.html'), ('22222222-2', 'indicadores/dashboard_coordinador.html'), ('33333333-3', 'indicadores/dashboard_delegado.html'), ('55555555-5', 'indicadores/dashboard_administrativo.html')]:
             self.assertTemplateUsed(self.tablero(rut), plantilla)
 
     def test_coordinador_compara_delegaciones(self):

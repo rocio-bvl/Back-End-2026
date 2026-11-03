@@ -158,18 +158,22 @@ def administracion(request):
     else:
         vista = 'coordinador'
 
-    # Metas: el Coordinador las filtra con el selector de delegación de la barra superior.
+    # Metas: se filtran con el selector de delegación de la barra superior.
     # GENERAL muestra las de toda la municipalidad; una delegación, las suyas. Si no tiene metas propias,
     # se avisa y se muestran las generales, que son las que se le aplican.
-    aviso_metas = ''
-    if vista == 'coordinador':
-        codigo, delegacion_elegida, nombre_delegacion = delegacion_seleccionada(request)
-        grupos_metas = metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=delegacion_elegida)
-        if delegacion_elegida is not None and not grupos_metas:
-            aviso_metas = f"{nombre_delegacion} no tiene metas propias: se le aplican las metas generales de la municipalidad."
-            grupos_metas = metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=None)
+    # Admin y Coordinador eligen cualquier delegación; el Delegado, General o la suya (por defecto, la suya).
+    if vista == 'delegado':
+        if request.GET.get('delegacion') == 'GENERAL' or usuario.delegacion is None:
+            delegacion_elegida, nombre_delegacion = None, 'General'
+        else:
+            delegacion_elegida, nombre_delegacion = usuario.delegacion, str(usuario.delegacion)
     else:
-        grupos_metas = metas_agrupadas(periodo, usuario)
+        codigo, delegacion_elegida, nombre_delegacion = delegacion_seleccionada(request)
+    aviso_metas = ''
+    grupos_metas = metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=delegacion_elegida)
+    if delegacion_elegida is not None and not grupos_metas:
+        aviso_metas = f"{nombre_delegacion} no tiene metas propias: se le aplican las metas generales de la municipalidad."
+        grupos_metas = metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=None)
 
     data = {
         'vista': vista,
