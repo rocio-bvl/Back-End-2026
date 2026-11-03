@@ -62,14 +62,8 @@
                         {% endif %}
                     </select>
                 </div>
-                <div class="col-md-1">
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" name="mios" value="1" id="f_mios" {% if filtros.mios == '1' %}checked{% endif %}>
-                        <label class="form-check-label" for="f_mios">Solo míos</label>
-                    </div>
-                </div>
                 {% endif %}
-                <div class="{% if solo_lo_suyo %}col-md-9{% else %}col-md-2{% endif %} d-flex gap-2 justify-content-end">
+                <div class="col-md d-flex gap-2 justify-content-end">
                     <a href="{% url 'actividades:tubo_trabajo' %}{% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}?delegacion={{ codigo_delegacion }}{% endif %}" class="btn btn-sm btn-outline-secondary">Limpiar</a>
                     <button type="submit" class="btn btn-sm btn-muni"><i class="bi bi-funnel me-1"></i>Filtrar</button>
                 </div>
@@ -79,7 +73,7 @@
 
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-header bg-gris-0 fw-bold d-flex justify-content-between align-items-center py-3">
-            <span><i class="bi bi-hourglass-split me-2 text-danger"></i>Actividades que esperan factores externos</span>
+            <span><i class="bi bi-hourglass-split me-2 text-danger"></i>Actividades en el Tubo</span>
             <span class="badge bg-muni-b2">{% if solo_lo_suyo %}Mis actividades{% else %}{{ delegacion_actual }}{% endif %}</span>
         </div>
         <div class="tarjeta-tabla table-responsive">
