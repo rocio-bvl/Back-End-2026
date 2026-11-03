@@ -52,6 +52,8 @@
             {% if user.is_superuser or user.rol == 'Admin' or user.rol == 'ADMINISTRADOR' or user.rol == 'Coordinador' or user.rol == 'COORDINADOR' %}
                 <!-- Administradores y Coordinadores: Selector de Delegación (por defecto GENERAL) -->
                 <form method="GET" action="" id="formDelegacionNav">
+                    {# Pestaña abierta en Administración (la actualiza administracion.html): al filtrar se vuelve a ella #}
+                    <input type="hidden" name="pestana" id="navPestana" value="{{ request.GET.pestana }}" {% if not request.GET.pestana %}disabled{% endif %}>
                     <select name="delegacion" 
                             class="form-select form-select-sm fw-bold border-0 bg-muni-b2 text-white shadow-sm" 
                             style="min-width: 180px;" 

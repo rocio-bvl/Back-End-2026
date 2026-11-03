@@ -11,7 +11,7 @@ from ActividadesApp.models import Territorio
 from IndicadoresApp.forms import MetaForm
 from IndicadoresApp.models import MetaDesempeno, periodo_vigente
 from UsuarioApp.forms import UsuarioCrearForm, UsuarioEditarForm, PerfilForm, DelegacionForm, TerritorioFormSet
-from UsuarioApp.funciones import limpiar_rut, acceso_denegado, opciones_delegacion, permiso_requerido
+from UsuarioApp.funciones import limpiar_rut, acceso_denegado, opciones_delegacion, permiso_requerido, delegacion_seleccionada
 from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion, Catalogo
 
 from django.contrib.auth.decorators import login_required
@@ -64,14 +64,17 @@ def asignar_rol(usuario, codigo, asignado_por):
     usuario.sincronizar_grupo()  # grupo de Django del rol (hereda sus permisos)
 
 
-def metas_agrupadas(periodo, usuario):
+def metas_agrupadas(periodo, usuario, solo_alcance=False, alcance=None):
     """Metas del periodo agrupadas por alcance (General y cada delegación) y, dentro, por cargo.
-    El Delegado ve las generales y las de su delegación."""
+    El Delegado ve las generales y las de su delegación.
+    solo_alcance=True: solo las de un alcance (alcance=None son las generales; si no, las de esa delegación)."""
     grupos = []
     if periodo is None:
         return grupos
     metas = MetaDesempeno.objects.filter(periodo=periodo).select_related('cargo', 'item', 'delegacion')
-    if usuario.es_delegado():
+    if solo_alcance:
+        metas = metas.filter(delegacion=alcance)
+    elif usuario.es_delegado():
         metas = metas.filter(Q(delegacion__isnull=True) | Q(delegacion_id=usuario.delegacion_id))
     alcance_actual = None
     cargo_actual = None
@@ -155,6 +158,19 @@ def administracion(request):
     else:
         vista = 'coordinador'
 
+    # Metas: el Coordinador las filtra con el selector de delegación de la barra superior.
+    # GENERAL muestra las de toda la municipalidad; una delegación, las suyas. Si no tiene metas propias,
+    # se avisa y se muestran las generales, que son las que se le aplican.
+    aviso_metas = ''
+    if vista == 'coordinador':
+        codigo, delegacion_elegida, nombre_delegacion = delegacion_seleccionada(request)
+        grupos_metas = metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=delegacion_elegida)
+        if delegacion_elegida is not None and not grupos_metas:
+            aviso_metas = f"{nombre_delegacion} no tiene metas propias: se le aplican las metas generales de la municipalidad."
+            grupos_metas = metas_agrupadas(periodo, usuario, solo_alcance=True, alcance=None)
+    else:
+        grupos_metas = metas_agrupadas(periodo, usuario)
+
     data = {
         'vista': vista,
         'solo_mi_delegacion': usuario.es_delegado(),
@@ -166,7 +182,8 @@ def administracion(request):
         'hay_periodo': periodo is not None,
         'cargos': Cargo.objects.filter(estado='ACTIVO'),
         'items_gestion': Catalogo.objects.filter(tipo='ITEM_GESTION', estado='ACTIVO').order_by('id'),
-        'metas_agrupadas': metas_agrupadas(periodo, usuario),
+        'metas_agrupadas': grupos_metas,
+        'aviso_metas': aviso_metas,
         'form_meta': MetaForm(usuario=usuario, periodo=periodo) if usuario.puede_gestionar_metas() else None,
         'roles_asignables': usuario.roles_asignables(),
         'opciones_delegacion': opciones_delegacion(),
