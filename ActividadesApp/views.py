@@ -276,6 +276,7 @@ def actividad_crear(request):
 # ---------------------------------------------------------------------------
 # Editar actividad
 # ---------------------------------------------------------------------------
+@permiso_requerido('ActividadesApp.change_actividad', 'Editar Actividad')
 def actividad_editar(request, pk):
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -301,6 +302,7 @@ def actividad_editar(request, pk):
 
         if form.is_valid():
             datos = form.cleaned_data
+            antes = str(actividad)
 
             actividad.solicitud_problema = datos['solicitud_problema'].strip()
             actividad.accion = datos['accion'].strip()
@@ -311,13 +313,18 @@ def actividad_editar(request, pk):
             actividad.encargado = datos['encargado']
             actividad.solicitud = datos['solicitud']
             actividad.save()
+            # Si queda con fecha de hoy o anterior y aún no tenía ejecución, se registra como en actividad_crear            
+            if datos['comentario'] and actividad.ejecucion_vigente() is None:                
+                guardar_ejecucion(actividad, request.user, datos['comentario'].strip(), datos['imagen'])            
+            # El estado se recalcula según la fecha, el Tubo y la ejecución (EN_TUBO, PROGRAMADA, REGISTRADA...)            
+            actividad.sincronizar_estado()
 
             registrar_auditoria(
                 request.user,
                 'MODIFICACION',
                 'Actividad',
                 actividad.pk,
-                '',
+                antes,
                 str(actividad)
             )
             messages.success(
@@ -336,6 +343,7 @@ def actividad_editar(request, pk):
                 'fecha_realizacion': actividad.fecha_realizacion,
                 'encargado': actividad.encargado,
                 'solicitud': actividad.solicitud,
+                'comentario': actividad.ejecucion_vigente().comentario if actividad.ejecucion_vigente() else '',
             })
 
     return render(request,
@@ -352,6 +360,7 @@ def actividad_editar(request, pk):
 # ---------------------------------------------------------------------------
 # Eliminar actividad
 # ---------------------------------------------------------------------------
+@permiso_requerido('ActividadesApp.delete_actividad', 'Eliminar Actividad')
 def actividad_eliminar(request, pk):
     if not request.user.tiene_rol(["Admin"]):
         return acceso_denegado(
@@ -369,7 +378,13 @@ def actividad_eliminar(request, pk):
         return redirect(
             "actividades:mi_gestion"
         )
-    actividad.delete()
+    # Solo se elimina con POST (formulario con confirmación); un link o una recarga no borran nada    
+    if request.method != 'POST':        
+        return redirect('actividades:actividad_detalle', pk=actividad.pk)    
+    
+    descripcion = str(actividad)    
+    actividad.delete()    
+    registrar_auditoria(request.user, 'ELIMINACION', 'Actividad', pk, descripcion, '')
 
     messages.success(
         request, "Actividad eliminada correctamente."
@@ -468,7 +483,7 @@ def registrar_ejecucion(request, pk):
     return redirect('actividades:actividad_detalle', pk=actividad.pk)
 
 
-@permiso_requerido('ActividadesApp.add_actividad', 'Asignar Fecha')
+@permiso_requerido('ActividadesApp.view_actividad', 'Asignar Fecha')
 def asignar_fecha(request, pk):
     """Asigna la fecha a una actividad del Tubo (pasa a PROGRAMADA) o cambia la de un compromiso."""
     if not request.user.is_authenticated:
@@ -583,8 +598,7 @@ def tubo_trabajo(request):
         'responsable': request.GET.get('responsable', '').strip(),
         'estado': request.GET.get('estado', ''),
         'territorio': request.GET.get('territorio', ''),
-        'mios': request.GET.get('mios', ''),
-        'q': request.GET.get('q', '').strip()
+        'mios': request.GET.get('mios', '')
     }
     if solo_lo_suyo:
         # Aunque lleguen en la dirección, el Funcionario no usa estos filtros
@@ -620,8 +634,6 @@ def tubo_trabajo(request):
         actividades = actividades.filter(territorio_id=filtros['territorio'])
     if filtros['mios'] == '1':
         actividades = actividades.filter(Q(usuario=request.user) | Q(encargado=request.user))
-    if filtros['q']:
-        actividades = actividades.filter(Q(solicitud_problema__icontains=filtros['q']) | Q(accion__icontains=filtros['q']))
 
     # Primero las que tienen fecha (la más próxima arriba); al final, las que aún no tienen fecha de ejecución
     actividades = actividades.select_related('solicitud').order_by(F('fecha_realizacion').asc(nulls_last=True), 'fecha')
