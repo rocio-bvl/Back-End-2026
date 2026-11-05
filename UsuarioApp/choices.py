@@ -11,12 +11,18 @@ orden_roles = ['Admin', 'Coordinador', 'Delegado', 'Funcionario']
 
 # Grupos de roles que usan las views y los templates (una sola fuente para los permisos)
 ROLES_ADMINISTRACION = ['Admin', 'Coordinador']             # metas, auditoría y todas las delegaciones
-ROLES_VER_USUARIOS = ['Admin', 'Coordinador', 'Delegado']  # ven la pantalla de usuarios (el Coordinador solo mira)
-ROLES_GESTION_USUARIOS = ['Admin', 'Delegado']             # crean y editan (el Delegado, solo Funcionarios de su delegación)
+ROLES_VER_USUARIOS = ['Admin', 'Coordinador', 'Delegado']  # ven la pantalla de usuarios
+# Crean y editan usuarios: el Admin (cualquier perfil), el Coordinador (Delegados y Funcionarios) y el Delegado
+# (solo Funcionarios de su delegación)
+ROLES_GESTION_USUARIOS = ['Admin', 'Coordinador', 'Delegado']
+ROLES_DELEGACIONES = ['Admin', 'Coordinador']              # agregan, modifican y eliminan delegaciones
+ROLES_AUSENCIAS = ['Admin', 'Coordinador', 'Delegado']     # registran vacaciones, días administrativos y licencias
 ROLES_METAS = ['Admin', 'Delegado']                        # agregan y editan metas (el Delegado, las de su delegación)
 ROLES_REGISTRO = ['Admin', 'Funcionario']                  # agregan actividades (el Coordinador solo las ve)
-ROLES_VERIFICACION = ['Admin', 'Delegado']                 # validan la ejecución (el Delegado, en su delegación)
-ROLES_ASIGNAN_ENCARGADO = ['Admin', 'Coordinador', 'Delegado']  # asignan un Funcionario a una actividad pendiente
+ROLES_VERIFICACION = ['Admin', 'Delegado']                 # validan la evidencia (el Delegado, en su delegación)
+# Asignan un Funcionario a una actividad pendiente. El Coordinador no: coordina y supervisa, pero no interviene
+# en las actividades de los funcionarios
+ROLES_ASIGNAN_ENCARGADO = ['Admin', 'Delegado']
 ROLES_RESERVADOS = ['Admin', 'Coordinador']                # solo el Admin puede asignarlos
 
 # «enumeration» EstadoRegistro
@@ -54,6 +60,7 @@ GRUPO_DE_ROL = {
 }
 
 _VER = ['ActividadesApp.view_actividad', 'ActividadesApp.view_atencionsocial']
+_AUSENCIAS = ['IndicadoresApp.view_ausencia', 'IndicadoresApp.add_ausencia', 'IndicadoresApp.delete_ausencia']
 PERMISOS_POR_GRUPO = {
     'Administrador': _VER + [
         'ActividadesApp.add_actividad', 'ActividadesApp.add_evidencia', 'ActividadesApp.add_comentarioactividad',
@@ -68,19 +75,26 @@ PERMISOS_POR_GRUPO = {
         'IndicadoresApp.view_metadesempeno', 'IndicadoresApp.add_metadesempeno', 'IndicadoresApp.change_metadesempeno',
         'IndicadoresApp.delete_metadesempeno',
         'AuditoriaApp.view_auditoria',
-    ],
+    ] + _AUSENCIAS,
+    # Coordinador: gestiona delegaciones (con sus territorios) y delegados, y supervisa. No interviene en las
+    # actividades de los funcionarios
     'Supervisor': _VER + [
-        'ActividadesApp.asignar_encargado',
-        'UsuarioApp.view_usuario', 'UsuarioApp.view_delegacion',
+        'ActividadesApp.view_territorio', 'ActividadesApp.add_territorio', 'ActividadesApp.change_territorio',
+        'ActividadesApp.delete_territorio',
+        'UsuarioApp.view_usuario', 'UsuarioApp.add_usuario', 'UsuarioApp.change_usuario',
+        'UsuarioApp.view_delegacion', 'UsuarioApp.add_delegacion', 'UsuarioApp.change_delegacion',
+        'UsuarioApp.delete_delegacion',
         'IndicadoresApp.view_metadesempeno',
         'AuditoriaApp.view_auditoria',
-    ],
+    ] + _AUSENCIAS,
+    # Delegado: valida, gestiona su equipo y sus metas, y registra sus propias gestiones (sin puntaje)
     'Delegado': _VER + [
+        'ActividadesApp.add_actividad', 'ActividadesApp.add_evidencia',
         'ActividadesApp.add_comentarioactividad', 'ActividadesApp.validar_evidencia', 'ActividadesApp.asignar_encargado',
         'UsuarioApp.view_usuario', 'UsuarioApp.add_usuario', 'UsuarioApp.change_usuario', 'UsuarioApp.view_delegacion',
         'IndicadoresApp.view_metadesempeno', 'IndicadoresApp.add_metadesempeno', 'IndicadoresApp.change_metadesempeno',
         'IndicadoresApp.delete_metadesempeno',
-    ],
+    ] + _AUSENCIAS,
     'Administrativo': _VER + [
         'ActividadesApp.add_actividad', 'ActividadesApp.add_evidencia', 'ActividadesApp.add_comentarioactividad',
         'ActividadesApp.add_atencionsocial', 'ActividadesApp.change_atencionsocial',

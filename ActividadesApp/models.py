@@ -29,10 +29,10 @@ class Territorio(models.Model):
 
 class Actividad(models.Model):
     """Actividad territorial de un funcionario. Se registra con la fecha en que se realiza:
-    - Hoy o antes: se registra ejecutada (comentario obligatorio, foto opcional) y queda REGISTRADA para validar.
-    - Fecha futura: es un compromiso (PROGRAMADA), pendiente hasta que se ejecute.
+    - Hoy o antes: se agrega su evidencia (comentario obligatorio, foto opcional) y queda EVIDENCIA_INGRESADA para validar.
+    - Fecha futura: es un compromiso (PROGRAMADA), pendiente hasta que se realice.
     - Depende de factores externos: va al Tubo de Trabajo (EN_TUBO) sin fecha, hasta que se le asigne una.
-    Una actividad pendiente puede tener un encargado (un Funcionario) que la ejecuta, y puede vincularse a una
+    Una actividad pendiente puede tener un encargado (un Funcionario) que la realiza, y puede vincularse a una
     solicitud social (AtencionSocial) registrada antes por un funcionario."""
     # Fecha y hora de ingreso: se guarda sola. Solo el Administrador puede corregirla
     fecha = models.DateTimeField(default=timezone.now, verbose_name="Fecha de ingreso")
@@ -40,14 +40,19 @@ class Actividad(models.Model):
     accion = models.CharField(max_length=255, verbose_name="Acción")
     territorio = models.ForeignKey(Territorio, on_delete=models.PROTECT, null=True, blank=True, related_name='actividades', verbose_name="Territorio / sector")
     depende_externos = models.BooleanField(default=False, verbose_name="¿Depende de factores externos? (Tubo de Trabajo)")
-    # Fecha de ejecución: la elige quien registra. En el Tubo puede quedar vacía y agregarse después
-    fecha_realizacion = models.DateField(null=True, blank=True, verbose_name="Fecha de ejecución")
-    estado = models.CharField(max_length=15, choices=estados_actividad, default='REGISTRADA', verbose_name="Estado")
+    # Fecha de realización: la elige quien registra. En el Tubo puede quedar vacía y agregarse después
+    fecha_realizacion = models.DateField(null=True, blank=True, verbose_name="Fecha de realización")
+    estado = models.CharField(max_length=20, choices=estados_actividad, default='EVIDENCIA_INGRESADA', verbose_name="Estado")
     item = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, related_name='actividades_item', limit_choices_to={'tipo': 'ITEM_GESTION'}, verbose_name="Ítem de gestión")
     periodo = models.ForeignKey('IndicadoresApp.Periodo', on_delete=models.PROTECT, related_name='actividades', verbose_name="Periodo")
     servicio = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, null=True, blank=True, related_name='actividades_servicio', limit_choices_to={'tipo': 'SERVICIO'}, verbose_name="Servicio")
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='actividades', verbose_name="Registrada por")
     encargado = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='actividades_a_cargo', verbose_name="Encargado")
+    # Persona atendida: sin nombre y teléfono la actividad no tiene puntaje (requerimiento de la municipalidad)
+    nombre_usuario = models.CharField(max_length=150, blank=True, default="", verbose_name="Nombre de la persona atendida")
+    telefono_usuario = models.CharField(max_length=20, blank=True, default="", verbose_name="Teléfono de la persona atendida")
+    # Gestión: actividad que ingresa el Delegado. Queda registrada, pero nunca suma puntaje
+    es_gestion = models.BooleanField(default=False, verbose_name="Gestión del Delegado (sin puntaje)")
     solicitud = models.ForeignKey('AtencionSocial', on_delete=models.SET_NULL, null=True, blank=True, related_name='actividades', verbose_name="Solicitud social vinculada")
 
     def __str__(self):
@@ -58,7 +63,7 @@ class Actividad(models.Model):
         return f"ACT{self.pk}"
 
     def pendiente(self):
-        """Todavía no se ejecuta: compromiso con fecha (PROGRAMADA) o en el Tubo sin fecha (EN_TUBO)."""
+        """Todavía no se realiza: compromiso con fecha (PROGRAMADA) o en el Tubo sin fecha (EN_TUBO)."""
         return self.estado in ESTADOS_PENDIENTES
 
     def es_compromiso(self):
@@ -81,42 +86,54 @@ class Actividad(models.Model):
         """La validación completa la actividad."""
         return self.estado == 'VALIDADA'
 
+    def validacion_vigente(self):
+        """Validación de la última evidencia (None si todavía no se revisa)."""
+        evidencia = self.evidencia_vigente()
+        if evidencia is None:
+            return None
+        return Validacion.objects.filter(evidencia=evidencia).first()
+
+    def otorga_puntaje(self):
+        """Suma puntaje solo si está validada, no es una gestión del Delegado y quien validó marcó que lleva punto."""
+        if not self.completada() or self.es_gestion:
+            return False
+        validacion = self.validacion_vigente()
+        return validacion is None or validacion.otorga_puntaje
+
     def responsable(self):
-        """Quien debe ejecutarla: el encargado si se asignó, si no quien la registró."""
+        """Quien debe realizarla: el encargado si se asignó, si no quien la registró."""
         return self.encargado or self.usuario
 
-    def ejecucion_vigente(self):
-        """El último registro de ejecución (comentario + foto opcional)."""
+    def evidencia_vigente(self):
+        """La última evidencia (comentario + foto opcional)."""
         return self.evidencias.order_by('-version').first()
 
     # Nombre anterior, lo siguen usando algunas plantillas y pruebas
-    evidencia_vigente = ejecucion_vigente
-
+    
     # ----- operaciones -----
     def es_responsable(self, usuario):
         return usuario.pk in (self.usuario_id, self.encargado_id)
 
-    def puede_ejecutar(self, usuario=None):
-        """Registra la ejecución quien la registró o su encargado: si está pendiente o fue rechazada."""
+    def puede_registrar_evidencia(self, usuario=None):
+        """Agrega la evidencia quien la registró o su encargado: si está pendiente o fue rechazada."""
         if usuario is not None and not self.es_responsable(usuario):
             return False
         return self.estado in ESTADOS_PENDIENTES + ['RECHAZADA']
 
     # Nombre anterior
-    puede_subir_evidencia = puede_ejecutar
-
+    
     def sincronizar_estado(self):
-        """El estado sigue al último registro de ejecución. Sin ejecución, la actividad está pendiente:
+        """El estado sigue al la última evidencia. Sin evidencia, la actividad está pendiente:
         en el Tubo si espera factores externos y aún no tiene fecha; si no, programada."""
-        ejecucion = self.ejecucion_vigente()
-        if ejecucion is None:
+        evidencia = self.evidencia_vigente()
+        if evidencia is None:
             self.estado = 'EN_TUBO' if (self.depende_externos and self.fecha_realizacion is None) else 'PROGRAMADA'
-        elif ejecucion.estado_revision == 'APROBADA':
+        elif evidencia.estado_revision == 'APROBADA':
             self.estado = 'VALIDADA'
-        elif ejecucion.estado_revision == 'RECHAZADA':
+        elif evidencia.estado_revision == 'RECHAZADA':
             self.estado = 'RECHAZADA'
         else:
-            self.estado = 'REGISTRADA'
+            self.estado = 'EVIDENCIA_INGRESADA'
         self.save()
 
     class Meta:
@@ -147,11 +164,11 @@ class ComentarioActividad(models.Model):
 
 
 class Evidencia(models.Model):
-    """Registro de ejecución de una actividad: el comentario de lo que se hizo (obligatorio) y una fotografía
+    """Evidencia de una actividad: el comentario de lo que se hizo (obligatorio) y una fotografía
     (opcional). Si se rechaza, el nuevo registro es una nueva versión que reemplaza a la anterior."""
     version = models.PositiveSmallIntegerField(default=1, verbose_name="Versión")
     imagen = models.ImageField(upload_to='evidencias/', blank=True, default="", verbose_name="Fotografía (opcional, JPG/PNG, máx. 5 MB)")
-    comentario = models.TextField(verbose_name="Comentario de ejecución")
+    comentario = models.TextField(verbose_name="Comentario de la evidencia")
     fecha = models.DateTimeField(default=timezone.now, verbose_name="Fecha")
     estado_revision = models.CharField(max_length=10, choices=estados_evidencia, default='PENDIENTE', verbose_name="Estado de revisión")
     actividad = models.ForeignKey(Actividad, on_delete=models.CASCADE, related_name='evidencias', verbose_name="Actividad")
@@ -169,7 +186,7 @@ class Evidencia(models.Model):
         verbose_name_plural = "Evidencias"
         ordering = ["-fecha"]
         permissions = [
-            ("validar_evidencia", "Puede validar la ejecución")
+            ("validar_evidencia", "Puede validar la evidencia")
         ]
 
 
@@ -182,6 +199,9 @@ class Validacion(models.Model):
     evidencia = models.OneToOneField(Evidencia, on_delete=models.CASCADE, related_name='validacion', verbose_name="Evidencia")
     verificador = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                     related_name='validaciones', verbose_name="Verificado por")
+    # El validador decide si la actividad lleva punto: la coordinación previa (correos, salón, invitaciones) no lo
+    # lleva; la acción realizada sí. Se puede cambiar después y el cambio queda en la auditoría
+    otorga_puntaje = models.BooleanField(default=True, verbose_name="¿Suma puntaje?")
 
     def __str__(self):
         return f"{self.evidencia.codigo()}: {self.decision}"

@@ -4,14 +4,15 @@
 
 {% block content %}
 {% comment %}
-Una sola plantilla para los cuatro roles. Lo que cambia según quién inició sesión:
+Mi Gestión: una sola pantalla para los cuatro perfiles (cabecera "Gestión Admin/Coordinador/Delegado/Funcionario",
+tarjetas de avance, accesos de gestión y pestañas). Lo que cambia según quién inició sesión:
 - la vista (ActividadesApp/views.py, mi_gestion) decide QUÉ datos se envían;
 - esta plantilla decide QUÉ se muestra, con {% if %} sobre los permisos del usuario (request.user...).
 {% endcomment %}
-{% with usuario=request.user %}
+{% with usuario=request.user activa=pestana %}
 <main class="container-fluid p-4 perfil">
 
-    <!-- 1. Tarjeta de perfil -->
+    <!-- 1. Cabecera: "Gestión (perfil)" con los datos de quien inició sesión -->
     <div class="card border-0 shadow-sm mb-4 overflow-hidden">
         <div class="perfil-portada bg-muni-b1"></div>
         <div class="card-body pt-0 px-4">
@@ -21,91 +22,83 @@ Una sola plantilla para los cuatro roles. Lo que cambia según quién inició se
                 {% else %}
                 <div class="perfil-avatar perfil-iniciales bg-muni-v2">{{ usuario.first_name|slice:":1" }}{{ usuario.last_name|slice:":1" }}</div>
                 {% endif %}
-                <div class="flex-grow-1 pb-1">
-                    <h3 class="fw-bold mb-1">{{ usuario.get_full_name|default:usuario.username }}</h3>
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <span class="badge bg-muni">{% if usuario.is_superuser and not usuario.rol %}Administrador{% else %}{{ usuario.rol|default:"Sin rol" }}{% endif %}</span>
+                <div class="flex-grow-1 pb-1 perfil-datos">
+                    <h3 class="fw-bold mb-0">Gestión {% if usuario.is_superuser and not usuario.rol %}Admin{% else %}{{ usuario.rol|default:"" }}{% endif %}</h3>
+                    <div class="fw-semibold mb-1">{{ usuario.get_full_name|default:usuario.username }}</div>
+                    <div class="d-flex flex-wrap align-items-center gap-2 small">
                         <span class="text-muted"><i class="bi bi-briefcase me-1"></i>{{ usuario.cargo|default:"Sin cargo asignado" }}</span>
                         <span class="text-muted"><i class="bi bi-geo-alt me-1"></i>{{ usuario.delegacion|default:"Todas las delegaciones" }}</span>
+                        {% if periodo %}<span class="badge bg-muni">{{ periodo }}</span>{% endif %}
                     </div>
                 </div>
                 <div class="d-flex flex-wrap gap-2 pb-1">
                     <a href="{% url 'users:perfil_editar' %}" class="btn btn-outline-dark btn-sm"><i class="bi bi-pencil-square me-1"></i>Editar perfil</a>
                 </div>
             </div>
-
             <div class="row g-3 mt-2 small">
                 <div class="col-sm-6 col-lg-3"><span class="text-muted d-block">Correo</span><span class="fw-semibold">{{ usuario.email|default:"-" }}</span></div>
                 <div class="col-sm-6 col-lg-3"><span class="text-muted d-block">Teléfono</span><span class="fw-semibold">{{ usuario.telefono|default:"Sin teléfono" }}</span></div>
                 <div class="col-sm-6 col-lg-3"><span class="text-muted d-block">RUT</span><span class="fw-semibold">{{ usuario.username }}</span></div>
-                <div class="col-sm-6 col-lg-3"><span class="text-muted d-block">Periodo vigente</span><span class="fw-semibold">{{ periodo|default:"Sin periodo vigente" }}</span></div>
+                {% if tipo_tablero != 'administrativo' %}<div class="col-sm-6 col-lg-3"><span class="text-muted d-block">Mostrando</span><span class="fw-semibold">{{ delegacion_actual }}</span></div>{% endif %}
             </div>
         </div>
     </div>
 
-    <!-- 2. Indicadores: los del propio usuario; para Admin y Coordinador, los de la delegación filtrada -->
+    <!-- 2. Avance: el Funcionario ve el suyo; Admin, Coordinador y Delegado, el de la delegación elegida -->
+    {% if tipo_tablero == 'administrativo' %}
     <div class="row g-3 mb-4">
-        <div class="col-sm-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 p-3">
-                {% if vista_global %}
-                <span class="text-muted small">Actividades</span>
-                <span class="fs-3 fw-bold">{{ resumen.total }}</span>
-                <small class="text-muted">{% if delegacion_activa == 'GENERAL' %}Todas las delegaciones{% else %}Delegación {{ delegacion_nombre }}{% endif %}</small>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm border-start border-4 border-{% if mi_avance.color == 'VERDE' %}success{% elif mi_avance.color == 'AMBAR' %}warning{% elif mi_avance.color == 'ROJO' %}danger{% else %}secondary{% endif %} p-3 h-100">
+                <span class="text-muted small">Mi avance del periodo</span>
+                {% if mi_avance %}
+                <h3 class="fw-bold mb-0">{{ mi_avance.avance_logrado }}%</h3>
+                <small class="text-muted">Objetivo hoy: {{ mi_avance.objetivo_hoy }}%</small>
                 {% else %}
-                <span class="text-muted small">Cumplimiento de metas</span>
-                {% if resumen.tiene_metas %}
-                <span class="fs-3 fw-bold">{{ resumen.cumplimiento }}%</span>
-                <div class="progress mt-1" style="height: 6px;" role="progressbar" aria-label="Cumplimiento de metas" aria-valuenow="{{ resumen.barra }}" aria-valuemin="0" aria-valuemax="100">
-                    <div class="progress-bar bg-muni" style="width: {{ resumen.barra }}%"></div>
-                </div>
-                {% else %}
-                <span class="fs-6 fw-semibold text-muted mt-1">Sin metas asignadas a su cargo</span>
-                {% endif %}
+                <h3 class="fw-bold mb-0 text-secondary">-</h3>
+                <small class="text-muted">Sin cargo o sin periodo vigente</small>
                 {% endif %}
             </div>
         </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 p-3">
-                <span class="text-muted small">Actividades completadas</span>
-                <span class="fs-3 fw-bold text-success">{{ resumen.completadas }}</span>
-                <small class="text-muted">Validadas en el periodo</small>
-            </div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 p-3">
-                <span class="text-muted small">Pendientes</span>
-                <span class="fs-3 fw-bold text-primary">{{ resumen.pendientes }}</span>
-                <small class="text-muted">Programadas, en el Tubo o rechazadas</small>
-            </div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 p-3">
-                <span class="text-muted small">En revisión</span>
-                <span class="fs-3 fw-bold text-secondary">{{ resumen.en_revision }}</span>
-                <small class="text-muted">Esperan la validación del Delegado</small>
-            </div>
-        </div>
+        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-danger p-3 h-100"><span class="text-muted small">Mis pendientes</span><h3 class="fw-bold mb-0 text-danger">{{ mis_pendientes_count }}</h3></div></div>
+        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-primary p-3 h-100"><span class="text-muted small">Evidencia ingresada</span><h3 class="fw-bold mb-0 text-primary">{{ en_revision_count }}</h3></div></div>
+        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-warning p-3 h-100"><span class="text-muted small">Rechazadas (por corregir)</span><h3 class="fw-bold mb-0 text-warning">{{ rechazadas_count }}</h3></div></div>
     </div>
+    {% else %}
+    {% include 'indicadores/components/tarjetas_resumen.html' %}
+    {% endif %}
 
-    <!-- 3. Pestañas: cada rol ve las que le corresponden -->
-    {% if pestana == 'delegacion' or not muestra_mis_actividades %}{% firstof 'delegacion' as activa %}{% else %}{% firstof 'mias' as activa %}{% endif %}
-    <ul class="nav nav-tabs perfil-pestanas" role="tablist">
+    {% if metas_en_tope %}
+    <div class="alert alert-warning d-flex gap-2 align-items-start" role="alert">
+        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+        <div><strong>Ítems al tope ({{ tope|floatformat:0 }}%):</strong> {{ metas_en_tope|join:", " }}. Nuevas actividades de estos ítems ya no suben su puntaje: conviene enfocarse en los ítems con menor avance.</div>
+    </div>
+    {% endif %}
+
+    <!-- 3. Accesos de gestión: lo que administra cada perfil (Admin: todo; Coordinador: delegaciones y su equipo;
+         Delegado: su delegación). El Funcionario no tiene -->
+    {% include 'actividades/components/mantenedores.html' %}
+
+    <!-- 4. Pestañas: cada perfil ve las que le corresponden. Resumen es el tablero del perfil -->
+    <ul class="nav nav-tabs perfil-pestanas flex-nowrap overflow-x-auto" role="tablist" id="pestanasGestion">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link text-nowrap {% if activa == 'resumen' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-resumen" data-pestana="resumen" type="button" role="tab"><i class="bi bi-speedometer2 me-1"></i>Resumen</button>
+        </li>
         {% if muestra_mis_actividades %}
         <li class="nav-item" role="presentation">
-            <button class="nav-link {% if activa == 'mias' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-mias" type="button" role="tab">Mis actividades</button>
+            <button class="nav-link text-nowrap {% if activa == 'mias' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-mias" data-pestana="mias" type="button" role="tab">{% if usuario.es_delegado %}Mis gestiones{% else %}Mis actividades{% endif %}</button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-pendientes" type="button" role="tab">Pendientes <span class="badge bg-primary ms-1">{{ pendientes|length }}</span></button>
+            <button class="nav-link text-nowrap {% if activa == 'pendientes' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-pendientes" data-pestana="pendientes" type="button" role="tab">Pendientes <span class="badge bg-primary ms-1">{{ pendientes|length }}</span></button>
         </li>
         {% endif %}
         {% if not vista_global %}
         <li class="nav-item" role="presentation">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-metas" type="button" role="tab">Mis metas</button>
+            <button class="nav-link text-nowrap {% if activa == 'metas' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-metas" data-pestana="metas" type="button" role="tab">{% if periodo %}Metas del {{ periodo }}{% else %}Mis metas{% endif %}</button>
         </li>
         {% endif %}
         {% if ve_delegacion %}
         <li class="nav-item" role="presentation">
-            <button class="nav-link {% if activa == 'delegacion' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-delegacion" type="button" role="tab">
+            <button class="nav-link text-nowrap {% if activa == 'delegacion' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-delegacion" data-pestana="delegacion" type="button" role="tab">
                 {% if vista_global %}Actividades{% else %}Mi delegación{% endif %}
             </button>
         </li>
@@ -114,20 +107,25 @@ Una sola plantilla para los cuatro roles. Lo que cambia según quién inició se
 
     <div class="tab-content card border-0 shadow-sm border-top-0 rounded-0 rounded-bottom">
 
+        <!-- Resumen: el tablero de cada perfil (indicadores/dashboard_<perfil>.html) -->
+        <div class="tab-pane fade {% if activa == 'resumen' %}show active{% endif %}" id="tab-resumen" role="tabpanel">
+            {% include plantilla_tablero %}
+        </div>
+
         {% if muestra_mis_actividades %}
         <!-- Mis actividades: las que registré y las que tengo a cargo -->
         <div class="tab-pane fade {% if activa == 'mias' %}show active{% endif %}" id="tab-mias" role="tabpanel">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 p-3 border-bottom">
                 <h6 class="fw-bold m-0">Mis actividades</h6>
-                {% if usuario.puede_registrar %}
-                <a href="{% url 'actividades:actividad_crear' %}" class="btn btn-muni btn-sm"><i class="bi bi-plus-circle me-1"></i>Agregar Actividad</a>
+                {% if usuario.puede_agregar_actividad %}
+                <a href="{% url 'actividades:actividad_crear' %}" class="btn btn-muni btn-sm"><i class="bi bi-plus-circle me-1"></i>{% if usuario.es_delegado %}Agregar Gestión{% else %}Agregar Actividad{% endif %}</a>
                 {% endif %}
             </div>
             {% include 'actividades/components/tabla_actividades.html' with filas=mis_actividades vacio="Todavía no registra actividades." %}
         </div>
 
-        <!-- Pendientes: lo que falta ejecutar, ordenado por fecha -->
-        <div class="tab-pane fade" id="tab-pendientes" role="tabpanel">
+        <!-- Pendientes: lo que falta realizar, ordenado por fecha -->
+        <div class="tab-pane fade {% if activa == 'pendientes' %}show active{% endif %}" id="tab-pendientes" role="tabpanel">
             <div class="p-3">
                 {% for act in pendientes %}
                 <div class="d-flex flex-wrap align-items-center gap-3 border rounded p-3 mb-2">
@@ -159,7 +157,10 @@ Una sola plantilla para los cuatro roles. Lo que cambia según quién inició se
 
         {% if not vista_global %}
         <!-- Mis metas trimestrales (el Administrador no tiene metas propias) -->
-        <div class="tab-pane fade" id="tab-metas" role="tabpanel">
+        <div class="tab-pane fade {% if activa == 'metas' %}show active{% endif %}" id="tab-metas" role="tabpanel">
+            {% if dias_ausente %}
+            <div class="alert alert-info small m-3 mb-0"><i class="bi bi-calendar-x me-1"></i>Tiene {{ dias_ausente }} día{{ dias_ausente|pluralize }} de ausencia registrado{{ dias_ausente|pluralize }} en el periodo (vacaciones, días administrativos o licencias): sus metas se ajustaron a los días trabajados.</div>
+            {% endif %}
             <div class="tarjeta-tabla table-responsive">
                 <table class="table table-hover tabla-sgr text-center">
                     <thead>
@@ -170,6 +171,7 @@ Una sola plantilla para los cuatro roles. Lo que cambia según quién inició se
                             <th>AVANCE</th>
                             <th>% CUMPLIMIENTO</th>
                             <th>CUMPLIMIENTO PONDERADO</th>
+                            <th>ESTADO</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -177,13 +179,14 @@ Una sola plantilla para los cuatro roles. Lo que cambia según quién inició se
                         <tr>
                             <td class="text-start">{{ meta.item_nombre }}</td>
                             <td>{{ meta.ponderador }}%</td>
-                            <td>{{ meta.meta_trimestre }}</td>
+                            <td>{% if dias_ausente %}{{ meta.meta_ajustada|floatformat:1 }} <small class="text-muted d-block">(de {{ meta.meta_trimestre }})</small>{% else %}{{ meta.meta_trimestre }}{% endif %}</td>
                             <td>{{ meta.avance_actual }}</td>
                             <td>{{ meta.porcentaje_cumplimiento }}%</td>
                             <td class="fw-bold">{{ meta.cumplimiento_ponderado }}%</td>
+                            <td>{% if meta.en_tope %}<span class="badge bg-warning text-dark">TOPE ALCANZADO</span>{% else %}<span class="text-muted small">Suma puntaje</span>{% endif %}</td>
                         </tr>
                         {% empty %}
-                        <tr><td colspan="6" class="text-muted py-3">No hay metas trimestrales para su cargo en el periodo vigente.</td></tr>
+                        <tr><td colspan="7" class="text-muted py-3">No hay metas trimestrales para su cargo en el periodo vigente.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -240,7 +243,24 @@ Una sola plantilla para los cuatro roles. Lo que cambia según quién inició se
             {% include 'actividades/components/tabla_actividades.html' with filas=actividades_delegacion vacio="No hay actividades registradas en esta delegación." con_responsable=True %}
         </div>
         {% endif %}
+
     </div>
 </main>
+<script>
+    // La pestaña abierta queda en la dirección (?pestana=) y en el selector de delegación de la barra:
+    // al recargar o al cambiar de delegación se vuelve a la misma pestaña.
+    (function () {
+        var campo = document.getElementById('navPestana');
+        document.querySelectorAll('#pestanasGestion [data-pestana]').forEach(function (boton) {
+            boton.addEventListener('shown.bs.tab', function () {
+                var pestana = boton.getAttribute('data-pestana');
+                var url = new URL(window.location.href);
+                url.searchParams.set('pestana', pestana);
+                window.history.replaceState(null, '', url);
+                if (campo) { campo.value = pestana; campo.disabled = false; }
+            });
+        });
+    })();
+</script>
 {% endwith %}
 {% endblock %}

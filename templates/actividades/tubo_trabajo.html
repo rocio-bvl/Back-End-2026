@@ -6,7 +6,6 @@
 <main class="container-fluid p-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <h3 class="m-0 fw-bold"><i class="bi bi-kanban text-danger me-2"></i>Tubo de Trabajo</h3>
-        {# Sin Buscar: el Tubo ya tiene sus propios filtros. Agregar solo para quien registra (Admin y Funcionario) #} 
         {% if request.user.puede_registrar %} 
         <a href="{% url 'actividades:actividad_crear' %}?tubo=1" class="btn btn-sm text-nowrap btn-muni">    
             <i class="bi bi-plus-circle me-1"></i>Agregar al Tubo 
@@ -14,8 +13,8 @@
         {% endif %}
     </div>
     <p class="text-muted small">
-        Aquí quedan las actividades que <strong>dependen de factores externos</strong> para realizarse. La fecha de ejecución es opcional:
-        si aún no se sabe, se agrega después desde el detalle de la actividad.
+        <!-- Aquí quedan las actividades que dependen de factores externos para realizarse. La fecha de realización es opcional:
+        si aún no se sabe, se agrega después desde el detalle de la actividad.-->
     </p>
 
     <!-- Filtros: el Funcionario ve solo lo suyo y filtra por estado; los demás también por funcionario y territorio -->
@@ -84,7 +83,7 @@
                         <th>FECHA DE INGRESO</th>
                         <th>ACTIVIDAD</th>
                         <th>TERRITORIO</th>
-                        <th>FECHA DE EJECUCIÓN</th>
+                        <th>FECHA DE REALIZACIÓN</th>
                         <th>RESPONSABLE</th>
                         <th>ESTADO</th>
                         <th>ACCIONES</th>
@@ -108,7 +107,7 @@
                                 {% if act.vencido %}<span class="badge bg-danger d-block mt-1">VENCIDA</span>
                                 {% elif act.proximo_a_vencer %}<span class="badge bg-warning text-dark d-block mt-1">PRÓXIMA</span>{% endif %}
                             {% else %}
-                                <small class="text-muted">Aún no se ha agregado fecha de ejecución</small>
+                                <small class="text-muted">Aún no se ha agregado fecha de realización</small>
                             {% endif %}
                         </td>
                         <td>
@@ -123,8 +122,8 @@
                         <td class="text-center">{% include 'actividades/components/estado_actividad.html' with estado=act.estado_codigo %}</td>
                         <td class="text-center">
                             <div class="d-flex flex-nowrap gap-1 justify-content-center align-items-center">
-                                <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm text-nowrap {% if act.puede_ejecutar %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
-                                    {% if act.puede_ejecutar %}<i class="bi bi-check2-circle me-1"></i>Gestionar{% else %}<i class="bi bi-eye me-1"></i>Ver{% endif %}
+                                <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm text-nowrap {% if act.puede_registrar_evidencia %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
+                                    {% if act.puede_registrar_evidencia %}<i class="bi bi-check2-circle me-1"></i>Gestionar{% else %}<i class="bi bi-eye me-1"></i>Ver{% endif %}
                                 </a>
                                 {% if request.user.es_administrador %} 
                                 {# Eliminar va por POST con confirmación (data-confirmar en base.html); un link no puede borrar #} 

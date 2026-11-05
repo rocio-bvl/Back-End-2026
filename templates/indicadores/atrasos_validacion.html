@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block title %}Atrasos de validación | Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+{# Reporte para el Administrador y el Coordinador: qué tan al día está cada delegado con la validación #}
+<main class="container-fluid px-md-4 py-4">
+    <h3 class="fw-bold mb-1"><i class="bi bi-hourglass-bottom me-2 text-danger"></i>Atrasos de validación por delegado</h3>
+    <p class="text-muted small mb-4">Evidencias agregadas que todavía esperan la validación del delegado{% if periodo %}, y tiempo de respuesta en el {{ periodo }}{% endif %}. En rojo, las que llevan {{ dias_alerta }} días o más.</p>
+
+    <div class="tarjeta-tabla table-responsive">
+        <table class="table table-hover tabla-sgr text-center">
+            <thead>
+                <tr>
+                    <th class="text-start">DELEGACIÓN</th>
+                    <th class="text-start">DELEGADO</th>
+                    <th>SIN VALIDAR</th>
+                    <th>CON {{ dias_alerta }} DÍAS O MÁS</th>
+                    <th>MÁS ANTIGUA</th>
+                    <th>VALIDADAS EN EL PERIODO</th>
+                    <th>DÍAS PROMEDIO PARA VALIDAR</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fila in filas %}
+                <tr class="{% if fila.atrasadas %}table-danger{% elif fila.pendientes %}table-warning{% endif %}">
+                    <td class="text-start fw-bold" data-cell="DELEGACIÓN">{{ fila.delegacion }}</td>
+                    <td class="text-start" data-cell="DELEGADO">{{ fila.delegados }}</td>
+                    <td data-cell="SIN VALIDAR">{{ fila.pendientes }}</td>
+                    <td data-cell="ATRASADAS" class="fw-bold">{{ fila.atrasadas }}</td>
+                    <td data-cell="MÁS ANTIGUA">{% if fila.pendientes %}{{ fila.mas_antigua }} día{{ fila.mas_antigua|pluralize }}{% else %}-{% endif %}</td>
+                    <td data-cell="VALIDADAS">{{ fila.validadas }}</td>
+                    <td data-cell="PROMEDIO">{{ fila.promedio_dias|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-muted py-3">No hay delegaciones activas.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</main>
+{% endblock %}

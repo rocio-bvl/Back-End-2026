@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from UsuarioApp.admin_sgr import AdminSGR
-from IndicadoresApp.models import Periodo, MetaDesempeno, IndicadorDesempeno, AjusteDesempeno
+from IndicadoresApp.models import Periodo, MetaDesempeno, IndicadorDesempeno, AjusteDesempeno, Ausencia
 
 
 class PeriodoAdmin(AdminSGR):
@@ -31,7 +31,14 @@ class AjusteDesempenoAdmin(AdminSGR):
     list_filter = ("periodo", "tipo")
 
 
+class AusenciaAdmin(AdminSGR):
+    list_display = ("usuario", "tipo", "desde", "hasta", "registrado_por")
+    search_fields = ("usuario__username", "usuario__first_name", "usuario__last_name", "observacion")
+    list_filter = ("tipo",)
+
+
 admin.site.register(Periodo, PeriodoAdmin)
 admin.site.register(MetaDesempeno, MetaDesempenoAdmin)
 admin.site.register(IndicadorDesempeno, IndicadorDesempenoAdmin)
 admin.site.register(AjusteDesempeno, AjusteDesempenoAdmin)
+admin.site.register(Ausencia, AusenciaAdmin)

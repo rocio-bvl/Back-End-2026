@@ -1,15 +1,9 @@
-{% extends 'base.html' %}
-
-{% block title %}Tablero del Administrador | Ilustre Municipalidad de La Serena{% endblock %}
-
-{% block content %}
-{# Tablero del grupo Administrador: totales de todo el sistema y accesos a los mantenedores #}
-<main class="container-fluid px-md-4 py-4">
-    <h2 class="mb-4">Tablero del Administrador - {{ delegacion_actual }}</h2>
-
-    {% include 'indicadores/components/tarjetas_resumen.html' %}
-
-    <h5 class="fw-bold mb-3">Totales del sistema</h5>
+{% comment %}
+Resumen del Administrador (pestaña Resumen de Mi Gestión): totales de todo el sistema y atrasos de validación.
+Las tarjetas de avance de la delegación elegida van arriba, en la cabecera de Mi Gestión.
+{% endcomment %}
+<div class="p-3 p-md-4">
+    <h6 class="fw-bold mb-3">Totales del sistema</h6>
     <div class="row g-3 mb-4">
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Usuarios activos</span><h4 class="fw-bold mb-0">{{ total_usuarios }}</h4></div></div>
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Delegaciones</span><h4 class="fw-bold mb-0">{{ total_delegaciones }}</h4></div></div>
@@ -18,27 +12,13 @@
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Atenciones sociales</span><h4 class="fw-bold mb-0">{{ total_atenciones }}</h4></div></div>
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Metas del periodo</span><h4 class="fw-bold mb-0">{{ total_metas }}</h4></div></div>
     </div>
-
-    <h5 class="fw-bold mb-3">Mantenedores</h5>
-    {% url 'users:administracion' as url_gestion %}
+    <h6 class="fw-bold mb-3">Seguimiento</h6>
     <div class="row g-3">
-        {% if perms.UsuarioApp.view_usuario %}
-        {% include 'indicadores/components/acceso.html' with url=url_gestion|add:'?pestana=usuarios' icono='bi-people' titulo='Usuarios' texto='Crear, editar, desactivar y asignar perfil.' %}
-        {% endif %}
-        {% if perms.UsuarioApp.change_delegacion %}
-        {% include 'indicadores/components/acceso.html' with url=url_gestion|add:'?pestana=delegaciones' icono='bi-geo-alt' titulo='Delegaciones' texto='Delegaciones, territorios y su equipo.' %}
-        {% endif %}
-        {% if perms.IndicadoresApp.view_metadesempeno %}
-        {% include 'indicadores/components/acceso.html' with url=url_gestion|add:'?pestana=metas' icono='bi-bullseye' titulo='Metas' texto='Metas generales y por delegación.' %}
-        {% endif %}
-        {% if perms.ActividadesApp.view_atencionsocial %}
-        {% url 'actividades:gestion_social' as url_atenciones %}
-        {% include 'indicadores/components/acceso.html' with url=url_atenciones icono='bi-person-vcard' titulo='Registro de Atenciones' texto='Solicitudes sociales y sus actividades.' %}
-        {% endif %}
-        {% if perms.AuditoriaApp.view_auditoria %}
-        {% url 'auditoria:logs' as url_auditoria %}
-        {% include 'indicadores/components/acceso.html' with url=url_auditoria icono='bi-clock-history' titulo='Auditoría' texto='Quién hizo qué y cuándo.' %}
-        {% endif %}
+        {% url 'indicadores:semaforo' as url_semaforo %}
+        {% include 'indicadores/components/acceso.html' with url=url_semaforo icono='bi-stoplights' titulo='Semáforo' texto='Avance al día de cada responsable y ausencias.' %}
+        {% url 'indicadores:resumen_delegacion' as url_resumen %}
+        {% include 'indicadores/components/acceso.html' with url=url_resumen icono='bi-building-gear' titulo='Resumen por delegación' texto='Metas, cumplimiento y equipo.' %}
+        {% url 'indicadores:atrasos_validacion' as url_atrasos %}
+        {% include 'indicadores/components/acceso.html' with url=url_atrasos icono='bi-hourglass-bottom' titulo='Atrasos de validación' texto='Reporte por delegado: evidencias sin validar y tiempo de respuesta.' %}
     </div>
-</main>
-{% endblock %}
+</div>

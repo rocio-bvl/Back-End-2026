@@ -12,7 +12,7 @@
                 {# Sin botones de agregar ni modificar: los indicadores se calculan solos desde las actividades validadas #}
                 <div class="card-header bg-muni text-white fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <span>Monitoreo por Responsable de Área</span>
-                    {% include 'indicadores/components/buscar.html' with texto='Responsable o RUT' %}
+                    {% include 'indicadores/components/buscar.html' with texto='Ingresa nombre o RUT' %}
                 </div>
                     <div class="tarjeta-tabla table-responsive">
                         <table class="table table-hover tabla-sgr text-center">
@@ -23,6 +23,7 @@
                                 <th>OBJETIVO HOY</th>
                                 <th>MÍNIMO (60%)</th>
                                 <th>AVANCE LOGRADO</th>
+                                <th>DÍAS AUSENTE</th>
                                 <th>SEMÁFORO</th>
                             </tr>
                         </thead>
@@ -33,7 +34,8 @@
                                 <td data-cell="RESPONSABLE">{{ item.responsable }}</td>
                                 <td data-cell="OBJETIVO">{{ item.objetivo_hoy }}%</td>
                                 <td data-cell="MÍNIMO">{{ item.minimo }}%</td>
-                                <td class="fw-bold" data-cell="AVANCE">{{ item.avance_logrado }}%</td>
+                                <td class="fw-bold" data-cell="AVANCE">{{ item.avance_logrado }}%{% if item.items_en_tope %} <i class="bi bi-exclamation-triangle-fill text-warning" title="Ítems al tope: {{ item.items_en_tope|join:', ' }}"></i>{% endif %}</td>
+                                <td data-cell="DÍAS AUSENTE">{{ item.dias_ausencia|default:"-" }}</td>
                                 <td data-cell="SEMÁFORO">
                                     {% if item.color == 'VERDE' %}
                                     <span class="badge bg-success px-3 py-2"><i class="bi bi-circle-fill me-1"></i> VERDE</span>
@@ -46,7 +48,7 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="6" class="text-center text-muted py-3">{% if q %}Ningún responsable coincide con "{{ q }}".{% else %}No hay métricas registradas para la fecha.{% endif %}</td>
+                                <td colspan="7" class="text-center text-muted py-3">{% if q %}Ningún responsable coincide con "{{ q }}".{% else %}No hay métricas registradas para la fecha.{% endif %}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -56,6 +58,14 @@
         </div>
 
         <div class="col-lg-4">
+            <div class="card shadow-sm border-0 mb-3 border-start border-4 border-{% if resumen.cumple_colectivo %}success{% else %}warning{% endif %}">
+                <div class="card-body">
+                    <span class="text-muted small">Puntaje colectivo del equipo</span>
+                    <h3 class="fw-bold mb-0">{{ resumen.puntaje_colectivo }}%</h3>
+                    {% if resumen.umbral_colectivo %}<small class="text-muted">Meta colectiva hoy: {{ resumen.meta_colectiva }}% ({{ resumen.umbral_colectivo|floatformat:0 }}% de lo esperado)</small>{% endif %}
+                </div>
+            </div>
+
             <div class="card shadow-sm border-0 mb-3">
                 <div class="card-header bg-muni-b2 text-white fw-bold text-center">META SEGÚN AVANCE DEL DÍA</div>
                 <div class="card-body text-center bg-gris-10">
@@ -80,5 +90,70 @@
             </div>
         </div>
     </div>
+
+    {% if puede_ausencias %}
+    <!-- Ausencias del periodo: ajustan las metas de cada usuario a los días que trabaja -->
+    <div class="card shadow-sm border-0 mt-4" id="ausencias">
+        <div class="card-header bg-muni text-white fw-bold">Ausencias del periodo (vacaciones, días administrativos y licencias)</div>
+        <div class="card-body">
+            <p class="text-muted small">Los días de ausencia se descuentan de los días del trimestre y la meta de la persona se ajusta sola. Por ejemplo, con 14 días de vacaciones en un trimestre de 90 días, la meta se mide sobre 76.</p>
+            <form method="post" action="{% url 'indicadores:ausencia_crear' %}" class="row g-2 align-items-end mb-3">
+                {% csrf_token %}
+                <div class="col-md-3">
+                    <label class="form-label small mb-1" for="id_persona">Funcionario o delegado</label>
+                    {{ form_ausencia.persona }}
+                    {# Sugerencias del buscador: al escribir nombre o RUT se filtran solas #}
+                    <datalist id="personas_ausencia">
+                        {% for opcion in form_ausencia.opciones_persona %}<option value="{{ opcion }}">{% endfor %}
+                    </datalist>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1" for="id_tipo">Causa</label>
+                    {{ form_ausencia.tipo }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1" for="id_desde">Desde</label>
+                    {{ form_ausencia.desde }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1" for="id_hasta">Hasta</label>
+                    {{ form_ausencia.hasta }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1" for="id_observacion">Observación</label>
+                    {{ form_ausencia.observacion }}
+                </div>
+                <div class="col-md-1 d-grid">
+                    <button type="submit" class="btn btn-sm btn-muni">Registrar</button>
+                </div>
+            </form>
+            <div class="tarjeta-tabla table-responsive">
+                <table class="table table-hover tabla-sgr text-center mb-0">
+                    <thead><tr><th class="text-start">PERSONA</th><th>CAUSA</th><th>DESDE</th><th>HASTA</th><th>DÍAS</th><th>REGISTRADA POR</th><th>ACCIONES</th></tr></thead>
+                    <tbody>
+                        {% for ausencia in ausencias %}
+                        <tr>
+                            <td class="text-start">{{ ausencia.usuario }}</td>
+                            <td>{{ ausencia.get_tipo_display }}</td>
+                            <td>{{ ausencia.desde|date:"d/m/Y" }}</td>
+                            <td>{{ ausencia.hasta|date:"d/m/Y" }}</td>
+                            <td>{{ ausencia.dias }}</td>
+                            <td>{{ ausencia.registrado_por|default:"-" }}</td>
+                            <td>
+                                <form method="post" action="{% url 'indicadores:ausencia_eliminar' ausencia.pk %}" data-confirmar="¿Eliminar la ausencia de {{ ausencia.usuario }}? Sus metas se recalcularán.">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar" aria-label="Eliminar"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="7" class="text-muted py-3">No hay ausencias registradas en el periodo.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </main>
-{% endblock %}
+{% endblock %}

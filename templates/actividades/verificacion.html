@@ -5,23 +5,37 @@
 {% block content %}
 <main class="container py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <h3 class="m-0 fw-bold"><i class="bi bi-shield-check text-danger me-2"></i>Verificación de Actividades Ejecutadas</h3>
+        <h3 class="m-0 fw-bold"><i class="bi bi-shield-check text-danger me-2"></i>Verificación de Evidencias</h3>
     </div>
+
+    {# Buscador por funcionario (nombre o RUT de quien registró la actividad o de su encargado) #}
+    <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-md-5">
+            <label class="form-label small mb-1" for="f_q_verificacion">Funcionario</label>
+            <input type="search" name="q" id="f_q_verificacion" value="{{ q }}" class="form-control form-control-sm" placeholder="Nombre o RUT">
+        </div>
+        <div class="col-md-3 d-flex gap-1">
+            <button type="submit" class="btn btn-sm btn-muni flex-grow-1"><i class="bi bi-search me-1"></i>Buscar</button>
+            <a href="?" class="btn btn-sm btn-outline-secondary">Limpiar</a>
+        </div>
+    </form>
 
     <div class="row g-4">
         <div class="col-md-5">
             <div class="list-group shadow-sm border-0">
                 {% for evidencia in evidencias_pendientes %}
-                <a href="?evidencia_id={{ evidencia.id }}" class="list-group-item list-group-item-action {% if evidencia.id == evidencia_seleccionada.id %}bg-muni text-white active{% endif %} p-3">
+                <a href="?evidencia_id={{ evidencia.id }}{% if q %}&q={{ q|urlencode }}{% endif %}" class="list-group-item list-group-item-action {% if evidencia.id == evidencia_seleccionada.id %}bg-muni text-white active{% endif %} p-3">
                     <div class="d-flex w-100 justify-content-between">
                         <h6 class="mb-1 fw-bold">Código: {{ evidencia.codigo }}</h6>
-                        <small>{{ evidencia.fecha_registro|timesince }}</small>
+                        {% if evidencia.dias_sin_validar >= 3 %}<span class="badge bg-danger">{{ evidencia.dias_sin_validar }} días sin validar</span>
+                        {% elif evidencia.dias_sin_validar >= 1 %}<span class="badge bg-warning text-dark">{{ evidencia.dias_sin_validar }} día{{ evidencia.dias_sin_validar|pluralize }} sin validar</span>
+                        {% else %}<small>{{ evidencia.fecha_registro|timesince }}</small>{% endif %}
                     </div>
                     <p class="mb-1 text-truncate">Funcionario: {{ evidencia.funcionario.get_full_name }}</p>
                     <small class="{% if evidencia.id == evidencia_seleccionada.id %}text-white-50{% else %}text-muted{% endif %}">Item: {{ evidencia.item }}</small>
                 </a>
                 {% empty %}
-                <div class="list-group-item p-3 text-muted text-center">No hay ejecuciones pendientes de validar.</div>
+                <div class="list-group-item p-3 text-muted text-center">{% if q %}Ningún funcionario coincide con "{{ q }}".{% else %}No hay evidencias pendientes de validar.{% endif %}</div>
                 {% endfor %}
             </div>
         </div>
@@ -35,9 +49,10 @@
                     {% if evidencia_seleccionada %}
                     <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                         <div>
-                            <p class="mb-1"><strong>Actividad:</strong> <a href="{% url 'actividades:actividad_detalle' evidencia_seleccionada.actividad_id %}">{{ evidencia_seleccionada.folio }}</a> · {{ evidencia_seleccionada.accion }} (versión {{ evidencia_seleccionada.version }} de la ejecución)</p>
+                            <p class="mb-1"><strong>Actividad:</strong> <a href="{% url 'actividades:actividad_detalle' evidencia_seleccionada.actividad_id %}">{{ evidencia_seleccionada.folio }}</a> · {{ evidencia_seleccionada.accion }} (versión {{ evidencia_seleccionada.version }} de la evidencia)</p>
                             <p class="mb-1"><strong>Descripción:</strong> {{ evidencia_seleccionada.descripcion }}</p>
                             <p class="mb-1 small text-muted">Realizada el {{ evidencia_seleccionada.fecha_realizacion|date:"d/m/Y"|default:"-" }}{% if evidencia_seleccionada.depende_externos %} · venía del Tubo de Trabajo{% endif %}{% if evidencia_seleccionada.encargado %} · encargado: {{ evidencia_seleccionada.encargado.get_full_name }}{% endif %}</p>
+                            <p class="mb-1"><strong>Persona atendida:</strong> {{ evidencia_seleccionada.nombre_usuario|default:"Sin nombre" }} · {{ evidencia_seleccionada.telefono_usuario|default:"Sin teléfono" }}</p>
                             <p class="mb-0"><strong>Lo que se hizo:</strong> {{ evidencia_seleccionada.comentario|default:"-" }}</p>
                         </div>
                     </div>
@@ -47,7 +62,7 @@
                         <img src="{{ evidencia_seleccionada.imagen.url }}" class="img-fluid rounded" alt="Evidencia">
                         {% else %}
                         <i class="bi bi-camera-video-off display-6 d-block mb-2"></i>
-                        <span>Esta ejecución se registró sin fotografía (es opcional).</span>
+                        <span>Esta evidencia se registró sin fotografía (es opcional).</span>
                         {% endif %}
                     </div>
 
@@ -56,7 +71,19 @@
                         <div class="mb-3">
                             <label class="form-label">Observaciones de Verificación</label>
                             <textarea name="observacion" class="form-control" rows="2" placeholder="Obligatoria para rechazar: indique el motivo."></textarea>
-                            <small class="text-muted">Validar completa la actividad. Rechazar no anula la actividad: el responsable debe registrar nuevamente la ejecución.</small>
+                            <small class="text-muted">Validar completa la actividad. Rechazar no anula la actividad: el responsable debe agregar nuevamente la evidencia.</small>
+                        </div>
+                        {# Solo la acción realizada suma puntaje; la coordinación previa (correos, salón, invitaciones) no #}
+                        <div class="mb-3">
+                            <span class="form-label d-block fw-semibold">¿Esta actividad suma puntaje? <small class="text-muted fw-normal">(obligatorio para validar)</small></span>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="otorga_puntaje" id="puntaje_si" value="SI">
+                                <label class="form-check-label" for="puntaje_si">Sí, es una acción realizada</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="otorga_puntaje" id="puntaje_no" value="NO">
+                                <label class="form-check-label" for="puntaje_no">No, es parte de la gestión previa</label>
+                            </div>
                         </div>
                         <div class="d-flex gap-2">
                             <button type="submit" name="decision" value="APROBAR" class="btn btn-muni flex-fill">
@@ -68,7 +95,7 @@
                         </div>
                     </form>
                     {% else %}
-                    <p class="text-muted text-center my-4">Seleccione una ejecución del listado lateral.</p>
+                    <p class="text-muted text-center my-4">Seleccione una evidencia del listado lateral.</p>
                     {% endif %}
                 </div>
             </div>

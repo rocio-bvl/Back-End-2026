@@ -1,62 +1,26 @@
-{% extends 'base.html' %}
-
-{% block title %}Mi Tablero | Ilustre Municipalidad de La Serena{% endblock %}
-
-{% block content %}
-{# Tablero del grupo Administrativo: su propio avance y sus pendientes #}
-<main class="container-fluid px-md-4 py-4">
-    <h2 class="mb-4">Mi Tablero - {{ request.user.get_full_name|default:request.user.username }}</h2>
-
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-3">
-            <div class="card border-0 shadow-sm border-start border-4 border-{% if mi_avance.color == 'VERDE' %}success{% elif mi_avance.color == 'AMBAR' %}warning{% elif mi_avance.color == 'ROJO' %}danger{% else %}secondary{% endif %} p-3 h-100">
-                <span class="text-muted small">Mi avance del periodo</span>
-                {% if mi_avance %}
-                <h3 class="fw-bold mb-0">{{ mi_avance.avance_logrado }}%</h3>
-                <small class="text-muted">Objetivo hoy: {{ mi_avance.objetivo_hoy }}%</small>
-                {% else %}
-                <h3 class="fw-bold mb-0 text-secondary">-</h3>
-                <small class="text-muted">Sin cargo o sin periodo vigente</small>
-                {% endif %}
-            </div>
-        </div>
-        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-danger p-3 h-100"><span class="text-muted small">Mis pendientes</span><h3 class="fw-bold mb-0 text-danger">{{ mis_pendientes_count }}</h3></div></div>
-        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-primary p-3 h-100"><span class="text-muted small">En revisión</span><h3 class="fw-bold mb-0 text-primary">{{ en_revision_count }}</h3></div></div>
-        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-warning p-3 h-100"><span class="text-muted small">Rechazadas (por corregir)</span><h3 class="fw-bold mb-0 text-warning">{{ rechazadas_count }}</h3></div></div>
+{% comment %}
+Resumen del Funcionario (grupo Administrativo) en Mi Gestión: el puntaje colectivo de su delegación y accesos
+rápidos. Su avance, pendientes y evidencias van en las tarjetas de la cabecera.
+{% endcomment %}
+<div class="p-3 p-md-4">
+    {% if umbral_colectivo %}
+    <div class="card border-0 shadow-sm border-start border-4 border-{% if cumple_colectivo %}success{% else %}warning{% endif %} p-3 mb-4">
+        <span class="text-muted small">Puntaje colectivo de mi delegación</span>
+        <h3 class="fw-bold mb-0">{{ puntaje_colectivo }}% <small class="fs-6 text-muted fw-normal">· meta colectiva hoy: {{ meta_colectiva }}%</small></h3>
+        <small class="text-muted">Los puntajes se miran en equipo: el avance de cada uno suma al de la delegación.</small>
     </div>
-
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-header bg-muni text-white fw-bold">Mis próximas actividades pendientes</div>
-        <div class="tarjeta-tabla table-responsive">
-            <table class="table table-hover tabla-sgr tabla-compacta mb-0">
-                <thead><tr><th>FOLIO</th><th>ACCIÓN</th><th>FECHA DE EJECUCIÓN</th><th>ESTADO</th></tr></thead>
-                <tbody>
-                    {% for actividad in mis_pendientes %}
-                    <tr>
-                        <td><a href="{% url 'actividades:actividad_detalle' actividad.pk %}" class="fw-bold">{{ actividad.folio }}</a></td>
-                        <td>{{ actividad.accion }}</td>
-                        <td>{{ actividad.fecha_realizacion|date:"d/m/Y"|default:"Aún no se ha agregado fecha de ejecución" }}</td>
-                        <td>{% include 'actividades/components/estado_actividad.html' with estado=actividad.estado %}</td>
-                    </tr>
-                    {% empty %}
-                    <tr><td colspan="4" class="text-muted text-center py-3">No tiene actividades pendientes.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
+    {% endif %}
+    <h6 class="fw-bold mb-3">Accesos rápidos</h6>
     <div class="row g-3">
-        {% if perms.ActividadesApp.add_actividad %}
+        {% if request.user.puede_agregar_actividad %}
         {% url 'actividades:actividad_crear' as url_crear %}
         {% include 'indicadores/components/acceso.html' with url=url_crear icono='bi-plus-circle' titulo='Agregar actividad' texto='Registrar lo que hizo hoy o un compromiso.' %}
         {% endif %}
-        {% url 'actividades:mi_gestion' as url_mi_gestion %}
-        {% include 'indicadores/components/acceso.html' with url=url_mi_gestion icono='bi-list-check' titulo='Mi Gestión' texto='Todas mis actividades.' %}
-        {% if perms.ActividadesApp.add_atencionsocial %}
+        {% if request.user.puede_registrar %}
         {% url 'actividades:atencion_crear' as url_atencion %}
         {% include 'indicadores/components/acceso.html' with url=url_atencion icono='bi-person-vcard' titulo='Agregar atención' texto='Registrar una solicitud social.' %}
         {% endif %}
+        {% url 'actividades:tubo_trabajo' as url_tubo %}
+        {% include 'indicadores/components/acceso.html' with url=url_tubo icono='bi-kanban' titulo='Tubo de Trabajo' texto='Lo que depende de factores externos.' %}
     </div>
-</main>
-{% endblock %}
+</div>

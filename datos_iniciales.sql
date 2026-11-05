@@ -180,21 +180,21 @@ INSERT INTO `atencion_social` (`id`, `fecha`, `nombre_solicitante`, `rut_solicit
 -- ---------------------------------------------------------------------------
 -- Actividades de ejemplo:
 --   1 PROGRAMADA (compromiso con fecha futura), a cargo de Diego Muñoz.
---   2 EN_TUBO sin fecha de ejecución (depende de factores externos).
---   3 REGISTRADA (ejecutada, espera validación), vinculada a la solicitud social SOC1.
---   4 En el Tubo, con fecha de ejecución ya agregada (PROGRAMADA).
+--   2 EN_TUBO sin fecha de realización (depende de factores externos).
+--   3 EVIDENCIA_INGRESADA (tiene evidencia, espera validación), vinculada a la solicitud social SOC1.
+--   4 En el Tubo, con fecha de realización ya agregada (PROGRAMADA).
 --   5 PROGRAMADA en la delegación Rural.
 --   6 PROGRAMADA, segunda actividad de la solicitud SOC1 (visita domiciliaria), a cargo de Diego Muñoz.
 -- ---------------------------------------------------------------------------
 INSERT INTO `actividad` (`id`, `fecha`, `solicitud_problema`, `accion`, `territorio_id`, `depende_externos`,
                         `fecha_realizacion`, `estado`, `item_id`, `periodo_id`, `servicio_id`, `usuario_id`,
-                        `encargado_id`, `solicitud_id`) VALUES
-(1, '2026-10-20 12:30:00', 'Reunión con la junta de vecinos por luminarias en pasaje principal.', 'Reunión con organización', 3, 0, '2026-11-15', 'PROGRAMADA', 2, 2, NULL, 5, 6, NULL),
-(2, '2026-10-21 14:00:00', 'Poda de árboles que tapan luminarias: depende de la respuesta de la empresa eléctrica.', 'Gestión con unidad de alumbrado', 1, 1, NULL, 'EN_TUBO', 2, 2, NULL, 5, NULL, NULL),
-(3, '2026-10-22 16:00:00', 'Solicitud de apoyo social por emergencia.', 'Atención presencial', 4, 0, '2026-10-22', 'REGISTRADA', 1, 2, NULL, 5, NULL, 1),
-(4, '2026-10-23 10:00:00', 'Limpieza de microbasural: depende del camión municipal.', 'Coordinación con aseo y ornato', 2, 1, '2026-11-10', 'PROGRAMADA', 3, 2, NULL, 7, NULL, NULL),
-(5, '2026-10-24 09:00:00', 'Reunión con comité de agua potable rural.', 'Reunión con organización', 5, 0, '2026-11-05', 'PROGRAMADA', 2, 2, NULL, 9, NULL, NULL),
-(6, '2026-10-25 11:00:00', 'Visita domiciliaria para evaluar la ayuda social solicitada.', 'Visita domiciliaria', 4, 0, '2026-11-04', 'PROGRAMADA', 2, 2, NULL, 5, 6, 1);
+                        `encargado_id`, `solicitud_id`, `es_gestion`, `nombre_usuario`, `telefono_usuario`) VALUES
+(1, '2026-10-20 12:30:00', 'Reunión con la junta de vecinos por luminarias en pasaje principal.', 'Reunión con organización', 3, 0, '2026-11-15', 'PROGRAMADA', 2, 2, NULL, 5, 6, NULL, 0, 'Pedro Ejemplo', '944445555'),
+(2, '2026-10-21 14:00:00', 'Poda de árboles que tapan luminarias: depende de la respuesta de la empresa eléctrica.', 'Gestión con unidad de alumbrado', 1, 1, NULL, 'EN_TUBO', 2, 2, NULL, 5, NULL, NULL, 0, 'Ana Ficticia', '955556666'),
+(3, '2026-10-22 16:00:00', 'Solicitud de apoyo social por emergencia.', 'Atención presencial', 4, 0, '2026-10-22', 'EVIDENCIA_INGRESADA', 1, 2, NULL, 5, NULL, 1, 0, 'María Ejemplo', '911112222'),
+(4, '2026-10-23 10:00:00', 'Limpieza de microbasural: depende del camión municipal.', 'Coordinación con aseo y ornato', 2, 1, '2026-11-10', 'PROGRAMADA', 3, 2, NULL, 7, NULL, NULL, 0, 'Luis Prueba', '966667777'),
+(5, '2026-10-24 09:00:00', 'Reunión con comité de agua potable rural.', 'Reunión con organización', 5, 0, '2026-11-05', 'PROGRAMADA', 2, 2, NULL, 9, NULL, NULL, 0, 'Carmen Ejemplo', '977778888'),
+(6, '2026-10-25 11:00:00', 'Visita domiciliaria para evaluar la ayuda social solicitada.', 'Visita domiciliaria', 4, 0, '2026-11-04', 'PROGRAMADA', 2, 2, NULL, 5, 6, 1, 0, 'María Ejemplo', '911112222');
 
 INSERT INTO `evidencia` (`id`, `version`, `imagen`, `comentario`, `fecha`, `estado_revision`, `actividad_id`, `reemplaza_a_id`) VALUES
 (1, 1, '', 'Se atendió a la vecina y se derivó al área social para evaluar la ayuda.', '2026-10-22 16:30:00', 'PENDIENTE', 3, NULL);
@@ -207,6 +207,6 @@ INSERT INTO `auditoria` (`id`, `evento`, `fecha`, `entidad`, `id_entidad`, `valo
 (1, 'CREACION', '2026-10-20 12:30:00', 'Actividad', '1', '', 'ACT1 - Reunión con organización [PROGRAMADA]', 5),
 (2, 'CREACION', '2026-10-21 14:00:00', 'Actividad', '2', '', 'ACT2 - Gestión con unidad de alumbrado [EN_TUBO]', 5),
 (3, 'CREACION', '2026-10-22 13:00:00', 'AtencionSocial', '1', '', 'SOC1 - María Ejemplo', 5),
-(4, 'CREACION', '2026-10-22 16:00:00', 'Actividad', '3', '', 'ACT3 - Atención presencial [REGISTRADA]', 5);
+(4, 'CREACION', '2026-10-22 16:00:00', 'Actividad', '3', '', 'ACT3 - Atención presencial [EVIDENCIA_INGRESADA]', 5);
 
 COMMIT;

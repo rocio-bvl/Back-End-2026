@@ -1,14 +1,7 @@
-{% extends 'base.html' %}
-
-{% block title %}Tablero del Delegado | Ilustre Municipalidad de La Serena{% endblock %}
-
-{% block content %}
-{# Tablero del grupo Delegado: semáforo, pendientes y equipo de su delegación #}
-<main class="container-fluid px-md-4 py-4">
-    <h2 class="mb-4">Tablero del Delegado - {{ delegacion_actual }}</h2>
-
-    {% include 'indicadores/components/tarjetas_resumen.html' %}
-
+{% comment %}
+Resumen del Delegado en Mi Gestión: quién de su equipo va más atrasado y cuántas evidencias esperan su validación.
+{% endcomment %}
+<div class="p-3 p-md-4">
     <div class="row g-4 mb-4">
         <div class="col-lg-8">
             <div class="card shadow-sm border-0">
@@ -38,7 +31,7 @@
         </div>
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm border-start border-4 border-primary p-3">
-                <span class="text-muted small">Actividades ejecutadas por validar</span>
+                <span class="text-muted small">Evidencias por validar</span>
                 <h3 class="fw-bold mb-0 text-primary">{{ por_validar }}</h3>
             </div>
         </div>
@@ -51,15 +44,5 @@
         {% url 'indicadores:resumen_delegacion' as url_resumen %}
         {% include 'indicadores/components/acceso.html' with url=url_resumen icono='bi-building-gear' titulo='Resumen de la delegación' texto='Metas, cumplimiento y equipo.' %}
         {% endif %}
-        {% if request.user.puede_verificar %}
-        {# Cuando exista el permiso propio validar_evidencia (R1) se puede cambiar por perms.ActividadesApp.validar_evidencia #}
-        {% url 'actividades:verificacion' as url_verificacion %}
-        {% include 'indicadores/components/acceso.html' with url=url_verificacion icono='bi-patch-check' titulo='Verificación' texto='Validar o rechazar lo ejecutado.' %}
-        {% endif %}
-        {% if perms.UsuarioApp.view_usuario %}
-        {% url 'users:administracion' as url_usuarios %}
-        {% include 'indicadores/components/acceso.html' with url=url_usuarios icono='bi-people' titulo='Usuarios' texto='Equipo y metas de la delegación.' %}
-        {% endif %}
     </div>
-</main>
-{% endblock %}
+</div>

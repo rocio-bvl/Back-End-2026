@@ -74,6 +74,9 @@ vinculadas fueron validadas).
                         </td>
                         <td class="text-center">
                             <div class="d-flex flex-wrap gap-1 justify-content-center">
+                                {% if atencion.visible %}
+                                <a href="{% url 'actividades:atencion_detalle' atencion.id %}" class="btn btn-sm btn-outline-primary" title="Ver detalle" aria-label="Ver detalle"><i class="bi bi-eye"></i></a>
+                                {% endif %}
                                 {% if request.user.puede_registrar %}
                                 <a href="{% url 'actividades:actividad_crear' %}?solicitud={{ atencion.id }}" class="btn btn-sm btn-outline-dark" title="Crear una actividad vinculada a esta solicitud" aria-label="Crear actividad"><i class="bi bi-plus-circle"></i></a>
                                 {% endif %}
@@ -86,7 +89,7 @@ vinculadas fueron validadas).
                                     <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar" aria-label="Eliminar"><i class="bi bi-trash"></i></button>
                                 </form>
                                 {% endif %}
-                                {% if not request.user.puede_registrar and not atencion.editable %}<span class="text-muted small">Solo lectura</span>{% endif %}
+                                {% if not request.user.puede_registrar and not atencion.editable and not atencion.visible %}<span class="text-muted small">Solo lectura</span>{% endif %}
                             </div>
                         </td>
                     </tr>
