@@ -1,14 +1,14 @@
 {% comment %}
 Etiqueta de color del estado de una actividad. Parámetros: estado (código), grande (opcional).
 PROGRAMADA: compromiso con fecha futura. EN_TUBO: espera factores externos, sin fecha.
-REGISTRADA: ejecutada, en revisión. RECHAZADA: se vuelve a registrar la ejecución. VALIDADA: completada.
+EVIDENCIA_INGRESADA: tiene evidencia, en revisión. RECHAZADA: se vuelve a agregar la evidencia. VALIDADA: completada.
 {% endcomment %}
 <span class="badge {% if grande %}fs-6 px-3 py-2{% endif %}
     {% if estado == 'PROGRAMADA' %}bg-primary
     {% elif estado == 'EN_TUBO' %}bg-muni
-    {% elif estado == 'REGISTRADA' %}bg-secondary
+    {% elif estado == 'EVIDENCIA_INGRESADA' %}bg-secondary
     {% elif estado == 'RECHAZADA' %}bg-danger
     {% elif estado == 'VALIDADA' %}bg-success
     {% else %}bg-gris-50{% endif %}">
-    {% if estado == 'PROGRAMADA' %}PROGRAMADA{% elif estado == 'EN_TUBO' %}EN TUBO{% elif estado == 'REGISTRADA' %}EN REVISIÓN{% elif estado == 'RECHAZADA' %}RECHAZADA{% elif estado == 'VALIDADA' %}COMPLETADA{% else %}{{ estado }}{% endif %}
+    {% if estado == 'PROGRAMADA' %}PROGRAMADA{% elif estado == 'EN_TUBO' %}EN TUBO{% elif estado == 'EVIDENCIA_INGRESADA' %}EVIDENCIA INGRESADA{% elif estado == 'RECHAZADA' %}RECHAZADA{% elif estado == 'VALIDADA' %}COMPLETADA{% else %}{{ estado }}{% endif %}
 </span>

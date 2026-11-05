@@ -9,15 +9,18 @@
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-muni text-white fw-bold py-3 d-flex align-items-center">
                     <i class="bi bi-journal-plus me-2 fs-5"></i>
-                    <span>{% if modo_edicion %}Modificar Actividad {{ actividad.folio }} {% else %}Registrar Actividad Territorial{% endif %}</span>
+                    <span>{% if modo_edicion %}Modificar Actividad {{ actividad.folio }} {% elif es_delegado %}Registrar Gestión o Felicitación{% else %}Registrar Actividad Territorial{% endif %}</span>
                 </div>
                 <div class="card-body p-4">
                     <div class="alert alert-light border small mb-4" role="note">
-                        <strong>¿Cómo se registra?</strong> La fecha de ingreso se guarda sola (hoy, {{ hoy|date:"d/m/Y" }}). Usted elige la <strong>fecha de ejecución</strong>.
+                        <strong>¿Cómo se registra?</strong> La fecha de ingreso se guarda sola (hoy, {{ hoy|date:"d/m/Y" }}). Usted elige la <strong>fecha de realización</strong>.
                         <ul class="mb-0 mt-1">
-                            <li><strong>Hoy (o un día anterior):</strong> queda registrada como ejecutada. Escriba qué se hizo; la foto es opcional.</li>
-                            <li><strong>Un día posterior:</strong> queda como <strong>compromiso</strong> pendiente hasta que se ejecute.</li>
-                            <li><strong>Depende de factores externos:</strong> pasa al <strong>Tubo de Trabajo</strong>. La fecha de ejecución es opcional: si todavía no se sabe, se agrega después.</li>
+                            <li><strong>Hoy (o un día anterior):</strong> se agrega su evidencia. Escriba qué se hizo; la foto es opcional.</li>
+                            <li><strong>Un día posterior:</strong> queda como <strong>compromiso</strong> pendiente hasta que se realice.</li>
+                            <li><strong>Depende de factores externos:</strong> pasa al <strong>Tubo de Trabajo</strong>. La fecha de realización es opcional: si todavía no se sabe, se agrega después.</li>
+                            <li><strong>Reglas de ingreso:</strong> máximo 7 actividades por día. La semana se cierra el lunes siguiente: desde el martes ya no se ingresan actividades realizadas la semana anterior.</li>
+                            <li><strong>Puntaje:</strong> lo da la acción realizada (por ejemplo, el taller), no su coordinación previa. Sin el nombre y el teléfono de la persona atendida, la actividad no tiene puntaje.</li>
+                            {% if es_delegado %}<li><strong>Delegado:</strong> lo que usted ingresa queda como <strong>gestión</strong> y no suma puntaje. Las <strong>Felicitaciones de usuarios</strong> se informan a nombre del funcionario felicitado y suman a él.</li>{% endif %}
                         </ul>
                     </div>
 
@@ -76,7 +79,7 @@
                                     {% endfor %}
                                 </select>
                                 {% for error in form.encargado.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
-                                <small class="text-muted">Si lo deja en "Yo mismo", la actividad queda a su cargo.</small>
+                                <small class="text-muted">{% if es_delegado %}Solo para Felicitaciones de usuarios: el funcionario felicitado recibe el punto.{% else %}Si lo deja en "Yo mismo", la actividad queda a su cargo.{% endif %}</small>
                             </div>
 
                             <!-- Vincular a una solicitud social registrada antes -->
@@ -95,7 +98,7 @@
                                                 </tr>
                                                 {% for solicitud in form.fields.solicitud.queryset %}
                                                 <tr>
-                                                    <td><input class="form-check-input" type="radio" name="solicitud" id="solicitud_{{ solicitud.pk }}" value="{{ solicitud.pk }}" {% if form.solicitud.value|stringformat:"s" == solicitud.pk|stringformat:"s" %}checked{% endif %}></td>
+                                                    <td><input class="form-check-input" type="radio" name="solicitud" id="solicitud_{{ solicitud.pk }}" value="{{ solicitud.pk }}" data-nombre="{{ solicitud.nombre_solicitante }}" data-telefono="{{ solicitud.telefono_solicitante }}" {% if form.solicitud.value|stringformat:"s" == solicitud.pk|stringformat:"s" %}checked{% endif %}></td>
                                                     <td><label for="solicitud_{{ solicitud.pk }}" class="mb-0 fw-bold">{{ solicitud.codigo }}</label></td>
                                                     <td>{{ solicitud.fecha|date:"d/m/Y" }}</td>
                                                     <td>{{ solicitud.nombre_solicitante }}</td>
@@ -114,15 +117,28 @@
                                 </div>
                             </div>
 
+                            <!-- Persona atendida: obligatoria. Si coincide con una solicitud social, el sistema las vincula -->
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="id_nombre_usuario">{{ form.nombre_usuario.label }} <span class="text-danger">*</span></label>
+                                <input type="text" name="nombre_usuario" id="id_nombre_usuario" maxlength="150" value="{{ form.nombre_usuario.value|default:'' }}" class="form-control {% if form.nombre_usuario.errors %}is-invalid{% endif %}" placeholder="Nombre y apellido">
+                                {% for error in form.nombre_usuario.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="id_telefono_usuario">{{ form.telefono_usuario.label }} <span class="text-danger">*</span></label>
+                                <input type="tel" name="telefono_usuario" id="id_telefono_usuario" maxlength="20" value="{{ form.telefono_usuario.value|default:'' }}" class="form-control {% if form.telefono_usuario.errors %}is-invalid{% endif %}" placeholder="Ej: 912345678">
+                                {% for error in form.telefono_usuario.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                <small class="text-muted">Si la persona ya está en el Registro de Atenciones, la actividad se vincula sola a su solicitud.</small>
+                            </div>
+
                             <div class="col-12">
                                 <div class="form-check form-switch bg-light p-3 border rounded">
                                     <input class="form-check-input ms-0 me-2" type="checkbox" name="depende_externos" id="id_depende_externos" {% if form.depende_externos.value %}checked{% endif %}>
                                     <label class="form-check-label fw-semibold" for="id_depende_externos">{{ form.depende_externos.label }}</label>
-                                    <div class="small text-muted ms-4">Úselo si la actividad depende de otros (respuesta de otra institución, permisos, clima...). La fecha de ejecución queda opcional.</div>
+                                    <div class="small text-muted ms-4">Úselo si la actividad depende de otros (respuesta de otra institución, permisos, clima...). La fecha de realización queda opcional.</div>
                                 </div>
                             </div>
 
-                            <!-- Fechas: la de ingreso es automática; la de ejecución se elige (en el Tubo es opcional) -->
+                            <!-- Fechas: la de ingreso es automática; la de realización se elige (en el Tubo es opcional) -->
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold"><i class="bi bi-calendar me-1"></i>Fecha de ingreso</label>
                                 <input type="text" class="form-control bg-light" value="{{ hoy|date:'d/m/Y' }} (automática)" readonly>
@@ -135,10 +151,10 @@
                                 <small class="text-muted d-none" id="aviso_fecha_tubo">Opcional en el Tubo: si aún no se sabe, déjela vacía y agréguela después.</small>
                             </div>
 
-                            <!-- Ejecución: solo si la fecha es hoy o anterior -->
-                            <div class="col-12" id="bloque_ejecucion">
+                            <!-- Evidencia: solo si la fecha es hoy o anterior -->
+                            <div class="col-12" id="bloque_evidencia">
                                 <div class="border rounded p-3">
-                                    <h6 class="fw-bold mb-3"><i class="bi bi-check2-square me-1 text-danger"></i>Registro de ejecución</h6>
+                                    <h6 class="fw-bold mb-3"><i class="bi bi-check2-square me-1 text-danger"></i>Evidencia</h6>
                                     <label class="form-label fw-semibold" for="id_comentario">{{ form.comentario.label }} <span class="text-danger">*</span></label>
                                     <textarea name="comentario" id="id_comentario" rows="2" class="form-control {% if form.comentario.errors %}is-invalid{% endif %}" placeholder="Ej: Se realizó la reunión con la junta de vecinos y se acordó...">{{ form.comentario.value|default:'' }}</textarea>
                                     {% for error in form.comentario.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
@@ -175,14 +191,14 @@
         var fecha = document.getElementById('id_fecha_realizacion');
         var avisoFecha = document.getElementById('aviso_fecha');
         var avisoTubo = document.getElementById('aviso_fecha_tubo');
-        var bloqueEjecucion = document.getElementById('bloque_ejecucion');
+        var bloqueEvidencia = document.getElementById('bloque_evidencia');
         var texto = document.getElementById('texto_guardar');
         function actualizar() {
             var alTubo = tubo.checked;
             var futura = fecha.value && fecha.value > hoy;
             avisoFecha.classList.toggle('d-none', alTubo);
             avisoTubo.classList.toggle('d-none', !alTubo);
-            bloqueEjecucion.style.display = (alTubo || futura) ? 'none' : '';
+            bloqueEvidencia.style.display = (alTubo || futura) ? 'none' : '';
             if (alTubo) { texto.textContent = 'Ingresar al Tubo de Trabajo'; }
             else if (futura) { texto.textContent = 'Programar compromiso'; }
             else { texto.textContent = '{% if modo_edicion %}Guardar cambios{% else %}Registrar Actividad {% endif %}'; }
@@ -209,6 +225,16 @@
         });
         filtrar(document.getElementById('buscar_solicitud'), function () {
             return document.querySelectorAll('#tabla_solicitudes tbody tr:not(.fila-fija)');
+        });
+
+        // Al elegir una solicitud social se completan el nombre y el teléfono de la persona atendida
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="solicitud"][data-nombre]'), function (radio) {
+            radio.addEventListener('change', function () {
+                var nombre = document.getElementById('id_nombre_usuario');
+                var telefono = document.getElementById('id_telefono_usuario');
+                if (!nombre.value) { nombre.value = radio.dataset.nombre; }
+                if (!telefono.value) { telefono.value = radio.dataset.telefono; }
+            });
         });
     })();
 </script>

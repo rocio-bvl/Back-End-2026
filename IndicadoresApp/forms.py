@@ -93,3 +93,58 @@ class MetaForm(forms.Form):
         meta.ponderador = Decimal(datos['ponderador'])
         meta.save()
         return meta, evento, antes
+
+
+class AusenciaForm(forms.ModelForm):
+    """Vacaciones, día administrativo o licencia de un funcionario o delegado. La persona se busca por nombre o RUT
+    entre las que puede gestionar quien la registra (el Delegado, solo los Funcionarios de su delegación)."""
+    persona = forms.CharField(label="Funcionario o delegado", max_length=200,
+                              widget=forms.TextInput(attrs={'list': 'personas_ausencia', 'autocomplete': 'off',
+                                                            'placeholder': 'Escriba nombre o RUT'}))
+
+    class Meta:
+        from IndicadoresApp.models import Ausencia
+        model = Ausencia
+        fields = ['tipo', 'desde', 'hasta', 'observacion']
+        widgets = {'desde': forms.DateInput(attrs={'type': 'date'}), 'hasta': forms.DateInput(attrs={'type': 'date'})}
+
+    def __init__(self, *args, registrador=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from UsuarioApp.models import Usuario
+        if registrador is not None:
+            self.personas = registrador.usuarios_para_ausencias().order_by('first_name', 'last_name')
+        else:
+            self.personas = Usuario.objects.none()
+        self.order_fields(['persona', 'tipo', 'desde', 'hasta', 'observacion'])
+        for nombre, campo in self.fields.items():
+            campo.widget.attrs['class'] = 'form-select form-select-sm' if nombre == 'tipo' else 'form-control form-control-sm'
+
+    @staticmethod
+    def texto_persona(usuario):
+        """Texto de cada sugerencia del buscador: nombre, RUT, perfil y delegación."""
+        return f"{usuario.get_full_name() or usuario.username} · {usuario.username} · {usuario.rol()}, {usuario.delegacion or 'sin delegación'}"
+
+    def opciones_persona(self):
+        return [self.texto_persona(usuario) for usuario in self.personas]
+
+    def clean_persona(self):
+        """Acepta la sugerencia elegida, un RUT o el nombre completo (si solo una persona se llama así)."""
+        import re
+        texto = self.cleaned_data['persona'].strip()
+        rut = re.search(r'\b\d{7,8}-[\dkK]\b', texto)
+        if rut:
+            encontrados = self.personas.filter(username__iexact=rut.group(0))
+        else:
+            nombre = texto.lower()
+            encontrados = [u for u in self.personas if (u.get_full_name() or u.username).lower() == nombre]
+        if len(encontrados) != 1:
+            raise forms.ValidationError("Elija una persona de la lista (busque por nombre o RUT).")
+        return encontrados[0]
+
+    def clean(self):
+        datos = super().clean()
+        if datos.get('desde') and datos.get('hasta') and datos['hasta'] < datos['desde']:
+            self.add_error('hasta', "La fecha de término no puede ser anterior a la de inicio.")
+        if datos.get('persona'):
+            self.instance.usuario = datos['persona']
+        return datos

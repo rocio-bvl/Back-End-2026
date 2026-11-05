@@ -22,7 +22,7 @@ class PlanAuditoriaTest(TestCase):
         self.client.login(username='55555555-5', password=CLAVE)
         return self.client.post(reverse('actividades:actividad_crear'), {
             'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item': '1',
-            'contacto': 'Juan', 'telefono': '912345678', 'territorio': self.datos['territorio'].pk,
+            'nombre_usuario': 'Juan Pérez', 'telefono_usuario': '912345678', 'territorio': self.datos['territorio'].pk,
             'fecha_realizacion': timezone.localdate().isoformat(), 'comentario': 'Se inspeccionó', 'imagen': foto()})
 
     def test_cp_aud_001_registro_operacion_critica(self):
@@ -37,9 +37,9 @@ class PlanAuditoriaTest(TestCase):
         self.registrar_actividad()
         evidencia = Evidencia.objects.get()
         self.client.login(username='33333333-3', password=CLAVE)
-        self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR'})
+        self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR', 'otorga_puntaje': 'SI'})
         cambio = Auditoria.objects.get(evento='MODIFICACION', entidad='Evidencia')
-        self.assertEqual((cambio.usuario, cambio.valor_anterior, cambio.valor_nuevo), (self.delegado, 'PENDIENTE', 'APROBADA'))
+        self.assertEqual((cambio.usuario, cambio.valor_anterior, cambio.valor_nuevo), (self.delegado, 'PENDIENTE', 'APROBADA (suma puntaje: Sí)'))
 
     def test_cp_aud_003_registro_sin_usuario_autenticado(self):
         registro = registrar_auditoria(AnonymousUser(), 'ACCESO_DENEGADO', 'Vista', '/auditoria/', '', 'Intento sin sesión')

@@ -1,4 +1,4 @@
-"""Plan de Pruebas Unitarias: actividades (CP-ACT), registro de ejecución (CP-EVI), validación (CP-VAL),
+"""Plan de Pruebas Unitarias: actividades (CP-ACT), evidencias (CP-EVI), validación (CP-VAL),
 compromisos y Tubo de Trabajo (CP-COM) y seguridad y permisos (CP-SEG, CP-PER)."""
 from datetime import timedelta
 
@@ -32,7 +32,7 @@ class PlanActividadesTest(BasePlan):
         self.assertEqual(actividad.folio(), f"ACT{actividad.pk}")
         self.assertEqual((actividad.usuario, actividad.periodo, actividad.item, actividad.territorio),
                          (self.func, self.datos['periodo'], self.datos['item'], self.territorio))
-        self.assertEqual(actividad.estado, 'REGISTRADA')
+        self.assertEqual(actividad.estado, 'EVIDENCIA_INGRESADA')
 
     def test_cp_act_002_descripcion_vacia(self):
         self.entrar('55555555-5')
@@ -74,12 +74,12 @@ class PlanActividadesTest(BasePlan):
         actividad = Actividad.objects.get()
         self.assertEqual((actividad.estado, actividad.depende_externos, actividad.fecha_realizacion), ('EN_TUBO', True, None))
 
-    def test_cp_act_008_registro_de_ejecucion_al_crear(self):
+    def test_cp_act_008_evidencia_al_crear(self):
         self.entrar('55555555-5')
         self.registrar(imagen=foto())
-        ejecucion = Actividad.objects.get().evidencias.get()
-        self.assertEqual((ejecucion.version, ejecucion.estado_revision), (1, 'PENDIENTE'))
-        self.assertTrue(ejecucion.codigo().startswith('ORC'))
+        evidencia = Actividad.objects.get().evidencias.get()
+        self.assertEqual((evidencia.version, evidencia.estado_revision), (1, 'PENDIENTE'))
+        self.assertTrue(evidencia.codigo().startswith('ORC'))
 
     def test_cp_act_009_fecha_futura_es_compromiso(self):
         self.entrar('55555555-5')
@@ -87,7 +87,7 @@ class PlanActividadesTest(BasePlan):
         self.registrar(fecha_realizacion=futura.isoformat(), comentario='', imagen=foto())
         actividad = Actividad.objects.get()
         self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.evidencias.count()),
-                         ('PROGRAMADA', futura, 0))  # la foto de un compromiso se ignora hasta que se ejecute
+                         ('PROGRAMADA', futura, 0))  # la foto de un compromiso se ignora hasta que se realice
 
     def test_cp_act_010_sin_fecha_de_realizacion(self):
         self.entrar('55555555-5')
@@ -98,25 +98,25 @@ class PlanActividadesTest(BasePlan):
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
 class PlanEvidenciasTest(BasePlan):
-    def ejecutar_y_seguir(self, actividad, **datos):
+    def agregar_evidencia_y_seguir(self, actividad, **datos):
         datos.setdefault('comentario', 'Trabajo realizado')
-        return self.client.post(reverse('actividades:registrar_ejecucion', args=[actividad.pk]), datos, follow=True)
+        return self.client.post(reverse('actividades:registrar_evidencia', args=[actividad.pk]), datos, follow=True)
 
-    def test_cp_evi_001_ejecucion_con_foto(self):
+    def test_cp_evi_001_evidencia_con_foto(self):
         actividad = self.crear()
         self.entrar('55555555-5')
-        self.ejecutar_y_seguir(actividad, imagen=SimpleUploadedFile('evidencia.jpg', PNG, content_type='image/jpeg'))
+        self.agregar_evidencia_y_seguir(actividad, imagen=SimpleUploadedFile('evidencia.jpg', PNG, content_type='image/jpeg'))
         actividad.refresh_from_db()
-        self.assertEqual((actividad.evidencias.count(), actividad.estado), (1, 'REGISTRADA'))
+        self.assertEqual((actividad.evidencias.count(), actividad.estado), (1, 'EVIDENCIA_INGRESADA'))
         detalle = self.client.get(reverse('actividades:actividad_detalle', args=[actividad.pk]))
-        self.assertEqual(len(detalle.context['ejecuciones']), 1)
+        self.assertEqual(len(detalle.context['evidencias']), 1)
 
     def test_cp_evi_002_formato_pdf(self):
         self.assertEqual(validar_imagen(SimpleUploadedFile('evidencia.pdf', b'%PDF-1.4', content_type='application/pdf')),
                          ["La fotografía debe ser JPG o PNG."])
         actividad = self.crear()
         self.entrar('55555555-5')
-        respuesta = self.ejecutar_y_seguir(actividad, imagen=SimpleUploadedFile('evidencia.pdf', b'%PDF-1.4'))
+        respuesta = self.agregar_evidencia_y_seguir(actividad, imagen=SimpleUploadedFile('evidencia.pdf', b'%PDF-1.4'))
         self.assertTrue(self.mensajes(respuesta))  # se informa el error
         self.assertEqual(actividad.evidencias.count(), 0)
 
@@ -131,32 +131,34 @@ class PlanEvidenciasTest(BasePlan):
     def test_cp_evi_005_sin_foto_es_valido_sin_comentario_no(self):
         actividad = self.crear()
         self.entrar('55555555-5')
-        self.ejecutar_y_seguir(actividad, comentario='')
+        self.agregar_evidencia_y_seguir(actividad, comentario='')
         self.assertEqual(actividad.evidencias.count(), 0)
-        self.ejecutar_y_seguir(actividad, comentario='Se realizó la visita')
+        self.agregar_evidencia_y_seguir(actividad, comentario='Se realizó la visita')
         self.assertEqual(actividad.evidencias.count(), 1)
         self.assertFalse(actividad.evidencias.get().imagen)
 
-    def test_cp_evi_006_nueva_version_de_ejecucion(self):
-        actividad, evidencia = self.ejecutada()
+    def test_cp_evi_006_nueva_version_de_evidencia(self):
+        actividad, evidencia = self.con_evidencia()
         evidencia.estado_revision = 'RECHAZADA'
         evidencia.save()
         actividad.sincronizar_estado()
         self.entrar('55555555-5')
-        self.ejecutar_y_seguir(actividad)
-        nueva = actividad.ejecucion_vigente()
+        self.agregar_evidencia_y_seguir(actividad)
+        nueva = actividad.evidencia_vigente()
         self.assertEqual((nueva.version, nueva.reemplaza_a), (2, evidencia))
         actividad.refresh_from_db()
-        self.assertEqual(actividad.estado, 'REGISTRADA')
+        self.assertEqual(actividad.estado, 'EVIDENCIA_INGRESADA')
 
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
 class PlanValidacionTest(BasePlan):
     def decidir(self, evidencia, **datos):
+        if datos.get('decision') == 'APROBAR':
+            datos.setdefault('otorga_puntaje', 'SI')
         return self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), datos, follow=True)
 
     def test_cp_val_001_aprobacion(self):
-        actividad, evidencia = self.ejecutada()
+        actividad, evidencia = self.con_evidencia()
         self.entrar('33333333-3')
         self.decidir(evidencia, decision='APROBAR', observacion='Bien registrada')
         evidencia.refresh_from_db()
@@ -166,7 +168,7 @@ class PlanValidacionTest(BasePlan):
         self.assertEqual(indicador.avance_actual, 1)
 
     def test_cp_val_002_rechazo(self):
-        actividad, evidencia = self.ejecutada()
+        actividad, evidencia = self.con_evidencia()
         self.entrar('33333333-3')
         self.decidir(evidencia, decision='RECHAZAR', observacion='Comentario incompleto')
         evidencia.refresh_from_db()
@@ -177,15 +179,15 @@ class PlanValidacionTest(BasePlan):
         self.assertEqual(indicador.avance_actual, 0)
 
     def test_cp_val_003_rechazo_sin_observacion(self):
-        actividad, evidencia = self.ejecutada()
+        actividad, evidencia = self.con_evidencia()
         self.entrar('33333333-3')
         respuesta = self.decidir(evidencia, decision='RECHAZAR', observacion='')
         self.assertTrue(any('debe escribir una observación' in m for m in self.mensajes(respuesta)))
         evidencia.refresh_from_db()
         self.assertEqual(evidencia.estado_revision, 'PENDIENTE')
 
-    def test_cp_val_004_ejecucion_ya_validada(self):
-        actividad, evidencia = self.ejecutada()
+    def test_cp_val_004_evidencia_ya_validada(self):
+        actividad, evidencia = self.con_evidencia()
         self.entrar('33333333-3')
         self.decidir(evidencia, decision='APROBAR')
         respuesta = self.decidir(evidencia, decision='RECHAZAR', observacion='Cambio de opinión')
@@ -193,21 +195,21 @@ class PlanValidacionTest(BasePlan):
         self.assertEqual(Validacion.objects.count(), 1)
 
     def test_cp_val_005_decision_invalida(self):
-        actividad, evidencia = self.ejecutada()
+        actividad, evidencia = self.con_evidencia()
         self.entrar('33333333-3')
         respuesta = self.decidir(evidencia, decision='BORRAR')
         self.assertIn("Decisión no válida.", self.mensajes(respuesta))
         self.assertEqual(Validacion.objects.count(), 0)
 
     def test_cp_val_006_validacion_de_actividad_propia(self):
-        actividad, evidencia = self.ejecutada(usuario=self.admin)
+        actividad, evidencia = self.con_evidencia(usuario=self.admin)
         self.entrar('11111111-1')
         respuesta = self.decidir(evidencia, decision='APROBAR')
         self.assertIn("No puede validar una actividad que usted registró o tiene a su cargo.", self.mensajes(respuesta))
         self.assertEqual(Validacion.objects.count(), 0)
 
     def test_cp_val_007_validacion_fuera_de_delegacion(self):
-        actividad, evidencia = self.ejecutada()  # funcionario de Las Compañías
+        actividad, evidencia = self.con_evidencia()  # funcionario de Las Compañías
         self.entrar('44444444-4')  # Delegado Rural
         respuesta = self.decidir(evidencia, decision='APROBAR')
         self.assertIn("Solo puede verificar evidencias de funcionarios de su delegación.", self.mensajes(respuesta))
@@ -226,11 +228,11 @@ class PlanCompromisosTest(BasePlan):
     def test_cp_com_002_cambio_de_estado_queda_en_auditoria(self):
         compromiso = self.crear()
         self.entrar('55555555-5')
-        self.ejecutar(compromiso)
+        self.agregar_evidencia(compromiso)
         compromiso.refresh_from_db()
-        self.assertEqual(compromiso.estado, 'REGISTRADA')
+        self.assertEqual(compromiso.estado, 'EVIDENCIA_INGRESADA')
         cambio = Auditoria.objects.get(evento='MODIFICACION', entidad='Actividad', id_entidad=str(compromiso.pk))
-        self.assertEqual((cambio.valor_anterior, cambio.valor_nuevo, cambio.usuario), ('PROGRAMADA', 'REGISTRADA', self.func))
+        self.assertEqual((cambio.valor_anterior, cambio.valor_nuevo, cambio.usuario), ('PROGRAMADA', 'EVIDENCIA_INGRESADA', self.func))
 
     def test_cp_com_003_compromiso_vencido(self):
         vencido = self.crear(dias=-2)
@@ -259,12 +261,12 @@ class PlanCompromisosTest(BasePlan):
 
     def test_cp_com_006_tubo_filtro_por_estado(self):
         pendiente = self.crear('EN_TUBO')
-        ejecutada = self.crear('EN_TUBO')
-        Evidencia.objects.create(actividad=ejecutada, comentario='Hecho', version=1)
-        ejecutada.sincronizar_estado()
+        con_evidencia = self.crear('EN_TUBO')
+        Evidencia.objects.create(actividad=con_evidencia, comentario='Hecho', version=1)
+        con_evidencia.sincronizar_estado()
         self.entrar('55555555-5')
         self.assertEqual(self.folios_tubo(), [pendiente.folio()])
-        self.assertEqual(self.folios_tubo(estado='EJECUTADAS'), [ejecutada.folio()])
+        self.assertEqual(self.folios_tubo(estado='CON_EVIDENCIA'), [con_evidencia.folio()])
 
     def test_cp_com_007_tubo_filtro_por_territorio(self):
         alto = self.crear('EN_TUBO')

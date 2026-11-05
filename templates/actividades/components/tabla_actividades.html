@@ -8,7 +8,7 @@ Parámetros: filas (lista de fila_actividad), vacio (texto si no hay filas), con
             <tr>
                 <th>CÓDIGO</th>
                 <th>FECHA INGRESO</th>
-                <th>FECHA EJECUCIÓN</th>
+                <th>FECHA DE REALIZACIÓN</th>
                 <th>ACTIVIDAD</th>
                 <th>TERRITORIO</th>
                 {% if con_responsable %}<th>RESPONSABLE</th>{% endif %}
@@ -27,7 +27,7 @@ Parámetros: filas (lista de fila_actividad), vacio (texto si no hay filas), con
                         {% if act.vencido %}<span class="badge bg-danger d-block mt-1">VENCIDA</span>
                         {% elif act.proximo_a_vencer %}<span class="badge bg-warning text-dark d-block mt-1">PRÓXIMA</span>{% endif %}
                     {% else %}
-                        <small class="text-muted">Aún no se ha agregado fecha de ejecución</small>
+                        <small class="text-muted">Aún no se ha agregado fecha de realización</small>
                     {% endif %}
                 </td>
                 <td>
@@ -51,11 +51,12 @@ Parámetros: filas (lista de fila_actividad), vacio (texto si no hay filas), con
                     {% endif %}
                 </td>
                 {% endif %}
-                <td class="text-center">{% include 'actividades/components/estado_actividad.html' with estado=act.estado_codigo %}</td>
+                <td class="text-center">{% include 'actividades/components/estado_actividad.html' with estado=act.estado_codigo %}
+                    {% if act.es_gestion %}<span class="badge bg-secondary d-block mt-1">GESTIÓN</span>{% elif act.sin_puntaje %}<span class="badge bg-light text-dark border d-block mt-1">SIN PUNTAJE</span>{% endif %}</td>
                 <td class="text-center">
                     <div class="d-flex flex-nowrap gap-1 justify-content-center align-items-center">
-                        <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm text-nowrap {% if act.puede_ejecutar %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
-                            {% if act.puede_ejecutar %}<i class="bi bi-check2-circle me-1"></i>Gestionar{% else %}<i class="bi bi-eye me-1"></i>Ver{% endif %}
+                        <a href="{% url 'actividades:actividad_detalle' act.id %}" class="btn btn-sm text-nowrap {% if act.puede_registrar_evidencia %}btn-muni-v2{% else %}btn-outline-dark{% endif %}">
+                            {% if act.puede_registrar_evidencia %}<i class="bi bi-check2-circle me-1"></i>Gestionar{% else %}<i class="bi bi-eye me-1"></i>Ver{% endif %}
                         </a>
                         {% if request.user.es_administrador %} 
                         {# Eliminar va por POST con confirmación (data-confirmar en base.html); un link no puede borrar #} 

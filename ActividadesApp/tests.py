@@ -52,7 +52,8 @@ class BaseActividades(TestCase):
     def registrar(self, **extra):
         datos = {'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item': '1',
                  'territorio': self.territorio.pk,
-                 'fecha_realizacion': self.hoy.isoformat(), 'comentario': 'Se inspeccionó el sector'}
+                 'fecha_realizacion': self.hoy.isoformat(), 'comentario': 'Se inspeccionó el sector',
+                 'nombre_usuario': 'Juan Pérez', 'telefono_usuario': '912345678'}
         datos.update(extra)
         return self.client.post(reverse('actividades:actividad_crear'), datos)
 
@@ -65,15 +66,15 @@ class BaseActividades(TestCase):
             fecha_realizacion=None if en_tubo else self.hoy + timedelta(days=dias),
             territorio=territorio or self.territorio, encargado=encargado)
 
-    def ejecutada(self, usuario=None, encargado=None):
+    def con_evidencia(self, usuario=None, encargado=None):
         actividad = self.crear(usuario=usuario, encargado=encargado)
         evidencia = Evidencia.objects.create(actividad=actividad, comentario='Hecho', version=1)
         actividad.sincronizar_estado()
         return actividad, evidencia
 
-    def ejecutar(self, actividad, **datos):
+    def agregar_evidencia(self, actividad, **datos):
         datos.setdefault('comentario', 'Listo')
-        return self.client.post(reverse('actividades:registrar_ejecucion', args=[actividad.pk]), datos)
+        return self.client.post(reverse('actividades:registrar_evidencia', args=[actividad.pk]), datos)
 
     def folios_tubo(self, **filtros):
         return [a['folio'] for a in self.client.get(reverse('actividades:tubo_trabajo'), filtros).context['actividades']]
@@ -81,7 +82,7 @@ class BaseActividades(TestCase):
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
 class RegistroActividadTest(BaseActividades):
-    """La fecha de realización decide el estado: hoy o antes = ejecutada; después = compromiso;
+    """La fecha de realización decide el estado: hoy o antes = con_evidencia; después = compromiso;
     depende de factores externos = Tubo de Trabajo sin fecha."""
 
     def test_hoy_con_comentario_y_sin_foto_queda_registrada(self):
@@ -89,9 +90,9 @@ class RegistroActividadTest(BaseActividades):
         self.assertRedirects(self.registrar(), reverse('actividades:mi_gestion'))
         actividad = Actividad.objects.get()
         self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos),
-                         ('REGISTRADA', self.hoy, False))
-        ejecucion = actividad.evidencias.get()
-        self.assertEqual((ejecucion.comentario, bool(ejecucion.imagen)), ('Se inspeccionó el sector', False))
+                         ('EVIDENCIA_INGRESADA', self.hoy, False))
+        evidencia = actividad.evidencias.get()
+        self.assertEqual((evidencia.comentario, bool(evidencia.imagen)), ('Se inspeccionó el sector', False))
 
     def test_hoy_con_foto_guarda_la_foto(self):
         self.entrar('55555555-5')
@@ -149,7 +150,7 @@ class RegistroActividadTest(BaseActividades):
         self.assertEqual(self.registrar(fecha_realizacion=antigua.isoformat()).status_code, 200)
         self.assertEqual(Actividad.objects.count(), 0)
 
-    def test_tubo_con_fecha_de_ejecucion_opcional(self):
+    def test_tubo_con_fecha_de_realizacion_opcional(self):
         self.entrar('55555555-5')
         futura = self.hoy + timedelta(days=6)
         self.assertRedirects(self.registrar(depende_externos='on', fecha_realizacion=futura.isoformat()),
@@ -162,7 +163,7 @@ class RegistroActividadTest(BaseActividades):
         self.assertEqual(Actividad.objects.count(), 1)
         # La tabla dice que aún no hay fecha cuando no se eligió
         self.registrar(depende_externos='on', fecha_realizacion='')
-        self.assertContains(self.client.get(reverse('actividades:tubo_trabajo')), 'Aún no se ha agregado fecha de ejecución')
+        self.assertContains(self.client.get(reverse('actividades:tubo_trabajo')), 'Aún no se ha agregado fecha de realización')
 
     def test_ya_no_hay_contacto_ni_telefono_en_la_actividad(self):
         self.assertFalse(hasattr(Actividad(), 'contacto'))
@@ -179,34 +180,34 @@ class RegistroActividadTest(BaseActividades):
 
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
-class EjecucionYEncargadoTest(BaseActividades):
-    def test_ejecutar_compromiso_sin_foto(self):
+class EvidenciaYEncargadoTest(BaseActividades):
+    def test_evidencia_de_compromiso_sin_foto(self):
         actividad = self.crear(dias=3)
         self.entrar('55555555-5')
-        self.ejecutar(actividad)
+        self.agregar_evidencia(actividad)
         actividad.refresh_from_db()
-        self.assertEqual((actividad.estado, actividad.fecha_realizacion), ('REGISTRADA', self.hoy))
+        self.assertEqual((actividad.estado, actividad.fecha_realizacion), ('EVIDENCIA_INGRESADA', self.hoy))
 
-    def test_ejecucion_exige_comentario(self):
+    def test_evidencia_exige_comentario(self):
         actividad = self.crear()
         self.entrar('55555555-5')
-        self.ejecutar(actividad, comentario='', imagen=foto())
+        self.agregar_evidencia(actividad, comentario='', imagen=foto())
         actividad.refresh_from_db()
         self.assertEqual((actividad.estado, actividad.evidencias.count()), ('PROGRAMADA', 0))
 
-    def test_solo_quien_registro_o_el_encargado_ejecutan(self):
+    def test_solo_quien_registro_o_el_encargado_agregan_evidencia(self):
         actividad = self.crear()
         self.entrar('77777777-7')
-        self.assertFalse(self.client.get(reverse('actividades:actividad_detalle', args=[actividad.pk])).context['puede_ejecutar'])
-        self.ejecutar(actividad)
+        self.assertFalse(self.client.get(reverse('actividades:actividad_detalle', args=[actividad.pk])).context['puede_registrar_evidencia'])
+        self.agregar_evidencia(actividad)
         actividad.refresh_from_db()
         self.assertEqual(actividad.estado, 'PROGRAMADA')
         # Con el compañero como encargado, sí puede
         actividad.encargado = self.companero
         actividad.save()
-        self.ejecutar(actividad)
+        self.agregar_evidencia(actividad)
         actividad.refresh_from_db()
-        self.assertEqual(actividad.estado, 'REGISTRADA')
+        self.assertEqual(actividad.estado, 'EVIDENCIA_INGRESADA')
 
     def test_asignar_fecha_en_el_tubo(self):
         actividad = self.crear('EN_TUBO')
@@ -238,10 +239,10 @@ class EjecucionYEncargadoTest(BaseActividades):
         ajena = self.crear(usuario=self.otro, territorio=self.territorio_rural)
         self.assertIsNone(self.asignar(ajena, self.otro))
 
-    def test_coordinador_y_admin_asignan_en_todas_las_delegaciones(self):
+    def test_coordinador_no_asigna_y_admin_asigna_en_todas_las_delegaciones(self):
         actividad = self.crear()
-        self.entrar('22222222-2')
-        self.assertEqual(self.asignar(actividad, self.otro), self.otro)
+        self.entrar('22222222-2')  # el Coordinador supervisa: no interviene en las actividades de los funcionarios
+        self.assertIsNone(self.asignar(actividad, self.otro))
         self.entrar('11111111-1')
         self.assertEqual(self.asignar(actividad, self.companero), self.companero)
 
@@ -250,15 +251,15 @@ class EjecucionYEncargadoTest(BaseActividades):
         self.entrar('55555555-5')
         self.assertIsNone(self.asignar(actividad, self.companero))
 
-    def test_no_se_asigna_encargado_a_una_actividad_ejecutada(self):
-        actividad, evidencia = self.ejecutada()
+    def test_no_se_asigna_encargado_a_una_actividad_con_evidencia(self):
+        actividad, evidencia = self.con_evidencia()
         self.entrar('33333333-3')
         self.assertIsNone(self.asignar(actividad, self.companero))
 
     def test_la_meta_cuenta_para_el_encargado(self):
-        actividad, evidencia = self.ejecutada(encargado=self.companero)
+        actividad, evidencia = self.con_evidencia(encargado=self.companero)
         self.entrar('33333333-3')
-        self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR'})
+        self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR', 'otorga_puntaje': 'SI'})
         avance = {u.username: indicadores_usuario(u, self.datos['periodo'], self.hoy)[0].avance_actual
                   for u in [self.func, self.companero]}
         self.assertEqual(avance, {'55555555-5': 0, '77777777-7': 1})
@@ -301,13 +302,13 @@ class BitacoraTest(BaseActividades):
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
 class ValidacionTest(BaseActividades):
     def test_delegado_valida_y_suma_avance(self):
-        actividad, evidencia = self.ejecutada()
-        self.assertEqual(actividad.estado, 'REGISTRADA')
+        actividad, evidencia = self.con_evidencia()
+        self.assertEqual(actividad.estado, 'EVIDENCIA_INGRESADA')
         self.entrar('33333333-3')
         pantalla = self.client.get(reverse('actividades:verificacion'), {'evidencia_id': evidencia.pk})
         self.assertContains(pantalla, actividad.folio())
         self.assertContains(pantalla, 'value="RECHAZAR"')
-        self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR'})
+        self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR', 'otorga_puntaje': 'SI'})
         actividad.refresh_from_db()
         self.assertEqual(actividad.estado, 'VALIDADA')
         self.entrar('55555555-5')
@@ -316,7 +317,7 @@ class ValidacionTest(BaseActividades):
         self.assertEqual(contexto['resumen']['completadas'], 1)
 
     def test_rechazo_exige_motivo_y_se_vuelve_a_registrar(self):
-        actividad, evidencia = self.ejecutada()
+        actividad, evidencia = self.con_evidencia()
         url = reverse('actividades:validar_evidencia', args=[evidencia.pk])
         self.entrar('33333333-3')
         self.client.post(url, {'decision': 'RECHAZAR'})  # sin motivo
@@ -328,20 +329,20 @@ class ValidacionTest(BaseActividades):
         self.entrar('55555555-5')
         detalle = self.client.get(reverse('actividades:actividad_detalle', args=[actividad.pk]))
         self.assertContains(detalle, 'Falta indicar con quién se reunió')
-        self.assertTrue(detalle.context['puede_ejecutar'])
-        self.ejecutar(actividad, comentario='Reunión con la directiva completa')
+        self.assertTrue(detalle.context['puede_registrar_evidencia'])
+        self.agregar_evidencia(actividad, comentario='Reunión con la directiva completa')
         actividad.refresh_from_db()
-        nueva = actividad.ejecucion_vigente()
-        self.assertEqual((actividad.estado, nueva.version, nueva.reemplaza_a_id), ('REGISTRADA', 2, evidencia.pk))
+        nueva = actividad.evidencia_vigente()
+        self.assertEqual((actividad.estado, nueva.version, nueva.reemplaza_a_id), ('EVIDENCIA_INGRESADA', 2, evidencia.pk))
 
     def test_coordinador_no_valida(self):
-        actividad, evidencia = self.ejecutada()
+        actividad, evidencia = self.con_evidencia()
         self.entrar('22222222-2')
-        self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR'})
+        self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR', 'otorga_puntaje': 'SI'})
         evidencia.refresh_from_db()
         self.assertEqual(evidencia.estado_revision, 'PENDIENTE')
 
-    def test_compromiso_cuenta_en_el_trimestre_en_que_se_ejecuta(self):
+    def test_compromiso_cuenta_en_el_trimestre_en_que_se_realiza(self):
         from IndicadoresApp.models import Periodo
         anterior = Periodo.objects.create(nombre='Anterior', fecha_inicio=self.hoy - timedelta(days=60),
                                           fecha_termino=self.hoy - timedelta(days=10), dias_computables=40)
@@ -349,7 +350,7 @@ class ValidacionTest(BaseActividades):
         actividad.periodo = anterior
         actividad.save()
         self.entrar('55555555-5')
-        self.ejecutar(actividad)
+        self.agregar_evidencia(actividad)
         actividad.refresh_from_db()
         self.assertEqual(actividad.periodo, self.datos['periodo'])
 
@@ -393,9 +394,9 @@ class TuboYMiGestionTest(BaseActividades):
     def test_dashboard_cuenta_pendientes(self):
         self.crear('EN_TUBO')
         self.crear()
-        self.ejecutada()
+        self.con_evidencia()
         self.entrar('33333333-3')
-        self.assertEqual(self.client.get(reverse('indicadores:dashboard')).context['compromisos_pendientes_count'], 2)
+        self.assertEqual(self.client.get(reverse('actividades:mi_gestion')).context['compromisos_pendientes_count'], 2)
 
     def mi_gestion(self, rut, **parametros):
         self.entrar(rut)
@@ -434,7 +435,7 @@ class TuboYMiGestionTest(BaseActividades):
         self.assertEqual(len(contexto['actividades_delegacion']), 2)  # por defecto, todas
         html = self.client.get(reverse('actividades:mi_gestion')).content.decode()
         self.assertNotIn('Mis metas', html)
-        self.assertNotIn('Delegaciones', html)
+        self.assertIn(reverse('users:administracion') + '?pestana=usuarios', html)  # accesos de gestión del Administrador en Mi Gestión
         self.assertIn('name="delegacion" id="f_delegacion"', html)
         contexto = self.mi_gestion('11111111-1', delegacion='RURAL')
         self.assertEqual([a['folio'] for a in contexto['actividades_delegacion']], [rural.folio()])
@@ -442,7 +443,7 @@ class TuboYMiGestionTest(BaseActividades):
 
     def test_coordinador_igual_que_admin_y_tarjetas_de_la_delegacion(self):
         self.crear()                                   # pendiente en Las Compañías
-        self.ejecutada()                               # en revisión en Las Compañías
+        self.con_evidencia()                               # en revisión en Las Compañías
         self.crear(usuario=self.otro, territorio=self.territorio_rural)  # pendiente en Rural
         for rut in ['22222222-2', '11111111-1']:
             contexto = self.mi_gestion(rut)
@@ -467,7 +468,7 @@ class SolicitudSocialTest(BaseActividades):
                                              tipo_atencion=self.tipo, usuario=usuario or self.func)
 
     def agregar_atencion(self, **extra):
-        datos = {'nombre_solicitante': 'Juan Ficticio', 'rut_solicitante': '11.222.333-9', 'telefono_solicitante': '',
+        datos = {'nombre_solicitante': 'Juan Ficticio', 'rut_solicitante': '11.222.333-9', 'telefono_solicitante': '987654321',
                  'tipo_atencion': self.tipo.pk, 'subtipo_atencion': ''}
         datos.update(extra)
         return self.client.post(reverse('actividades:atencion_crear'), datos)

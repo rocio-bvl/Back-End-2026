@@ -10,4 +10,7 @@ urlpatterns = [
     path('metas/guardar/', vindicadores.guardar_metas, name="guardar_metas"),
     path('metas/<int:pk>/editar/', vindicadores.meta_editar, name="meta_editar"),
     path('metas/<int:pk>/eliminar/', vindicadores.meta_eliminar, name="meta_eliminar"),
+    path('ausencias/nueva/', vindicadores.ausencia_crear, name="ausencia_crear"),
+    path('ausencias/<int:pk>/eliminar/', vindicadores.ausencia_eliminar, name="ausencia_eliminar"),
+    path('atrasos-validacion/', vindicadores.atrasos_validacion, name="atrasos_validacion"),
 ]

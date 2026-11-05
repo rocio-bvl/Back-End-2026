@@ -1,21 +1,28 @@
-{# Las tres tarjetas del tablero: pendientes, avance del periodo y semáforo de la delegación elegida #}
+{# Tarjetas del tablero: pendientes, avance del periodo, semáforo y puntaje colectivo de la delegación elegida #}
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
+    <div class="col-6 col-lg-3">
         <div class="card border-0 shadow-sm border-start border-4 border-danger p-3 h-100">
             <span class="text-muted small">Actividades Pendientes</span>
             <h3 class="fw-bold mb-0 text-danger">{{ compromisos_pendientes_count|default:0 }}</h3>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-6 col-lg-3">
         <div class="card border-0 shadow-sm border-start border-4 border-success p-3 h-100">
             <span class="text-muted small">Avance del Periodo</span>
             <h3 class="fw-bold mb-0 text-success">{{ avance_periodo_porcentaje|default:"0%" }}</h3>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-6 col-lg-3">
         <div class="card border-0 shadow-sm border-start border-4 border-{% if semaforo_estado == 'Verde' %}success{% elif semaforo_estado == 'Rojo' %}danger{% elif semaforo_estado == 'Ámbar' %}warning{% else %}secondary{% endif %} p-3 h-100">
             <span class="text-muted small">Estado del Semáforo</span>
             <h3 class="fw-bold text-{% if semaforo_estado == 'Verde' %}success{% elif semaforo_estado == 'Rojo' %}danger{% elif semaforo_estado == 'Ámbar' %}warning{% else %}secondary{% endif %} mb-0"><i class="bi bi-circle-fill"></i> {{ semaforo_estado }}</h3>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm border-start border-4 border-{% if cumple_colectivo %}success{% else %}warning{% endif %} p-3 h-100">
+            <span class="text-muted small">Puntaje colectivo del equipo</span>
+            <h3 class="fw-bold mb-0 text-{% if cumple_colectivo %}success{% else %}warning{% endif %}">{{ puntaje_colectivo|default:0 }}%</h3>
+            {% if umbral_colectivo %}<small class="text-muted">Meta colectiva hoy: {{ meta_colectiva }}% ({{ umbral_colectivo|floatformat:0 }}% de lo esperado)</small>{% endif %}
         </div>
     </div>
 </div>

@@ -25,8 +25,22 @@
                     <!-- Estado destacado (texto con color, no parece botón) -->
                     <p class="estado-detalle estado-{{ actividad.estado|lower }} mb-4">
                         <span class="text-muted">ESTADO:</span>
-                        {% if actividad.estado == 'PROGRAMADA' %}PROGRAMADA{% elif actividad.estado == 'EN_TUBO' %}EN TUBO{% elif actividad.estado == 'REGISTRADA' %}EN REVISIÓN{% elif actividad.estado == 'RECHAZADA' %}RECHAZADA{% elif actividad.estado == 'VALIDADA' %}COMPLETADA{% else %}{{ actividad.estado }}{% endif %}
+                        {% if actividad.estado == 'PROGRAMADA' %}PROGRAMADA{% elif actividad.estado == 'EN_TUBO' %}EN TUBO{% elif actividad.estado == 'EVIDENCIA_INGRESADA' %}EVIDENCIA INGRESADA{% elif actividad.estado == 'RECHAZADA' %}RECHAZADA{% elif actividad.estado == 'VALIDADA' %}COMPLETADA{% else %}{{ actividad.estado }}{% endif %}
                     </p>
+                    {% if actividad.es_gestion %}
+                    <div class="alert alert-secondary small py-2"><i class="bi bi-info-circle me-1"></i>Gestión del Delegado: queda registrada, pero no suma puntaje ni pasa por verificación.</div>
+                    {% elif actividad.estado == 'VALIDADA' %}
+                    <div class="alert {% if otorga_puntaje %}alert-success{% else %}alert-warning{% endif %} small py-2 d-flex flex-wrap align-items-center gap-2">
+                        <span><i class="bi bi-award me-1"></i>{% if otorga_puntaje %}Suma puntaje: es una acción realizada.{% else %}No suma puntaje: se consideró parte de la gestión previa.{% endif %}</span>
+                        {% if puede_cambiar_puntaje %}
+                        <form method="post" action="{% url 'actividades:cambiar_puntaje' actividad.pk %}" class="ms-auto">
+                            {% csrf_token %}
+                            <input type="hidden" name="otorga_puntaje" value="{% if otorga_puntaje %}NO{% else %}SI{% endif %}">
+                            <button type="submit" class="btn btn-sm btn-outline-dark">{% if otorga_puntaje %}Marcar sin puntaje{% else %}Marcar con puntaje{% endif %}</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     <h6 class="text-muted fw-bold mb-1">Actividad / solicitud / problema:</h6>
                     <p class="bg-light p-3 rounded text-dark border">{{ actividad.solicitud_problema }}</p>
                     <div class="row g-3">
@@ -37,14 +51,15 @@
                         <div class="col-md-6"><small class="text-muted d-block">Solicitud social:</small>
                             {% if actividad.solicitud %}<a href="{% url 'actividades:gestion_social' %}?solicitud={{ actividad.solicitud_id }}" class="fw-bold"><i class="bi bi-link-45deg"></i>{{ actividad.solicitud.codigo }} · {{ actividad.solicitud.nombre_solicitante }}</a> <small class="text-muted">(ver solicitud)</small>
                             {% else %}<span class="text-muted">No vinculada</span>{% endif %}</div>
+                        <div class="col-md-6"><small class="text-muted d-block">Persona atendida:</small><span class="fw-bold">{{ actividad.nombre_usuario|default:"Sin nombre" }}</span> <small class="text-muted">· {{ actividad.telefono_usuario|default:"sin teléfono" }}</small></div>
                         <div class="col-md-6"><small class="text-muted d-block">Territorio:</small><span>{{ actividad.territorio|default:"-" }}</span></div>
                         <div class="col-md-6">
-                            <small class="text-muted d-block">Fecha de ejecución:</small>
+                            <small class="text-muted d-block">Fecha de realización:</small>
                             {% if actividad.fecha_realizacion %}
                             <span class="fw-bold {% if actividad.vencido %}text-danger{% endif %}">{{ actividad.fecha_realizacion|date:"d/m/Y" }}</span>
                             {% if actividad.vencido %}<span class="badge bg-danger ms-1">VENCIDA</span>{% elif actividad.proximo_a_vencer %}<span class="badge bg-warning text-dark ms-1">PRÓXIMA</span>{% endif %}
                             {% else %}
-                            <span class="text-muted">Aún no se ha agregado fecha de ejecución</span>
+                            <span class="text-muted">Aún no se ha agregado fecha de realización</span>
                             {% endif %}
                         </div>
                         <div class="col-md-6"><small class="text-muted d-block">Periodo:</small><span>{{ actividad.periodo }}</span></div>
@@ -52,11 +67,11 @@
                 </div>
             </div>
 
-            <!-- Historial de ejecuciones -->
+            <!-- Historial de evidencias -->
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-gris-0 fw-bold py-3"><i class="bi bi-check2-square me-2 text-danger"></i>Registro de ejecución (el más reciente primero)</div>
+                <div class="card-header bg-gris-0 fw-bold py-3"><i class="bi bi-check2-square me-2 text-danger"></i>Evidencias (la más reciente primero)</div>
                 <div class="card-body p-0">
-                    {% for ej in ejecuciones %}
+                    {% for ej in evidencias %}
                     <div class="p-3 border-bottom">
                         <div class="d-flex flex-wrap justify-content-between gap-2">
                             <span class="fw-bold">{{ ej.codigo }} <small class="text-muted fw-normal">versión {{ ej.version }} · {{ ej.fecha|date:"d/m/Y H:i" }}</small></span>
@@ -69,7 +84,7 @@
                         {% if ej.observacion %}<div class="alert alert-light border small mt-2 mb-0"><strong>Observación de {{ ej.verificador.get_full_name|default:ej.verificador }}:</strong> {{ ej.observacion }}</div>{% endif %}
                     </div>
                     {% empty %}
-                    <p class="text-muted small p-3 mb-0">Todavía no se registra la ejecución de esta actividad.</p>
+                    <p class="text-muted small p-3 mb-0">Todavía no se agrega evidencia a esta actividad.</p>
                     {% endfor %}
                 </div>
             </div>
@@ -103,15 +118,15 @@
 
         <!-- Columna de acciones -->
         <div class="col-lg-4">
-            {% if puede_ejecutar %}
+            {% if puede_registrar_evidencia %}
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-gris-90 text-white fw-bold py-3">{% if actividad.estado == 'RECHAZADA' %}Volver a registrar la ejecución{% else %}Registrar ejecución{% endif %}</div>
+                <div class="card-header bg-gris-90 text-white fw-bold py-3">{% if actividad.estado == 'RECHAZADA' %}Volver a agregar la evidencia{% else %}Agregar evidencia{% endif %}</div>
                 <div class="card-body p-3">
                     <p class="small text-muted">
-                        {% if actividad.estado == 'RECHAZADA' %}La ejecución anterior fue rechazada (vea la observación). La actividad sigue vigente: registre nuevamente lo que se hizo.
-                        {% else %}Al registrar la ejecución, la actividad queda en revisión hasta que el Delegado la valide.{% endif %}
+                        {% if actividad.estado == 'RECHAZADA' %}La evidencia anterior fue rechazada (vea la observación). La actividad sigue vigente: registre nuevamente lo que se hizo.
+                        {% else %}Al agregar la evidencia, la actividad queda en revisión hasta que el Delegado la valide.{% endif %}
                     </p>
-                    <form method="post" action="{% url 'actividades:registrar_ejecucion' actividad.pk %}" enctype="multipart/form-data">
+                    <form method="post" action="{% url 'actividades:registrar_evidencia' actividad.pk %}" enctype="multipart/form-data">
                         {% csrf_token %}
                         <div class="mb-3">
                             <label class="form-label fw-semibold" for="id_comentario">Comentario de lo que se hizo <span class="text-danger">*</span></label>
@@ -122,19 +137,19 @@
                             <input type="file" name="imagen" id="id_imagen" class="form-control" accept=".jpg,.jpeg,.png">
                             <small class="text-muted">JPG o PNG, máx. 5 MB.</small>
                         </div>
-                        <button type="submit" class="btn btn-muni-v2 w-100 fw-bold"><i class="bi bi-check2-circle me-1"></i>Registrar ejecución</button>
+                        <button type="submit" class="btn btn-muni-v2 w-100 fw-bold"><i class="bi bi-check2-circle me-1"></i>Agregar evidencia</button>
                     </form>
                 </div>
             </div>
-            {% elif actividad.estado == 'REGISTRADA' %}
-            <div class="alert alert-light border small"><i class="bi bi-hourglass-split me-1"></i>Ejecución registrada: espera la validación del Delegado.</div>
+            {% elif actividad.estado == 'EVIDENCIA_INGRESADA' %}
+            <div class="alert alert-light border small"><i class="bi bi-hourglass-split me-1"></i>Evidencia agregada: espera la validación del Delegado.</div>
             {% elif actividad.estado == 'VALIDADA' %}
             <div class="alert alert-success small"><i class="bi bi-check-circle me-1"></i>Actividad completada: fue validada y cuenta para la meta.</div>
             {% endif %}
 
             {% if puede_programar %}
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-gris-0 fw-bold py-3"><i class="bi bi-calendar-event me-2 text-danger"></i>{% if actividad.fecha_realizacion %}Cambiar fecha de ejecución{% else %}Agregar fecha de ejecución{% endif %}</div>
+                <div class="card-header bg-gris-0 fw-bold py-3"><i class="bi bi-calendar-event me-2 text-danger"></i>{% if actividad.fecha_realizacion %}Cambiar fecha de realización{% else %}Agregar fecha de realización{% endif %}</div>
                 <div class="card-body p-3">
                     <form method="post" action="{% url 'actividades:asignar_fecha' actividad.pk %}">
                         {% csrf_token %}
@@ -164,7 +179,7 @@
             </div>
             {% endif %}
 
-            {% if not puede_ejecutar and not puede_programar and not puede_asignar and not puede_comentar %}
+            {% if not puede_registrar_evidencia and not puede_programar and not puede_asignar and not puede_comentar %}
             <div class="alert alert-light border small"><i class="bi bi-eye me-1"></i>Vista de consulta: puede revisar la actividad, pero no modificarla.</div>
             {% endif %}
         </div>

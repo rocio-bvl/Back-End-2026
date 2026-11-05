@@ -78,7 +78,7 @@ class LoginYPermisosTest(TestCase):
 
     def test_admin_ve_todas_las_pantallas(self):
         self.client.login(username='11111111-1', password=CLAVE)
-        for nombre in ['indicadores:dashboard', 'indicadores:semaforo', 'indicadores:resumen_delegacion','actividades:mi_gestion', 'actividades:tubo_trabajo', 'actividades:actividad_crear', 'actividades:gestion_social', 'actividades:verificacion','users:administracion', 'auditoria:logs']:
+        for nombre in ['indicadores:semaforo', 'indicadores:resumen_delegacion','actividades:mi_gestion', 'actividades:tubo_trabajo', 'actividades:actividad_crear', 'actividades:gestion_social', 'actividades:verificacion','users:administracion', 'auditoria:logs']:
             respuesta = self.client.get(reverse(nombre))
             self.assertEqual(respuesta.status_code, 200, nombre)
         self.assertEqual(self.client.get(reverse('users:usuario_editar', args=[self.func.pk])).status_code, 200)
@@ -94,7 +94,7 @@ class LoginYPermisosTest(TestCase):
 
     def test_styles_css_en_base(self):
         self.client.login(username='11111111-1', password=CLAVE)
-        self.assertContains(self.client.get(reverse('indicadores:dashboard')), '/static/css/styles.css')
+        self.assertContains(self.client.get(reverse('actividades:mi_gestion')), '/static/css/styles.css')
 
 
 class RequisitosEvaluacionTest(TestCase):
@@ -177,15 +177,16 @@ class RolesYPermisosTest(TestCase):
         # Un territorio de otra delegación no se acepta
         self.assertIsNone(self.crear_usuario_web('11.222.333-9', 'Funcionario', 'RURAL', territorio=self.datos['territorio'].pk))
 
-    def test_coordinador_solo_visualiza_usuarios(self):
+    def test_coordinador_gestiona_delegaciones_delegados_y_funcionarios(self):
         self.entrar('22222222-2')
         respuesta = self.client.get(reverse('users:administracion'))
         self.assertEqual(respuesta.status_code, 200)
         html = respuesta.content.decode()
-        self.assertEqual(respuesta.context['vista'], 'coordinador')  # su pestaña se llama Usuarios, no Gestión
-        self.assertNotIn('Agregar Usuario', html)
-        self.assertNotIn('Agregar delegación', html)
-        self.assertIsNone(self.crear_usuario_web('12.345.678-5', 'Funcionario'))
+        self.assertEqual(respuesta.context['vista'], 'coordinador')
+        self.assertIn('Agregar Usuario', html)
+        self.assertIn('Agregar delegación', html)
+        self.assertEqual(self.crear_usuario_web('12.345.678-5', 'Delegado', 'RURAL').rol(), 'Delegado')
+        self.assertEqual(self.crear_usuario_web('11.222.333-9', 'Funcionario', 'RURAL').rol(), 'Funcionario')
 
     def test_coordinador_no_crea_coordinador_ni_admin(self):
         self.entrar('22222222-2')
@@ -200,10 +201,9 @@ class RolesYPermisosTest(TestCase):
         self.assertFalse(nuevo.is_staff)  # solo visualiza: no entra a Django Admin
         self.assertIsNone(nuevo.delegacion)
 
-    def test_coordinador_no_edita_usuarios(self):
+    def test_coordinador_edita_pero_no_asciende_a_coordinador(self):
         self.entrar('22222222-2')
-        self.assertRedirects(self.client.get(reverse('users:usuario_editar', args=[self.func.pk])),
-                             reverse('actividades:mi_gestion'))
+        self.assertEqual(self.client.get(reverse('users:usuario_editar', args=[self.func.pk])).status_code, 200)
         self.client.post(reverse('users:usuario_editar', args=[self.func.pk]), {
             'email': self.func.email, 'first_name': 'X', 'last_name': 'Y', 'is_active': 'on',
             'rol': 'Coordinador', 'delegacion': 'LAS_COMPANIAS'})
@@ -232,18 +232,24 @@ class RolesYPermisosTest(TestCase):
     # ----- Delegado: controla su delegación -----
     def datos_actividad(self, **extra):
         datos = {'solicitud_problema': 'x', 'accion': 'y', 'item': '1', 'territorio': self.datos['territorio'].pk,
-                 'fecha_realizacion': timezone.localdate().isoformat(), 'comentario': 'Hecho'}
+                 'fecha_realizacion': timezone.localdate().isoformat(), 'comentario': 'Hecho',
+                 'nombre_usuario': 'Juan Pérez', 'telefono_usuario': '912345678'}
         datos.update(extra)
         return datos
 
-    def test_delegado_y_coordinador_no_registran_actividades(self):
+    def test_coordinador_no_registra_y_delegado_registra_gestiones(self):
         from ActividadesApp.models import Actividad
-        for rut in ['33333333-3', '22222222-2']:
-            self.entrar(rut)
-            self.assertRedirects(self.client.get(reverse('actividades:actividad_crear')), reverse('actividades:mi_gestion'))
-            self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad())
-            self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad(depende_externos='on'))
+        self.entrar('22222222-2')
+        self.assertRedirects(self.client.get(reverse('actividades:actividad_crear')), reverse('actividades:mi_gestion'))
+        self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad())
         self.assertEqual(Actividad.objects.count(), 2)  # las dos del setUp
+        # Lo que ingresa el Delegado queda como gestión: no suma puntaje
+        self.entrar('33333333-3')
+        self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad())
+        self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad(depende_externos='on'))
+        gestiones = Actividad.objects.filter(usuario=self.delegado)
+        self.assertEqual(gestiones.count(), 2)
+        self.assertTrue(all(gestion.es_gestion for gestion in gestiones))
 
     def test_delegado_crea_funcionarios_solo_en_su_delegacion(self):
         self.entrar('33333333-3')
@@ -295,18 +301,18 @@ class RolesYPermisosTest(TestCase):
         url = reverse('actividades:validar_evidencia', args=[self.evidencia.pk])
         self.entrar('44444444-4')  # Delegado Rural
         self.assertEqual(self.client.get(reverse('actividades:verificacion')).context['evidencias_pendientes'], [])
-        self.client.post(url, {'decision': 'APROBAR'})
+        self.client.post(url, {'decision': 'APROBAR', 'otorga_puntaje': 'SI'})
         self.evidencia.refresh_from_db()
         self.assertEqual(self.evidencia.estado_revision, 'PENDIENTE')
         self.entrar('33333333-3')  # Delegado Las Compañías
         self.assertEqual(len(self.client.get(reverse('actividades:verificacion')).context['evidencias_pendientes']), 1)
-        self.client.post(url, {'decision': 'APROBAR'})
+        self.client.post(url, {'decision': 'APROBAR', 'otorga_puntaje': 'SI'})
         self.evidencia.refresh_from_db()
         self.assertEqual(self.evidencia.estado_revision, 'APROBADA')
 
     def test_delegado_ve_semaforo_y_verificacion(self):
         self.entrar('33333333-3')
-        html = self.client.get(reverse('indicadores:dashboard')).content.decode()
+        html = self.client.get(reverse('actividades:mi_gestion')).content.decode()
         self.assertIn(reverse('actividades:verificacion'), html)
         self.assertIn(reverse('indicadores:semaforo'), html)
         self.assertEqual(self.client.get(reverse('indicadores:semaforo')).status_code, 200)
@@ -328,10 +334,10 @@ class RolesYPermisosTest(TestCase):
         self.entrar('22222222-2')
         detalle = self.client.get(reverse('actividades:actividad_detalle', args=[self.compromiso.pk]))
         self.assertEqual(detalle.status_code, 200)
-        self.assertFalse(detalle.context['puede_ejecutar'])
+        self.assertFalse(detalle.context['puede_registrar_evidencia'])
         self.assertFalse(detalle.context['puede_comentar'])
         self.assertFalse(detalle.context['puede_programar'])
-        self.assertTrue(detalle.context['puede_asignar'])  # sí asigna encargado
+        self.assertFalse(detalle.context['puede_asignar'])  # no interviene en las actividades de los funcionarios
         self.assertRedirects(self.client.get(reverse('actividades:verificacion')), reverse('actividades:mi_gestion'))
 
     # ----- Metas (Admin y Coordinador) -----
@@ -408,11 +414,13 @@ class BotonesSegunRolTest(TestCase):
             self.assertNotIn(texto, html)
 
     def test_delegado_no_ve_botones_crud(self):
-        for rut, pantalla in [('33333333-3', 'actividades:mi_gestion'), ('33333333-3', 'actividades:verificacion'),
-                              ('33333333-3', 'actividades:tubo_trabajo')]:
-            html = self.html(rut, pantalla)
+        # Mi Gestión: solo "Agregar Gestión" (sus gestiones). Verificación: solo el buscador por funcionario
+        for pantalla, permitidos in [('actividades:mi_gestion', ['Agregar', 'Buscar']), ('actividades:verificacion', ['Buscar']),
+                                     ('actividades:tubo_trabajo', [])]:
+            html = self.html('33333333-3', pantalla)
             for texto in ['Agregar', 'Modificar', 'Eliminar', 'Buscar']:
-                self.assertNotIn(texto, html, f"{pantalla}: {texto}")
+                if texto not in permitidos:
+                    self.assertNotIn(texto, html, f"{pantalla}: {texto}")
         # Semáforo y Resumen (J4): el Delegado gestiona su equipo y sus metas desde pantallas propias, nunca /admin/
         for pantalla in ['indicadores:semaforo', 'indicadores:resumen_delegacion']:
             self.assertNotIn('/admin/', self.html('33333333-3', pantalla), pantalla)
@@ -636,10 +644,11 @@ class GestionDelegacionesYUsuariosTest(TestCase):
         self.client.post(reverse('users:delegacion_eliminar', args=[self.compania.pk]))
         self.assertTrue(Delegacion.objects.filter(pk=self.compania.pk).exists())
 
-    def test_coordinador_y_delegado_no_modifican_delegaciones(self):
-        for rut in ['22222222-2', '33333333-3']:
-            self.entrar(rut)
-            self.assertRedirects(self.client.get(reverse('users:delegacion_crear')), reverse('actividades:mi_gestion'))
+    def test_coordinador_modifica_delegaciones_y_delegado_no(self):
+        self.entrar('22222222-2')
+        self.assertEqual(self.client.get(reverse('users:delegacion_crear')).status_code, 200)
+        self.entrar('33333333-3')
+        self.assertRedirects(self.client.get(reverse('users:delegacion_crear')), reverse('actividades:mi_gestion'))
 
     def test_apartado_delegaciones_muestra_delegado_territorios_y_funcionarios(self):
         self.entrar('11111111-1')
@@ -713,7 +722,8 @@ class GruposYPermisosTest(TestCase):
         func = Usuario.objects.get(pk=self.func.pk)
         delegado = Usuario.objects.get(pk=self.delegado.pk)
         self.assertTrue(coord.has_perm('UsuarioApp.view_usuario'))
-        self.assertFalse(coord.has_perm('UsuarioApp.change_usuario'))  # el Supervisor solo visualiza
+        self.assertTrue(coord.has_perm('UsuarioApp.change_delegacion'))  # el Supervisor gestiona delegaciones
+        self.assertFalse(coord.has_perm('ActividadesApp.change_actividad'))  # pero no las actividades
         self.assertTrue(func.has_perm('ActividadesApp.add_actividad'))
         self.assertFalse(func.has_perm('UsuarioApp.view_usuario'))
         self.assertTrue(delegado.has_perm('IndicadoresApp.change_metadesempeno'))
@@ -790,9 +800,9 @@ class ProteccionVistasTest(TestCase):
         self.client.login(username='55555555-5', password=CLAVE)  # Administrativo: no ve usuarios ni metas
         for nombre in ['users:administracion', 'indicadores:semaforo', 'indicadores:resumen_delegacion']:
             self.assertRedirects(self.client.get(reverse(nombre)), reverse('actividades:mi_gestion'), msg_prefix=nombre)
-        self.client.login(username='22222222-2', password=CLAVE)  # Supervisor: ve, pero no crea
+        self.client.login(username='22222222-2', password=CLAVE)  # Supervisor: gestiona usuarios, no actividades
         self.assertEqual(self.client.get(reverse('users:administracion')).status_code, 200)
-        self.assertRedirects(self.client.get(reverse('users:usuario_crear')), reverse('actividades:mi_gestion'))
+        self.assertRedirects(self.client.get(reverse('actividades:actividad_crear')), reverse('actividades:mi_gestion'))
 
 
 class RecuperacionContrasenaTest(TestCase):
@@ -871,7 +881,12 @@ class TableroPorPerfilTest(TestCase):
 
     def tablero(self, rut):
         self.client.login(username=rut, password=CLAVE)
-        return self.client.get(reverse('indicadores:dashboard'))
+        return self.client.get(reverse('actividades:mi_gestion'))
+
+    def test_indicadores_lleva_a_mi_gestion(self):
+        self.client.login(username='11111111-1', password=CLAVE)
+        self.assertRedirects(self.client.get(reverse('indicadores:dashboard'), {'delegacion': 'RURAL'}),
+                             reverse('actividades:mi_gestion') + '?delegacion=RURAL')
 
     def test_plantilla_segun_grupo(self):
         for rut, plantilla in [('11111111-1', 'indicadores/dashboard_admin.html'), ('22222222-2', 'indicadores/dashboard_coordinador.html'), ('33333333-3', 'indicadores/dashboard_delegado.html'), ('55555555-5', 'indicadores/dashboard_administrativo.html')]:
@@ -886,13 +901,15 @@ class TableroPorPerfilTest(TestCase):
         self.assertIn(reverse('indicadores:semaforo') + '?delegacion=RURAL', html)
         self.assertNotIn('/admin/', html)
         # El selector de la barra filtra las tarjetas de arriba; la tabla sigue mostrando todas
-        rural = self.client.get(reverse('indicadores:dashboard'), {'delegacion': 'RURAL'})
+        rural = self.client.get(reverse('actividades:mi_gestion'), {'delegacion': 'RURAL'})
         self.assertEqual(rural.context['delegacion_actual'], 'Delegación Rural')
         self.assertEqual(len(rural.context['delegaciones']), 2)
         self.assertEqual(respuesta.context['delegacion_actual'], 'Toda la municipalidad')
 
     def test_accesos_segun_permisos(self):
-        html = self.tablero('11111111-1').content.decode()
+        # Los mantenedores del Administrador están en Mi Gestión; el tablero queda para mirar el avance
+        self.tablero('11111111-1')
+        html = self.client.get(reverse('actividades:mi_gestion')).content.decode()
         for url in [reverse('users:administracion') + '?pestana=usuarios', reverse('users:administracion') + '?pestana=metas',
                     reverse('actividades:gestion_social'), reverse('auditoria:logs')]:
             self.assertIn(url, html)

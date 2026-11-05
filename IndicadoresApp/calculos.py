@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from IndicadoresApp.models import IndicadorDesempeno, metas_para
+from IndicadoresApp.models import IndicadorDesempeno, metas_para, dias_ausencia
 
 
 def indicadores_usuario(usuario, periodo, fecha):
@@ -41,4 +41,6 @@ def seguimiento_usuario(usuario, periodo, fecha):
         'minimo': minimo,
         'avance_logrado': avance,
         'color': periodo.calcular_semaforo(logrado),
+        'dias_ausencia': indicadores[0].dias_ausencia() if indicadores else dias_ausencia(usuario, periodo),
+        'items_en_tope': [ind.meta.item.nombre for ind in indicadores if ind.en_tope()],
     }

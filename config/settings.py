@@ -63,6 +63,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'UsuarioApp.context_processors.delegaciones_navbar',
+                'UsuarioApp.context_processors.alertas_validacion',
             ],
         },
     },

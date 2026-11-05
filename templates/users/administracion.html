@@ -5,9 +5,10 @@
 {% block content %}
 {% comment %}
 Una sola pantalla para tres roles (la vista envía 'vista'):
-- admin: pestaña "Gestión" (delegaciones y usuarios, con agregar, modificar, desactivar y eliminar) y "Metas".
-- coordinador: las mismas pestañas solo para visualizar; para él la primera se llama "Usuarios".
-- delegado: "Usuarios" (los Funcionarios de su delegación, filtro por territorio) y "Metas" de su delegación.
+- admin: pestaña "Gestión" (delegaciones y usuarios de cualquier perfil, con agregar, modificar, desactivar y
+  eliminar) y "Metas".
+- coordinador: "Gestión" (delegaciones con sus territorios, y Delegados y Funcionarios) y "Metas" para visualizar.
+- delegado: "Funcionarios" (los de su delegación, filtro por territorio) y "Metas" de su delegación.
 Los formularios de eliminar llevan data-confirmar: base.html pide la confirmación con SweetAlert.
 {% endcomment %}
 <main class="container py-4">
@@ -27,7 +28,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
     <ul class="nav nav-tabs mb-4 ls-nav-tabs" id="adminTab" role="tablist">
         <li class="nav-item">
             <button class="nav-link {% if pestana != 'metas' %}active{% endif %}" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button">
-                {% if vista == 'admin' %}Gestión{% else %}Usuarios{% endif %}
+                {% if vista == 'delegado' %}Funcionarios{% else %}Gestión{% endif %}
             </button>
         </li>
         <li class="nav-item">
@@ -61,7 +62,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                 <div class="tab-pane fade {% if pestana != 'usuarios' %}show active{% endif %}" id="apartado-delegaciones">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="m-0 fw-bold">Delegaciones</h5>
-                        {% if vista == 'admin' %}
+                        {% if request.user.puede_gestionar_delegaciones %}
                         <a href="{% url 'users:delegacion_crear' %}" class="btn btn-muni btn-sm"><i class="bi bi-plus-circle me-1"></i>Agregar delegación</a>
                         {% endif %}
                     </div>
@@ -89,7 +90,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                                 <div class="card-body small">
                                     <p class="mb-2"><span class="text-muted">Delegado:</span>
                                         {% for delegado in item.delegados %}
-                                            <strong>{{ delegado.get_full_name|default:delegado.username }}</strong>{% if vista == 'admin' %} <a href="{% url 'users:usuario_editar' delegado.pk %}" title="Modificar"><i class="bi bi-pencil-square"></i></a>{% endif %}{% if not forloop.last %}, {% endif %}
+                                            <strong>{{ delegado.get_full_name|default:delegado.username }}</strong>{% if request.user.puede_gestionar_delegaciones %} <a href="{% url 'users:usuario_editar' delegado.pk %}" title="Modificar"><i class="bi bi-pencil-square"></i></a>{% endif %}{% if not forloop.last %}, {% endif %}
                                         {% empty %}
                                             <span class="text-danger">Sin Delegado asignado</span>
                                         {% endfor %}
@@ -99,7 +100,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                                         <div class="fw-semibold"><i class="bi bi-geo-alt me-1 text-danger"></i>{{ bloque.territorio.nombre }}
                                             {% if bloque.territorio.estado != 'ACTIVO' %}<span class="badge bg-gris-50 ms-1">Inactivo</span>{% endif %}</div>
                                         {% for funcionario in bloque.funcionarios %}
-                                            <span class="badge bg-light text-dark border me-1 mt-1">{{ funcionario.get_full_name|default:funcionario.username }}{% if vista == 'admin' %} <a href="{% url 'users:usuario_editar' funcionario.pk %}" title="Modificar"><i class="bi bi-pencil-square"></i></a>{% endif %}</span>
+                                            <span class="badge bg-light text-dark border me-1 mt-1">{{ funcionario.get_full_name|default:funcionario.username }}{% if request.user.puede_gestionar_delegaciones %} <a href="{% url 'users:usuario_editar' funcionario.pk %}" title="Modificar"><i class="bi bi-pencil-square"></i></a>{% endif %}</span>
                                         {% empty %}
                                             <span class="text-muted">Sin funcionarios asignados</span>
                                         {% endfor %}
@@ -111,12 +112,12 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                                     <div class="border border-warning rounded p-2 mb-2">
                                         <div class="fw-semibold text-warning-emphasis">Funcionarios sin territorio</div>
                                         {% for funcionario in item.sin_territorio %}
-                                            <span class="badge bg-light text-dark border me-1 mt-1">{{ funcionario.get_full_name|default:funcionario.username }}{% if vista == 'admin' %} <a href="{% url 'users:usuario_editar' funcionario.pk %}" title="Asignar territorio"><i class="bi bi-pencil-square"></i></a>{% endif %}</span>
+                                            <span class="badge bg-light text-dark border me-1 mt-1">{{ funcionario.get_full_name|default:funcionario.username }}{% if request.user.puede_gestionar_delegaciones %} <a href="{% url 'users:usuario_editar' funcionario.pk %}" title="Asignar territorio"><i class="bi bi-pencil-square"></i></a>{% endif %}</span>
                                         {% endfor %}
                                     </div>
                                     {% endif %}
                                 </div>
-                                {% if vista == 'admin' %}
+                                {% if request.user.puede_gestionar_delegaciones %}
                                 <div class="card-footer bg-white d-flex justify-content-end gap-2">
                                     <a href="{% url 'users:delegacion_editar' item.delegacion.pk %}" class="btn btn-sm btn-outline-warning"><i class="bi bi-pencil-square me-1"></i>Modificar</a>
                                     <form method="post" action="{% url 'users:delegacion_eliminar' item.delegacion.pk %}" data-confirmar="¿Eliminar la delegación {{ item.delegacion }}? Esta acción no se puede deshacer.">
@@ -141,7 +142,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                             <h5 class="m-0 fw-bold">{% if solo_mi_delegacion %}Funcionarios de mi delegación{% else %}Usuarios{% endif %}</h5>
                             {% if request.user.puede_gestionar_usuarios %}
                             <button type="button" class="btn btn-muni btn-sm" data-bs-toggle="modal" data-bs-target="#modalCrearUsuario">
-                                <i class="bi bi-person-plus me-1"></i>Agregar Usuario
+                                <i class="bi bi-person-plus me-1"></i>{% if solo_mi_delegacion %}Agregar Funcionario{% else %}Agregar Usuario{% endif %}
                             </button>
                             {% endif %}
                         </div>
@@ -395,7 +396,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-muni text-white">
-                <h5 class="modal-title fw-bold" id="modalCrearUsuarioLabel"><i class="bi bi-person-plus me-2"></i>Registrar Nuevo Usuario SGR</h5>
+                <h5 class="modal-title fw-bold" id="modalCrearUsuarioLabel"><i class="bi bi-person-plus me-2"></i>{% if solo_mi_delegacion %}Registrar Nuevo Funcionario{% else %}Registrar Nuevo Usuario SGR{% endif %}</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <form method="post" action="{% url 'users:usuario_crear' %}">

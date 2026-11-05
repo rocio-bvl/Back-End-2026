@@ -4,7 +4,8 @@ from django.utils import timezone
 
 from UsuarioApp.choices import (roles, orden_roles, estados_registro, tipos_catalogo,
                                 ROLES_ADMINISTRACION, ROLES_VER_USUARIOS, ROLES_GESTION_USUARIOS, ROLES_METAS,
-                                ROLES_REGISTRO, ROLES_VERIFICACION, ROLES_ASIGNAN_ENCARGADO, ROLES_RESERVADOS)
+                                ROLES_REGISTRO, ROLES_VERIFICACION, ROLES_ASIGNAN_ENCARGADO, ROLES_RESERVADOS,
+                                ROLES_DELEGACIONES, ROLES_AUSENCIAS)
 
 
 class Catalogo(models.Model):
@@ -174,8 +175,8 @@ class Usuario(AbstractUser):
         return self.tiene_rol(ROLES_VER_USUARIOS)
 
     def puede_gestionar_usuarios(self):
-        """Crean, editan y desactivan: el Admin (todos) y el Delegado (Funcionarios de su delegación).
-        El Coordinador solo visualiza."""
+        """Crean, editan y desactivan: el Admin (todos), el Coordinador (Delegados y Funcionarios) y el Delegado
+        (Funcionarios de su delegación)."""
         if self.es_delegado():
             return self.delegacion_id is not None
         return self.tiene_rol(ROLES_GESTION_USUARIOS)
@@ -184,8 +185,39 @@ class Usuario(AbstractUser):
         """Admin y Funcionario agregan actividades y atenciones sociales. El Coordinador y el Delegado solo las ven."""
         return self.tiene_rol(ROLES_REGISTRO)
 
+    def puede_agregar_actividad(self):
+        """Además del Admin y el Funcionario, el Delegado ingresa sus gestiones (no suman puntaje)."""
+        return self.puede_registrar() or (self.es_delegado() and self.delegacion_id is not None)
+
+    def es_coordinador(self):
+        return not self.is_superuser and self.rol() == 'Coordinador'
+
+    def puede_gestionar_delegaciones(self):
+        """Admin y Coordinador agregan, modifican y eliminan delegaciones y sus territorios."""
+        return self.tiene_rol(ROLES_DELEGACIONES)
+
+    def puede_registrar_ausencias(self):
+        """Admin y Coordinador (cualquier funcionario o delegado) y el Delegado (los Funcionarios de su delegación)."""
+        if self.es_delegado():
+            return self.delegacion_id is not None
+        return self.tiene_rol(ROLES_AUSENCIAS)
+
+    def usuarios_para_ausencias(self):
+        """Usuarios a los que puede registrar una ausencia."""
+        usuarios = Usuario.objects.filter(is_active=True).select_related('delegacion', 'cargo')
+        if self.es_delegado():
+            return usuarios.filter(delegacion_id=self.delegacion_id, roles_asignados__rol__codigo='Funcionario').distinct()
+        if self.puede_registrar_ausencias():
+            return usuarios.filter(roles_asignados__rol__codigo__in=['Delegado', 'Funcionario']).distinct()
+        return usuarios.none()
+
+    def puede_vincular_atenciones(self):
+        """Admin, Coordinador y Delegado vinculan actividades ya registradas a una atención social. Para el
+        Coordinador es la única excepción a no modificar actividades: no edita, elimina ni valida."""
+        return self.tiene_rol(['Admin', 'Coordinador', 'Delegado'])
+
     def puede_verificar(self):
-        """Admin (todas las delegaciones) y Delegado (solo la suya) validan la ejecución."""
+        """Admin (todas las delegaciones) y Delegado (solo la suya) validan la evidencia."""
         return self.tiene_rol(ROLES_VERIFICACION)
 
     def puede_asignar_encargado(self):
@@ -209,6 +241,8 @@ class Usuario(AbstractUser):
         from UsuarioApp.choices import GRUPO_DE_ROL
         if self.es_administrador():
             permitidos = list(roles)
+        elif self.es_coordinador():
+            permitidos = [(codigo, nombre) for codigo, nombre in roles if codigo in ['Delegado', 'Funcionario']]
         elif self.es_delegado():
             permitidos = [(codigo, nombre) for codigo, nombre in roles if codigo == 'Funcionario']
         else:
@@ -226,9 +260,12 @@ class Usuario(AbstractUser):
     usuarios_gestionables = usuarios_visibles
 
     def puede_editar_usuario(self, otro):
-        """El Admin edita a todos. El Delegado edita solo a los Funcionarios de su delegación. El Coordinador, a nadie."""
+        """El Admin edita a todos. El Coordinador, a los Delegados y Funcionarios. El Delegado, solo a los
+        Funcionarios de su delegación."""
         if self.es_administrador():
             return True
+        if self.es_coordinador():
+            return not otro.is_superuser and otro.rol() in ['Delegado', 'Funcionario']
         if self.es_delegado() and self.puede_gestionar_usuarios():
             return (otro.delegacion_id == self.delegacion_id and not otro.is_superuser
                     and otro.rol() == 'Funcionario')
