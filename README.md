@@ -5,7 +5,7 @@ Aplicación web en Django para registrar la gestión territorial de los funciona
 Todas las operaciones se hacen desde pantallas propias del sistema (Django Templates). Django Admin queda solo como herramienta técnica del superusuario.
 
 Asignatura: Programación Back End (TI3041), INACAP La Serena.
-Integrantes: Juliet Araya (UsuarioApp, IndicadoresApp, configuración y AWS) y Rocío Vásquez (ActividadesApp, AuditoriaApp).
+Integrantes: Juliet Araya y Rocío Vásquez.
 
 ## Tecnologías
 
