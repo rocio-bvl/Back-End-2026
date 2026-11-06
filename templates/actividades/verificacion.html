@@ -52,7 +52,7 @@
                             <p class="mb-1"><strong>Actividad:</strong> <a href="{% url 'actividades:actividad_detalle' evidencia_seleccionada.actividad_id %}">{{ evidencia_seleccionada.folio }}</a> · {{ evidencia_seleccionada.accion }} (versión {{ evidencia_seleccionada.version }} de la evidencia)</p>
                             <p class="mb-1"><strong>Descripción:</strong> {{ evidencia_seleccionada.descripcion }}</p>
                             <p class="mb-1 small text-muted">Realizada el {{ evidencia_seleccionada.fecha_realizacion|date:"d/m/Y"|default:"-" }}{% if evidencia_seleccionada.depende_externos %} · venía del Tubo de Trabajo{% endif %}{% if evidencia_seleccionada.encargado %} · encargado: {{ evidencia_seleccionada.encargado.get_full_name }}{% endif %}</p>
-                            <p class="mb-1"><strong>Persona atendida:</strong> {{ evidencia_seleccionada.nombre_usuario|default:"Sin nombre" }} · {{ evidencia_seleccionada.telefono_usuario|default:"Sin teléfono" }}</p>
+                            <p class="mb-1"><strong>Persona atendida:</strong> {% if evidencia_seleccionada.solicitante %}{{ evidencia_seleccionada.solicitante.nombre }} · {{ evidencia_seleccionada.solicitante.rut }} · {{ evidencia_seleccionada.solicitante.telefono|default:"Sin teléfono" }}{% else %}Sin registrar{% endif %}</p>
                             <p class="mb-0"><strong>Lo que se hizo:</strong> {{ evidencia_seleccionada.comentario|default:"-" }}</p>
                         </div>
                     </div>
@@ -102,4 +102,4 @@
         </div>
     </div>
 </main>
-{% endblock %}
+{% endblock %}

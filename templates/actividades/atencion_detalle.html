@@ -26,9 +26,9 @@ y Delegado pueden vincular una actividad ya registrada.
                     </p>
                     {% endwith %}
                     <div class="row g-3">
-                        <div class="col-md-6"><small class="text-muted d-block">Solicitante:</small><span class="fw-bold">{{ atencion.nombre_solicitante }}</span></div>
-                        <div class="col-md-6"><small class="text-muted d-block">RUT:</small><span>{{ atencion.rut_solicitante }}</span></div>
-                        <div class="col-md-6"><small class="text-muted d-block">Teléfono:</small><span>{{ atencion.telefono_solicitante|default:"Sin teléfono" }}</span></div>
+                        <div class="col-md-6"><small class="text-muted d-block">Solicitante:</small><span class="fw-bold">{{ atencion.solicitante.nombre }}</span></div>
+                        <div class="col-md-6"><small class="text-muted d-block">RUT:</small><span>{{ atencion.solicitante.rut }}</span></div>
+                        <div class="col-md-6"><small class="text-muted d-block">Teléfono:</small><span>{{ atencion.solicitante.telefono|default:"Sin teléfono" }}</span></div>
                         <div class="col-md-6"><small class="text-muted d-block">¿Requiere visita?</small><span class="fw-bold">{% if atencion.requiere_visita %}Sí{% else %}No{% endif %}</span></div>
                         <div class="col-md-6"><small class="text-muted d-block">Tipo de atención:</small><span class="badge bg-gris-10 text-dark border">{{ atencion.tipo_atencion.nombre }}</span></div>
                         <div class="col-md-6"><small class="text-muted d-block">Subtipo:</small><span>{{ atencion.subtipo_atencion.nombre|default:"-" }}</span></div>

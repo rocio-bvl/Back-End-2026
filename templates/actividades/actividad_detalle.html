@@ -49,9 +49,9 @@
                         <div class="col-md-6"><small class="text-muted d-block">Registrada por:</small><span class="fw-bold">{{ actividad.usuario.get_full_name|default:actividad.usuario.username }}</span> <small class="text-muted">· ingresada el {{ actividad.fecha|date:"d/m/Y H:i" }}</small></div>
                         <div class="col-md-6"><small class="text-muted d-block">Encargado:</small><span class="fw-bold">{{ actividad.encargado.get_full_name|default:"Sin encargado asignado" }}</span></div>
                         <div class="col-md-6"><small class="text-muted d-block">Solicitud social:</small>
-                            {% if actividad.solicitud %}<a href="{% url 'actividades:gestion_social' %}?solicitud={{ actividad.solicitud_id }}" class="fw-bold"><i class="bi bi-link-45deg"></i>{{ actividad.solicitud.codigo }} · {{ actividad.solicitud.nombre_solicitante }}</a> <small class="text-muted">(ver solicitud)</small>
+                            {% if actividad.solicitud %}<a href="{% url 'actividades:gestion_social' %}?solicitud={{ actividad.solicitud_id }}" class="fw-bold"><i class="bi bi-link-45deg"></i>{{ actividad.solicitud.codigo }} · {{ actividad.solicitud.solicitante.nombre }}</a> <small class="text-muted">(ver solicitud)</small>
                             {% else %}<span class="text-muted">No vinculada</span>{% endif %}</div>
-                        <div class="col-md-6"><small class="text-muted d-block">Persona atendida:</small><span class="fw-bold">{{ actividad.nombre_usuario|default:"Sin nombre" }}</span> <small class="text-muted">· {{ actividad.telefono_usuario|default:"sin teléfono" }}</small></div>
+                        <div class="col-md-6"><small class="text-muted d-block">Persona atendida:</small>{% if actividad.solicitante %}<span class="fw-bold">{{ actividad.solicitante.nombre }}</span> <small class="text-muted">· {{ actividad.solicitante.rut }} · {{ actividad.solicitante.telefono|default:"sin teléfono" }}</small>{% else %}<span class="text-muted">Sin registrar</span>{% endif %}</div>
                         <div class="col-md-6"><small class="text-muted d-block">Territorio:</small><span>{{ actividad.territorio|default:"-" }}</span></div>
                         <div class="col-md-6">
                             <small class="text-muted d-block">Fecha de realización:</small>

@@ -1,7 +1,9 @@
 from datetime import date, timedelta
 
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.db.models import Q, F
+from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
@@ -11,11 +13,11 @@ from ActividadesApp.choices import ESTADOS_PENDIENTES
 from ActividadesApp.forms import (ActividadForm, EvidenciaForm, FechaRealizacionForm, ComentarioForm, EncargadoForm,
                                 AtencionForm, solicitudes_para, validar_imagen)
 from ActividadesApp.models import (Actividad, Evidencia, Validacion, AtencionSocial, ComentarioActividad,
-                                Territorio, DIAS_POR_VENCER)
+                                Territorio, Solicitante, DIAS_POR_VENCER)
 from AuditoriaApp.registro import registrar_auditoria
 from IndicadoresApp.calculos import indicadores_usuario, total_ponderado
 from IndicadoresApp.models import periodo_vigente
-from UsuarioApp.funciones import opciones_delegacion
+from UsuarioApp.funciones import opciones_delegacion, limpiar_rut
 from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado, permiso_requerido
 from UsuarioApp.models import Usuario
 
@@ -275,8 +277,7 @@ def actividad_crear(request):
                 usuario=request.user,
                 encargado=datos['encargado'],
                 solicitud=datos['solicitud'],
-                nombre_usuario=datos['nombre_usuario'],
-                telefono_usuario=datos['telefono_usuario'],
+                solicitante=registrar_solicitante(form, request),
                 es_gestion=form.es_gestion(),
             )
             registrar_auditoria(request.user, 'CREACION', 'Actividad', actividad.pk, '', f"{actividad} [{actividad.estado}]")
@@ -384,8 +385,7 @@ def actividad_editar(request, pk):
             actividad.fecha_realizacion = datos['fecha_realizacion']
             actividad.encargado = datos['encargado']
             actividad.solicitud = datos['solicitud']
-            actividad.nombre_usuario = datos['nombre_usuario']
-            actividad.telefono_usuario = datos['telefono_usuario']
+            actividad.solicitante = registrar_solicitante(form, request)
             actividad.save()
             # Si queda con fecha de hoy o anterior y aún no tenía evidencia, se agrega como en actividad_crear            
             if datos['comentario'] and actividad.evidencia_vigente() is None:                
@@ -417,8 +417,6 @@ def actividad_editar(request, pk):
                 'fecha_realizacion': actividad.fecha_realizacion,
                 'encargado': actividad.encargado,
                 'solicitud': actividad.solicitud,
-                'nombre_usuario': actividad.nombre_usuario,
-                'telefono_usuario': actividad.telefono_usuario,
                 'comentario': actividad.evidencia_vigente().comentario if actividad.evidencia_vigente() else '',
             })
 
@@ -734,7 +732,8 @@ def tubo_trabajo(request):
 # ---------------------------------------------------------------------------
 def atenciones_visibles(usuario, delegacion):
     """Admin y Coordinador: todas (o la delegación elegida arriba). Delegado y Funcionario: las de su delegación."""
-    atenciones = AtencionSocial.objects.select_related('usuario', 'usuario__delegacion', 'tipo_atencion', 'subtipo_atencion')
+    atenciones = AtencionSocial.objects.select_related('usuario', 'usuario__delegacion', 'tipo_atencion', 'subtipo_atencion',
+                                                       'solicitante')
     if usuario.tiene_rol(['Admin', 'Coordinador']):
         if delegacion is not None:
             atenciones = atenciones.filter(usuario__delegacion=delegacion)
@@ -772,7 +771,7 @@ def gestion_social(request):
         atenciones = atenciones.filter(pk=solicitud_id)
     texto = request.GET.get('q', '').strip()
     if texto:
-        atenciones = atenciones.filter(Q(nombre_solicitante__icontains=texto) | Q(rut_solicitante__icontains=texto))
+        atenciones = atenciones.filter(Q(solicitante__nombre__icontains=texto) | Q(solicitante__rut__icontains=texto))
 
     lista = []
     for atencion in atenciones:
@@ -782,9 +781,9 @@ def gestion_social(request):
             'registrada_por': atencion.usuario,
             'tipo_atencion': atencion.tipo_atencion.nombre,
             'sub_atencion': atencion.subtipo_atencion or '-',
-            'nombre_usuario': atencion.nombre_solicitante,
-            'rut_usuario': atencion.rut_solicitante,
-            'fono': atencion.telefono_solicitante,
+            'nombre_usuario': atencion.solicitante.nombre,
+            'rut_usuario': atencion.solicitante.rut,
+            'fono': atencion.solicitante.telefono,
             'requiere_visita': atencion.requiere_visita,
             'codigo': atencion.codigo(),
             'estado': atencion.estado(),
@@ -875,6 +874,28 @@ def atencion_detalle(request, pk):
     return render(request, 'actividades/atencion_detalle.html', data)
 
 
+def registrar_solicitante(form, request):
+    """Guarda el solicitante del formulario (nuevo o con datos corregidos) y lo deja en la auditoría."""
+    solicitante = form.guardar_solicitante()
+    if form.cambio_solicitante is not None:
+        evento, antes, despues = form.cambio_solicitante
+        registrar_auditoria(request.user, evento, 'Solicitante', solicitante.pk, antes, despues)
+    return solicitante
+
+
+@login_required
+def buscar_solicitante(request):
+    """Datos de un solicitante por RUT, para completar los formularios (responde en JSON)."""
+    rut = limpiar_rut(request.GET.get('rut', ''))
+    solicitante = Solicitante.objects.filter(rut=rut).prefetch_related('cargos__organizacion').first() if rut else None
+    if solicitante is None:
+        return JsonResponse({'encontrado': False, 'rut': rut})
+    return JsonResponse({
+        'encontrado': True, 'rut': solicitante.rut, 'nombre': solicitante.nombre, 'telefono': solicitante.telefono,
+        'cargos': [f"{c.get_cargo_display()} de {c.organizacion}" for c in solicitante.cargos.all()],
+    })
+
+
 def atencion_form(request, atencion=None):
     nueva = atencion is None
     if request.method == 'POST':
@@ -884,6 +905,7 @@ def atencion_form(request, atencion=None):
             atencion = form.save(commit=False)
             if nueva:
                 atencion.usuario = request.user  # queda registrada a nombre de quien inició sesión
+            atencion.solicitante = registrar_solicitante(form, request)
             atencion.save()
             registrar_auditoria(request.user, 'CREACION' if nueva else 'MODIFICACION', 'AtencionSocial', atencion.pk,
                                 antes, f"{atencion}")
@@ -942,7 +964,7 @@ def verificacion(request):
     codigo, delegacion, nombre = delegacion_seleccionada(request)
     # Las gestiones del Delegado no se validan: no suman puntaje
     pendientes = Evidencia.objects.filter(estado_revision='PENDIENTE', actividad__es_gestion=False).select_related(
-        'actividad', 'actividad__usuario', 'actividad__item', 'actividad__encargado').order_by('fecha')
+        'actividad__solicitante',         'actividad', 'actividad__usuario', 'actividad__item', 'actividad__encargado').order_by('fecha')
     # Buscador por funcionario: nombre, apellido o RUT de quien la registró o de su encargado
     q = request.GET.get('q', '').strip()
     if q:
@@ -981,8 +1003,7 @@ def verificacion(request):
             'fecha_realizacion': evidencia.actividad.fecha_realizacion,
             'encargado': evidencia.actividad.encargado,
             'imagen': evidencia.imagen,
-            'nombre_usuario': evidencia.actividad.nombre_usuario,
-            'telefono_usuario': evidencia.actividad.telefono_usuario,
+            'solicitante': evidencia.actividad.solicitante,
             'dias_sin_validar': (hoy - timezone.localtime(evidencia.fecha).date()).days,
         }
         lista.append(fila)

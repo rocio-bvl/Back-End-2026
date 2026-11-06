@@ -3,7 +3,7 @@ from django.db import models
 from django.utils import timezone
 
 from ActividadesApp.choices import (estados_actividad, estados_evidencia, decisiones,
-                                    ESTADOS_PENDIENTES)
+                                    ESTADOS_PENDIENTES, cargos_representante, tipos_organizacion)
 from UsuarioApp.choices import estados_registro
 
 # Días antes de la fecha de realización en que un compromiso se marca "por vencer"
@@ -48,12 +48,13 @@ class Actividad(models.Model):
     servicio = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, null=True, blank=True, related_name='actividades_servicio', limit_choices_to={'tipo': 'SERVICIO'}, verbose_name="Servicio")
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='actividades', verbose_name="Registrada por")
     encargado = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='actividades_a_cargo', verbose_name="Encargado")
-    # Persona atendida: sin nombre y teléfono la actividad no tiene puntaje (requerimiento de la municipalidad)
-    nombre_usuario = models.CharField(max_length=150, blank=True, default="", verbose_name="Nombre de la persona atendida")
-    telefono_usuario = models.CharField(max_length=20, blank=True, default="", verbose_name="Teléfono de la persona atendida")
     # Gestión: actividad que ingresa el Delegado. Queda registrada, pero nunca suma puntaje
     es_gestion = models.BooleanField(default=False, verbose_name="Gestión del Delegado (sin puntaje)")
     solicitud = models.ForeignKey('AtencionSocial', on_delete=models.SET_NULL, null=True, blank=True, related_name='actividades', verbose_name="Solicitud social vinculada")
+    # Persona atendida (requerimiento de la municipalidad: sin ella la actividad no tiene puntaje). Sus datos (RUT,
+    # nombre y teléfono) están solo en Solicitante. El formulario la exige; queda vacía en actividades antiguas
+    solicitante = models.ForeignKey('Solicitante', on_delete=models.PROTECT, null=True, blank=True,
+                                    related_name='actividades', verbose_name="Persona atendida")
 
     def __str__(self):
         return f"{self.folio()} - {self.accion}"
@@ -213,21 +214,85 @@ class Validacion(models.Model):
         ordering = ["-fecha"]
 
 
+# ---------------------------------------------------------------------------
+# Gestión social: organizaciones comunitarias, solicitantes (personas atendidas), representantes y atenciones
+# ---------------------------------------------------------------------------
+class Organizacion(models.Model):
+    """Organización comunitaria con personalidad jurídica (juntas de vecinos, clubes, agrupaciones...)."""
+    nombre = models.CharField(max_length=150, verbose_name="Organización")
+    # Vacío mientras no se clasifique: el Excel de origen no trae el tipo
+    tipo = models.CharField(max_length=15, choices=tipos_organizacion, blank=True, default="",
+                            verbose_name="Tipo de organización")
+    domicilio_legal = models.CharField(max_length=200, blank=True, default="", verbose_name="Domicilio legal")
+    delegacion = models.ForeignKey('UsuarioApp.Delegacion', on_delete=models.PROTECT, null=True, blank=True,
+                                   related_name='organizaciones', verbose_name="Territorio / delegación")
+    socios_activos = models.PositiveIntegerField(null=True, blank=True, verbose_name="Socios activos")
+    fecha_constitucion = models.DateField(null=True, blank=True, verbose_name="Fecha de constitución")
+    numero_registro_pj = models.CharField(max_length=20, verbose_name="N° registro personalidad jurídica")
+    fecha_inscripcion = models.DateField(verbose_name="Fecha de inscripción en el registro")
+    numero_registro_directorio = models.PositiveIntegerField(null=True, blank=True, verbose_name="N° registro de directorio")
+
+    def __str__(self):
+        return self.nombre
+
+    class Meta:
+        db_table = "organizacion"
+        verbose_name = "Organización"
+        verbose_name_plural = "Organizaciones"
+        ordering = ["nombre"]
+
+
+class Solicitante(models.Model):
+    """Persona natural atendida. Sus datos se guardan una sola vez (por RUT) y las atenciones sociales y las
+    actividades la referencian: al escribir su RUT, el sistema completa nombre y teléfono."""
+    rut = models.CharField(max_length=12, unique=True, verbose_name="RUT")
+    nombre = models.CharField(max_length=200, verbose_name="Nombre")
+    telefono = models.CharField(max_length=20, blank=True, default="", verbose_name="Teléfono")
+
+    def __str__(self):
+        return f"{self.nombre} ({self.rut})"
+
+    class Meta:
+        db_table = "solicitante"
+        verbose_name = "Solicitante"
+        verbose_name_plural = "Solicitantes"
+        ordering = ["nombre"]
+
+
+class Representante(models.Model):
+    """Cargo de un solicitante en el directorio de una organización: una fila por cargo. Cada organización tiene
+    a lo más un presidente, un secretario y un tesorero; una persona puede representar a varias organizaciones."""
+    organizacion = models.ForeignKey(Organizacion, on_delete=models.CASCADE, related_name='representantes',
+                                     verbose_name="Organización")
+    solicitante = models.ForeignKey(Solicitante, on_delete=models.PROTECT, related_name='cargos',
+                                    verbose_name="Representante")
+    cargo = models.CharField(max_length=10, choices=cargos_representante, verbose_name="Cargo")
+
+    def __str__(self):
+        return f"{self.get_cargo_display()} de {self.organizacion}: {self.solicitante}"
+
+    class Meta:
+        db_table = "representante"
+        verbose_name = "Representante"
+        verbose_name_plural = "Representantes"
+        constraints = [models.UniqueConstraint(fields=['organizacion', 'cargo'], name='un_cargo_por_organizacion')]
+
+
 class AtencionSocial(models.Model):
     """Solicitud de una persona natural atendida por el área social. La registra un funcionario y después
     se le vinculan una o varias actividades: esas actividades son las acciones con que se atiende la solicitud."""
     fecha = models.DateTimeField(default=timezone.now, verbose_name="Fecha de ingreso")
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True,
                                 related_name='atenciones_registradas', verbose_name="Registrada por")
-    nombre_solicitante = models.CharField(max_length=200, verbose_name="Nombre del solicitante")
-    rut_solicitante = models.CharField(max_length=12, verbose_name="RUT del solicitante")
-    telefono_solicitante = models.CharField(max_length=20, blank=True, default="", verbose_name="Teléfono del solicitante")
+    # Persona que hace la solicitud: sus datos (RUT, nombre y teléfono) están solo en Solicitante
+    solicitante = models.ForeignKey(Solicitante, on_delete=models.PROTECT, related_name='atenciones',
+                                    verbose_name="Solicitante")
     requiere_visita = models.BooleanField(default=False, verbose_name="¿Requiere visita?")
     tipo_atencion = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, related_name='atenciones_tipo', limit_choices_to={'tipo': 'TIPO_ATENCION'}, verbose_name="Tipo de atención")
     subtipo_atencion = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, null=True, blank=True, related_name='atenciones_subtipo', limit_choices_to={'tipo': 'SUBTIPO_ATENCION'}, verbose_name="Subtipo de atención")
 
     def __str__(self):
-        return f"{self.codigo()} - {self.nombre_solicitante}"
+        return f"{self.codigo()} - {self.solicitante.nombre}"
 
     def codigo(self):
         return f"SOC{self.pk}"

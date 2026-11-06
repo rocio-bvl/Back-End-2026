@@ -6,8 +6,8 @@ from django import forms
 from django.conf import settings
 from django.utils import timezone
 
-from ActividadesApp.choices import MAX_ACTIVIDADES_DIA, ITEM_FELICITACIONES
-from ActividadesApp.models import Actividad, Territorio, AtencionSocial
+from ActividadesApp.choices import MAX_ACTIVIDADES_DIA, ITEM_FELICITACIONES, cargos_representante
+from ActividadesApp.models import Actividad, Territorio, AtencionSocial, Organizacion, Solicitante, Representante
 from UsuarioApp.funciones import limpiar_rut, validar_rut
 from UsuarioApp.models import Catalogo, Usuario
 
@@ -71,17 +71,105 @@ def solo_digitos(texto):
     return ''.join(c for c in (texto or '') if c.isdigit())
 
 
-def mismo_telefono(uno, otro):
-    """Compara dos teléfonos por sus últimos 8 dígitos: así +56 9 1234 5678 y 912345678 son el mismo."""
-    a, b = solo_digitos(uno), solo_digitos(otro)
-    return len(a) >= 8 and len(b) >= 8 and a[-8:] == b[-8:]
-
-
 def es_item_felicitaciones(item):
     return item is not None and item.nombre == ITEM_FELICITACIONES
 
 
-class ActividadForm(forms.Form):
+# ---------------------------------------------------------------------------
+# Solicitante: lo comparten Agregar atención y Agregar actividad
+# ---------------------------------------------------------------------------
+OPCIONES_CARGO = [('', 'Seleccione el cargo...')] + list(cargos_representante)
+
+
+class SolicitanteMixin:
+    """Persona atendida, identificada por su RUT (obligatorio).
+    - Si el RUT está registrado, nombre y teléfono se completan con sus datos (y si se corrigen, se actualizan).
+    - Si no está, se pregunta "¿Desea agregar solicitante al sistema?": con "Sí" (agregar_solicitante) se registra
+      al guardar, y puede quedar como presidente, secretario o tesorero de una organización.
+    El formulario que lo usa llama a agregar_campos_solicitante() en __init__ y a resolver_solicitante() en clean()."""
+
+    def agregar_campos_solicitante(self):
+        self.fields['rut_solicitante'] = forms.CharField(max_length=15, required=False, label="RUT del solicitante")
+        self.fields['nombre_solicitante'] = forms.CharField(max_length=200, required=False, label="Nombre del solicitante")
+        self.fields['telefono_solicitante'] = forms.CharField(max_length=20, required=False, label="Teléfono")
+        self.fields['agregar_solicitante'] = forms.BooleanField(required=False, widget=forms.HiddenInput)
+        self.fields['organizacion'] = forms.ModelChoiceField(queryset=Organizacion.objects.all(), required=False,
+                                                             label="Organización que representa (opcional)",
+                                                             empty_label="No representa a una organización")
+        self.fields['cargo'] = forms.ChoiceField(choices=OPCIONES_CARGO, required=False, label="Cargo en la organización")
+        self.solicitante = None          # el registrado (o el recién creado, después de guardar)
+        self.nuevo_solicitante = False   # True: se crea al guardar
+        self.cambio_solicitante = None   # para la auditoría: ('CREACION' o 'MODIFICACION', antes, después)
+
+    def datos_iniciales_solicitante(self, solicitante):
+        """Para modificar: el formulario parte con los datos del solicitante guardado."""
+        if solicitante is not None and not self.is_bound:
+            self.initial.update({'rut_solicitante': solicitante.rut, 'nombre_solicitante': solicitante.nombre,
+                                 'telefono_solicitante': solicitante.telefono})
+
+    def resolver_solicitante(self, datos):
+        texto = (datos.get('rut_solicitante') or '').strip()
+        if not texto:
+            self.add_error('rut_solicitante', "Ingrese el RUT del solicitante: sin él, no queda registrado a quién se atendió.")
+            return
+        rut = limpiar_rut(texto)
+        if len(rut) > 12 or not validar_rut(rut):
+            self.add_error('rut_solicitante', "El RUT no es válido.")
+            return
+        datos['rut_solicitante'] = rut
+        nombre = (datos.get('nombre_solicitante') or '').strip()
+        telefono = (datos.get('telefono_solicitante') or '').strip()
+        self.solicitante = Solicitante.objects.filter(rut=rut).first()
+        if self.solicitante is not None:
+            nombre = nombre or self.solicitante.nombre
+            telefono = telefono or self.solicitante.telefono
+        elif not datos.get('agregar_solicitante'):
+            self.add_error('rut_solicitante', "Este RUT no está registrado. ¿Desea agregar solicitante al sistema? "
+                                              "Confirme para registrarlo.")
+            return
+        else:
+            self.nuevo_solicitante = True
+            self.revisar_cargo(datos)
+        if not nombre:
+            self.add_error('nombre_solicitante', "Indique el nombre del solicitante.")
+        if not telefono:
+            self.add_error('telefono_solicitante', "Indique el teléfono del solicitante.")
+        elif not 8 <= len(solo_digitos(telefono)) <= 12:
+            self.add_error('telefono_solicitante', "Escriba un teléfono válido (entre 8 y 12 dígitos).")
+        datos['nombre_solicitante'] = nombre
+        datos['telefono_solicitante'] = telefono
+
+    def revisar_cargo(self, datos):
+        """Organización y cargo van juntos, y cada cargo lo ocupa una sola persona por organización."""
+        organizacion, cargo = datos.get('organizacion'), datos.get('cargo')
+        if organizacion and not cargo:
+            self.add_error('cargo', "Indique el cargo que ocupa en la organización.")
+        elif cargo and not organizacion:
+            self.add_error('organizacion', "Indique la organización en que ocupa ese cargo.")
+        elif organizacion:
+            ocupado = Representante.objects.filter(organizacion=organizacion, cargo=cargo).select_related('solicitante').first()
+            if ocupado is not None:
+                self.add_error('cargo', f"{organizacion} ya tiene {ocupado.get_cargo_display().lower()}: {ocupado.solicitante}.")
+
+    def guardar_solicitante(self):
+        """Crea el solicitante nuevo (y su cargo) o actualiza nombre y teléfono del registrado si se corrigieron."""
+        datos = self.cleaned_data
+        nombre, telefono = datos['nombre_solicitante'], datos['telefono_solicitante']
+        if self.nuevo_solicitante:
+            self.solicitante = Solicitante.objects.create(rut=datos['rut_solicitante'], nombre=nombre, telefono=telefono)
+            if datos.get('organizacion') and datos.get('cargo'):
+                Representante.objects.create(organizacion=datos['organizacion'], solicitante=self.solicitante,
+                                             cargo=datos['cargo'])
+            self.cambio_solicitante = ('CREACION', '', str(self.solicitante))
+        elif (self.solicitante.nombre, self.solicitante.telefono) != (nombre, telefono):
+            antes = f"{self.solicitante} - {self.solicitante.telefono}"
+            self.solicitante.nombre, self.solicitante.telefono = nombre, telefono
+            self.solicitante.save()
+            self.cambio_solicitante = ('MODIFICACION', antes, f"{self.solicitante} - {telefono}")
+        return self.solicitante
+
+
+class ActividadForm(SolicitanteMixin, forms.Form):
     """Registrar una actividad. La fecha de ingreso se guarda sola; la fecha de realización la elige quien registra:
     - hoy o antes: se agrega la evidencia (comentario obligatorio, foto opcional);
     - después de hoy: queda como compromiso pendiente (PROGRAMADA);
@@ -105,9 +193,7 @@ class ActividadForm(forms.Form):
                                     empty_label="Yo mismo (quien registra)")
     solicitud = forms.ModelChoiceField(queryset=AtencionSocial.objects.none(), required=False,
                                     label="Vincular a una solicitud social")
-    # Persona atendida: obligatorios. Si se vincula una solicitud social, se completan con sus datos
-    nombre_usuario = forms.CharField(max_length=150, required=False, label="Nombre de la persona atendida")
-    telefono_usuario = forms.CharField(max_length=20, required=False, label="Teléfono de la persona atendida")
+    # Persona atendida: los campos del solicitante (RUT obligatorio) los agrega SolicitanteMixin
 
     def __init__(self, *args, usuario=None, actividad=None, **kwargs):
         """actividad: la que se modifica (modo edición). En edición no se aplica el máximo diario, y el cierre de
@@ -115,7 +201,9 @@ class ActividadForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.usuario = usuario
         self.actividad = actividad
-        self.solicitud_encontrada = None  # solicitud social que el sistema vinculó solo, por nombre o teléfono
+        self.solicitud_encontrada = None  # solicitud social que el sistema vinculó sola, por el solicitante
+        self.agregar_campos_solicitante()
+        self.datos_iniciales_solicitante(actividad.solicitante if actividad is not None else None)
         items = Catalogo.objects.filter(tipo='ITEM_GESTION', estado='ACTIVO').order_by('id')
         if usuario is not None and not (usuario.es_administrador() or usuario.es_delegado()):
             # Las felicitaciones las informa el Delegado, nunca el propio funcionario
@@ -131,37 +219,24 @@ class ActividadForm(forms.Form):
         if not self.is_bound:
             self.initial.setdefault('fecha_realizacion', timezone.localdate())
 
-    def clean_telefono_usuario(self):
-        telefono = (self.cleaned_data.get('telefono_usuario') or '').strip()
-        if telefono and not 8 <= len(solo_digitos(telefono)) <= 12:
-            raise forms.ValidationError("Escriba un teléfono válido (entre 8 y 12 dígitos).")
-        return telefono
-
-    def vincular_persona(self, datos):
-        """Nombre y teléfono de la persona atendida. Con una solicitud elegida, los datos que falten salen de ella.
-        Sin solicitud, se busca una con el mismo teléfono (o el mismo nombre) para vincularla y no duplicar datos."""
-        nombre = (datos.get('nombre_usuario') or '').strip()
-        telefono = (datos.get('telefono_usuario') or '').strip()
+    def vincular_solicitud(self, datos):
+        """La solicitud social y la persona atendida deben coincidir. Sin solicitud elegida, si el solicitante tiene
+        una sola solicitud sin atender, la actividad se vincula sola a ella."""
         solicitud = datos.get('solicitud')
+        if 'rut_solicitante' in self.errors:
+            return
         if solicitud is not None:
-            nombre = nombre or solicitud.nombre_solicitante
-            telefono = telefono or solicitud.telefono_solicitante
-        elif self.usuario is not None and (nombre or telefono):
-            candidatas = [s for s in self.fields['solicitud'].queryset
-                          if mismo_telefono(telefono, s.telefono_solicitante)
-                          or (nombre and s.nombre_solicitante.strip().lower() == nombre.lower())]
-            if len(candidatas) == 1:
-                solicitud = candidatas[0]
-                self.solicitud_encontrada = solicitud
-                datos['solicitud'] = solicitud
-                nombre = nombre or solicitud.nombre_solicitante
-                telefono = telefono or solicitud.telefono_solicitante
-        if not nombre:
-            self.add_error('nombre_usuario', "Indique el nombre de la persona atendida: sin él, la actividad no tiene puntaje.")
-        if not telefono:
-            self.add_error('telefono_usuario', "Indique el teléfono de la persona atendida: sin él, la actividad no tiene puntaje.")
-        datos['nombre_usuario'] = nombre
-        datos['telefono_usuario'] = telefono
+            if self.solicitante is None or solicitud.solicitante_id != self.solicitante.pk:
+                self.add_error('solicitud', f"La solicitud {solicitud.codigo()} es de {solicitud.solicitante}, "
+                                            f"no de la persona atendida.")
+            return
+        if self.solicitante is None:  # persona nueva: todavía no tiene solicitudes
+            return
+        candidatas = [s for s in self.fields['solicitud'].queryset.filter(solicitante=self.solicitante)
+                      if s.estado() != 'ATENDIDA']
+        if len(candidatas) == 1:
+            self.solicitud_encontrada = candidatas[0]
+            datos['solicitud'] = candidatas[0]
 
     def es_felicitacion(self):
         return es_item_felicitaciones(self.cleaned_data.get('item'))
@@ -205,7 +280,10 @@ class ActividadForm(forms.Form):
     def clean(self):
         datos = super().clean()
         hoy = timezone.localdate()
-        self.vincular_persona(datos)
+        if not (datos.get('rut_solicitante') or '').strip() and datos.get('solicitud') is not None:
+            datos['rut_solicitante'] = datos['solicitud'].solicitante.rut  # la persona de la solicitud elegida
+        self.resolver_solicitante(datos)
+        self.vincular_solicitud(datos)
         self.revisar_reglas_de_ingreso(datos, hoy)
         self.revisar_felicitacion(datos, hoy)
         if datos.get('depende_externos'):
@@ -294,14 +372,13 @@ class EncargadoForm(forms.Form):
         self.fields['encargado'].queryset = candidatos
 
 
-class AtencionForm(forms.ModelForm):
-    """Solicitud social de una persona natural. La fecha de ingreso y quién la registra se guardan solos."""
+class AtencionForm(SolicitanteMixin, forms.ModelForm):
+    """Solicitud social de una persona natural. La fecha de ingreso y quién la registra se guardan solos.
+    El solicitante (RUT, nombre y teléfono) se busca o se registra con SolicitanteMixin."""
     class Meta:
         model = AtencionSocial
-        fields = ['nombre_solicitante', 'rut_solicitante', 'telefono_solicitante', 'tipo_atencion', 'subtipo_atencion',
-                'requiere_visita']
-        labels = {'nombre_solicitante': "Nombre del solicitante", 'rut_solicitante': "RUT del solicitante",
-                'telefono_solicitante': "Teléfono", 'requiere_visita': "Requiere visita domiciliaria"}
+        fields = ['tipo_atencion', 'subtipo_atencion', 'requiere_visita']
+        labels = {'requiere_visita': "Requiere visita domiciliaria"}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -309,17 +386,12 @@ class AtencionForm(forms.ModelForm):
         self.fields['subtipo_atencion'].queryset = Catalogo.objects.filter(tipo='SUBTIPO_ATENCION', estado='ACTIVO')
         self.fields['tipo_atencion'].empty_label = "Seleccione el tipo..."
         self.fields['subtipo_atencion'].empty_label = "Sin subtipo"
-        # Sin nombre y teléfono la solicitud no tiene puntaje: ambos son obligatorios
-        self.fields['telefono_solicitante'].required = True
-
-    def clean_rut_solicitante(self):
-        rut = limpiar_rut(self.cleaned_data['rut_solicitante'])
-        if len(rut) > 12 or not validar_rut(rut):
-            raise forms.ValidationError("El RUT del solicitante no es válido.")
-        return rut
+        self.agregar_campos_solicitante()
+        self.datos_iniciales_solicitante(self.instance.solicitante if self.instance.solicitante_id else None)
 
     def clean(self):
         datos = super().clean()
+        self.resolver_solicitante(datos)
         tipo = datos.get('tipo_atencion')
         subtipo = datos.get('subtipo_atencion')
         if tipo and subtipo and subtipo.padre_id not in (None, tipo.pk):

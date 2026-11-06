@@ -98,11 +98,11 @@
                                                 </tr>
                                                 {% for solicitud in form.fields.solicitud.queryset %}
                                                 <tr>
-                                                    <td><input class="form-check-input" type="radio" name="solicitud" id="solicitud_{{ solicitud.pk }}" value="{{ solicitud.pk }}" data-nombre="{{ solicitud.nombre_solicitante }}" data-telefono="{{ solicitud.telefono_solicitante }}" {% if form.solicitud.value|stringformat:"s" == solicitud.pk|stringformat:"s" %}checked{% endif %}></td>
+                                                    <td><input class="form-check-input" type="radio" name="solicitud" id="solicitud_{{ solicitud.pk }}" value="{{ solicitud.pk }}" data-rut="{{ solicitud.solicitante.rut }}" {% if form.solicitud.value|stringformat:"s" == solicitud.pk|stringformat:"s" %}checked{% endif %}></td>
                                                     <td><label for="solicitud_{{ solicitud.pk }}" class="mb-0 fw-bold">{{ solicitud.codigo }}</label></td>
                                                     <td>{{ solicitud.fecha|date:"d/m/Y" }}</td>
-                                                    <td>{{ solicitud.nombre_solicitante }}</td>
-                                                    <td>{{ solicitud.rut_solicitante }}</td>
+                                                    <td>{{ solicitud.solicitante.nombre }}</td>
+                                                    <td>{{ solicitud.solicitante.rut }}</td>
                                                     <td>{{ solicitud.tipo_atencion.nombre }}</td>
                                                     <td>{{ solicitud.usuario.get_full_name|default:solicitud.usuario.username }}</td>
                                                     <td>{{ solicitud.get_estado_display }}</td>
@@ -117,18 +117,10 @@
                                 </div>
                             </div>
 
-                            <!-- Persona atendida: obligatoria. Si coincide con una solicitud social, el sistema las vincula -->
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold" for="id_nombre_usuario">{{ form.nombre_usuario.label }} <span class="text-danger">*</span></label>
-                                <input type="text" name="nombre_usuario" id="id_nombre_usuario" maxlength="150" value="{{ form.nombre_usuario.value|default:'' }}" class="form-control {% if form.nombre_usuario.errors %}is-invalid{% endif %}" placeholder="Nombre y apellido">
-                                {% for error in form.nombre_usuario.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold" for="id_telefono_usuario">{{ form.telefono_usuario.label }} <span class="text-danger">*</span></label>
-                                <input type="tel" name="telefono_usuario" id="id_telefono_usuario" maxlength="20" value="{{ form.telefono_usuario.value|default:'' }}" class="form-control {% if form.telefono_usuario.errors %}is-invalid{% endif %}" placeholder="Ej: 912345678">
-                                {% for error in form.telefono_usuario.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
-                                <small class="text-muted">Si la persona ya está en el Registro de Atenciones, la actividad se vincula sola a su solicitud.</small>
-                            </div>
+                            <!-- Persona atendida (obligatoria): se identifica por su RUT. Si está registrada, nombre y teléfono
+                                 se completan solos; si no, se pregunta si se agrega. Con una solicitud social, se vinculan -->
+                            <div class="col-12"><h6 class="fw-bold mb-0"><i class="bi bi-person me-1 text-danger"></i>Persona atendida</h6></div>
+                            {% include 'actividades/components/solicitante.html' %}
 
                             <div class="col-12">
                                 <div class="form-check form-switch bg-light p-3 border rounded">
@@ -227,13 +219,12 @@
             return document.querySelectorAll('#tabla_solicitudes tbody tr:not(.fila-fija)');
         });
 
-        // Al elegir una solicitud social se completan el nombre y el teléfono de la persona atendida
-        Array.prototype.forEach.call(document.querySelectorAll('input[name="solicitud"][data-nombre]'), function (radio) {
+        // Al elegir una solicitud social, la persona atendida es su solicitante: se escribe su RUT y se buscan sus datos
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="solicitud"][data-rut]'), function (radio) {
             radio.addEventListener('change', function () {
-                var nombre = document.getElementById('id_nombre_usuario');
-                var telefono = document.getElementById('id_telefono_usuario');
-                if (!nombre.value) { nombre.value = radio.dataset.nombre; }
-                if (!telefono.value) { telefono.value = radio.dataset.telefono; }
+                var rut = document.getElementById('id_rut_solicitante');
+                rut.value = radio.dataset.rut;
+                rut.dispatchEvent(new Event('change'));
             });
         });
     })();

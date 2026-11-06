@@ -167,15 +167,25 @@ INSERT INTO `usuario_rol` (`id`, `fecha_asignacion`, `asignado_por_id`, `rol_id`
 (15, UTC_TIMESTAMP(6), 1, 5, 15);
 
 -- ---------------------------------------------------------------------------
--- Solicitudes sociales (las registra un funcionario; después se les vinculan actividades)
+-- Solicitantes (personas atendidas: una vez por RUT) y solicitudes sociales (las registra un funcionario;
+-- después se les vinculan actividades)
 --   SOC1: En proceso (las actividades ACT3 y ACT6 la atienden). SOC2 y SOC3: Pendientes.
 --   Las acciones de una solicitud son las actividades vinculadas a ella (una o varias).
 -- ---------------------------------------------------------------------------
-INSERT INTO `atencion_social` (`id`, `fecha`, `nombre_solicitante`, `rut_solicitante`, `telefono_solicitante`, `requiere_visita`,
-                            `tipo_atencion_id`, `subtipo_atencion_id`, `usuario_id`) VALUES
-(1, '2026-10-22 13:00:00', 'María Ejemplo',  '12345678-5', '911112222', 1, 7,  8,    5),
-(2, '2026-10-23 15:30:00', 'Juan Ficticio',  '11222333-9', '922223333', 0, 10, 11,   6),
-(3, '2026-10-24 12:00:00', 'Rosa Prueba',    '9876543-3',  '933334444', 1, 7,  NULL, 9);
+INSERT INTO `solicitante` (`id`, `rut`, `nombre`, `telefono`) VALUES
+(1, '12345678-5', 'María Ejemplo',  '911112222'),
+(2, '11222333-9', 'Juan Ficticio',  '922223333'),
+(3, '9876543-3',  'Rosa Prueba',    '933334444'),
+(4, '13456789-9', 'Pedro Ejemplo',  '944445555'),
+(5, '14567890-0', 'Ana Ficticia',   '955556666'),
+(6, '16789012-1', 'Luis Prueba',    '966667777'),
+(7, '17890123-0', 'Carmen Ejemplo', '977778888');
+
+INSERT INTO `atencion_social` (`id`, `fecha`, `solicitante_id`, `requiere_visita`, `tipo_atencion_id`, `subtipo_atencion_id`,
+                            `usuario_id`) VALUES
+(1, '2026-10-22 13:00:00', 1, 1, 7,  8,    5),
+(2, '2026-10-23 15:30:00', 2, 0, 10, 11,   6),
+(3, '2026-10-24 12:00:00', 3, 1, 7,  NULL, 9);
 
 -- ---------------------------------------------------------------------------
 -- Actividades de ejemplo:
@@ -188,13 +198,13 @@ INSERT INTO `atencion_social` (`id`, `fecha`, `nombre_solicitante`, `rut_solicit
 -- ---------------------------------------------------------------------------
 INSERT INTO `actividad` (`id`, `fecha`, `solicitud_problema`, `accion`, `territorio_id`, `depende_externos`,
                         `fecha_realizacion`, `estado`, `item_id`, `periodo_id`, `servicio_id`, `usuario_id`,
-                        `encargado_id`, `solicitud_id`, `es_gestion`, `nombre_usuario`, `telefono_usuario`) VALUES
-(1, '2026-10-20 12:30:00', 'Reunión con la junta de vecinos por luminarias en pasaje principal.', 'Reunión con organización', 3, 0, '2026-11-15', 'PROGRAMADA', 2, 2, NULL, 5, 6, NULL, 0, 'Pedro Ejemplo', '944445555'),
-(2, '2026-10-21 14:00:00', 'Poda de árboles que tapan luminarias: depende de la respuesta de la empresa eléctrica.', 'Gestión con unidad de alumbrado', 1, 1, NULL, 'EN_TUBO', 2, 2, NULL, 5, NULL, NULL, 0, 'Ana Ficticia', '955556666'),
-(3, '2026-10-22 16:00:00', 'Solicitud de apoyo social por emergencia.', 'Atención presencial', 4, 0, '2026-10-22', 'EVIDENCIA_INGRESADA', 1, 2, NULL, 5, NULL, 1, 0, 'María Ejemplo', '911112222'),
-(4, '2026-10-23 10:00:00', 'Limpieza de microbasural: depende del camión municipal.', 'Coordinación con aseo y ornato', 2, 1, '2026-11-10', 'PROGRAMADA', 3, 2, NULL, 7, NULL, NULL, 0, 'Luis Prueba', '966667777'),
-(5, '2026-10-24 09:00:00', 'Reunión con comité de agua potable rural.', 'Reunión con organización', 5, 0, '2026-11-05', 'PROGRAMADA', 2, 2, NULL, 9, NULL, NULL, 0, 'Carmen Ejemplo', '977778888'),
-(6, '2026-10-25 11:00:00', 'Visita domiciliaria para evaluar la ayuda social solicitada.', 'Visita domiciliaria', 4, 0, '2026-11-04', 'PROGRAMADA', 2, 2, NULL, 5, 6, 1, 0, 'María Ejemplo', '911112222');
+                        `encargado_id`, `solicitud_id`, `es_gestion`, `solicitante_id`) VALUES
+(1, '2026-10-20 12:30:00', 'Reunión con la junta de vecinos por luminarias en pasaje principal.', 'Reunión con organización', 3, 0, '2026-11-15', 'PROGRAMADA', 2, 2, NULL, 5, 6, NULL, 0, 4),
+(2, '2026-10-21 14:00:00', 'Poda de árboles que tapan luminarias: depende de la respuesta de la empresa eléctrica.', 'Gestión con unidad de alumbrado', 1, 1, NULL, 'EN_TUBO', 2, 2, NULL, 5, NULL, NULL, 0, 5),
+(3, '2026-10-22 16:00:00', 'Solicitud de apoyo social por emergencia.', 'Atención presencial', 4, 0, '2026-10-22', 'EVIDENCIA_INGRESADA', 1, 2, NULL, 5, NULL, 1, 0, 1),
+(4, '2026-10-23 10:00:00', 'Limpieza de microbasural: depende del camión municipal.', 'Coordinación con aseo y ornato', 2, 1, '2026-11-10', 'PROGRAMADA', 3, 2, NULL, 7, NULL, NULL, 0, 6),
+(5, '2026-10-24 09:00:00', 'Reunión con comité de agua potable rural.', 'Reunión con organización', 5, 0, '2026-11-05', 'PROGRAMADA', 2, 2, NULL, 9, NULL, NULL, 0, 7),
+(6, '2026-10-25 11:00:00', 'Visita domiciliaria para evaluar la ayuda social solicitada.', 'Visita domiciliaria', 4, 0, '2026-11-04', 'PROGRAMADA', 2, 2, NULL, 5, 6, 1, 0, 1);
 
 INSERT INTO `evidencia` (`id`, `version`, `imagen`, `comentario`, `fecha`, `estado_revision`, `actividad_id`, `reemplaza_a_id`) VALUES
 (1, 1, '', 'Se atendió a la vecina y se derivó al área social para evaluar la ayuda.', '2026-10-22 16:30:00', 'PENDIENTE', 3, NULL);

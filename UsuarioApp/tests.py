@@ -233,7 +233,7 @@ class RolesYPermisosTest(TestCase):
     def datos_actividad(self, **extra):
         datos = {'solicitud_problema': 'x', 'accion': 'y', 'item': '1', 'territorio': self.datos['territorio'].pk,
                  'fecha_realizacion': timezone.localdate().isoformat(), 'comentario': 'Hecho',
-                 'nombre_usuario': 'Juan Pérez', 'telefono_usuario': '912345678'}
+                 'rut_solicitante': '12312312-3', 'nombre_solicitante': 'Juan Pérez', 'telefono_solicitante': '912345678', 'agregar_solicitante': 'True'}
         datos.update(extra)
         return datos
 

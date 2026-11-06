@@ -35,3 +35,19 @@ decisiones = (
     ('APROBAR', 'Aprobar'),
     ('RECHAZAR', 'Rechazar (volver a agregar la evidencia)'),
 )
+
+# Cargos del directorio de una organización que se registran como representantes
+cargos_representante = (
+    ('PRESIDENTE', 'Presidente'),
+    ('SECRETARIO', 'Secretario'),
+    ('TESORERO', 'Tesorero'),
+)
+
+# «enumeration» TipoOrganizacion: tipos de organización comunitaria (tabla organizacion)
+tipos_organizacion = (
+    ('FUNCIONAL', 'Organización comunitaria funcional'),
+    ('ADULTO_MAYOR', 'Club de adulto mayor'),
+    ('DEPORTIVA', 'Organización deportiva'),
+    ('CULTURAL', 'Centro de madres, centro cultural o agrupación juvenil'),
+    ('COMITE', 'Comité de vecinos, de allegados o de seguridad'),
+)
