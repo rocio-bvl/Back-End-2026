@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
-from ActividadesApp.models import Actividad, Evidencia, ComentarioActividad, Territorio, AtencionSocial
+from ActividadesApp.models import Solicitante, Actividad, Evidencia, ComentarioActividad, Territorio, AtencionSocial
 from IndicadoresApp.calculos import indicadores_usuario
 from UsuarioApp.models import Delegacion, Catalogo
 from UsuarioApp.tests import crear_datos_base, crear_usuario, CLAVE
@@ -53,7 +53,7 @@ class BaseActividades(TestCase):
         datos = {'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item': '1',
                  'territorio': self.territorio.pk,
                  'fecha_realizacion': self.hoy.isoformat(), 'comentario': 'Se inspeccionó el sector',
-                 'nombre_usuario': 'Juan Pérez', 'telefono_usuario': '912345678'}
+                 'rut_solicitante': '12312312-3', 'nombre_solicitante': 'Juan Pérez', 'telefono_solicitante': '912345678', 'agregar_solicitante': 'True'}
         datos.update(extra)
         return self.client.post(reverse('actividades:actividad_crear'), datos)
 
@@ -464,12 +464,13 @@ class SolicitudSocialTest(BaseActividades):
         self.tipo = Catalogo.objects.create(tipo='TIPO_ATENCION', nombre='Ayuda social')
 
     def solicitud(self, usuario=None, nombre='María Ejemplo'):
-        return AtencionSocial.objects.create(nombre_solicitante=nombre, rut_solicitante='12345678-5',
-                                             tipo_atencion=self.tipo, usuario=usuario or self.func)
+        solicitante = Solicitante.objects.update_or_create(rut='12345678-5', defaults={'nombre': nombre,
+                                                                                         'telefono': '911112222'})[0]
+        return AtencionSocial.objects.create(solicitante=solicitante, tipo_atencion=self.tipo, usuario=usuario or self.func)
 
     def agregar_atencion(self, **extra):
         datos = {'nombre_solicitante': 'Juan Ficticio', 'rut_solicitante': '11.222.333-9', 'telefono_solicitante': '987654321',
-                 'tipo_atencion': self.tipo.pk, 'subtipo_atencion': ''}
+                 'tipo_atencion': self.tipo.pk, 'subtipo_atencion': '', 'agregar_solicitante': 'True'}
         datos.update(extra)
         return self.client.post(reverse('actividades:atencion_crear'), datos)
 
@@ -477,7 +478,7 @@ class SolicitudSocialTest(BaseActividades):
         self.entrar('55555555-5')
         self.assertRedirects(self.agregar_atencion(), reverse('actividades:gestion_social'))
         atencion = AtencionSocial.objects.get()
-        self.assertEqual((atencion.usuario, atencion.rut_solicitante, atencion.estado()), (self.func, '11222333-9', 'PENDIENTE'))
+        self.assertEqual((atencion.usuario, atencion.solicitante.rut, atencion.estado()), (self.func, '11222333-9', 'PENDIENTE'))
         html = self.client.get(reverse('actividades:gestion_social')).content.decode()
         self.assertIn('Registro de Atenciones', html)
         self.assertNotIn('Pestaña Personal', html)
@@ -505,12 +506,12 @@ class SolicitudSocialTest(BaseActividades):
         self.entrar('77777777-7')  # un compañero de la misma delegación la puede vincular
         opciones = self.client.get(reverse('actividades:actividad_crear')).context['form'].fields['solicitud'].queryset
         self.assertEqual(list(opciones), [solicitud])
-        self.registrar(solicitud=solicitud.pk)
+        self.registrar(solicitud=solicitud.pk, rut_solicitante='')  # la persona atendida es la de la solicitud
         actividad = Actividad.objects.get()
         self.assertEqual(actividad.solicitud, solicitud)
         self.assertEqual(solicitud.estado(), 'EN_PROCESO')
         # Una solicitud puede necesitar varias actividades
-        self.registrar(solicitud=solicitud.pk, accion='Visita domiciliaria',
+        self.registrar(solicitud=solicitud.pk, rut_solicitante='', accion='Visita domiciliaria',
                        fecha_realizacion=(self.hoy + timedelta(days=3)).isoformat())
         self.assertEqual(solicitud.actividades.count(), 2)
         # En la tabla de actividades dice "Ver solicitud" y lleva a la solicitud en Gestión Social

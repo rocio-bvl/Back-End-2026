@@ -1,0 +1,124 @@
+{% comment %}
+Solicitante (persona atendida), común a Agregar atención y Agregar actividad (SolicitanteMixin en forms.py).
+- Se escribe el RUT y, al salir del campo, se consulta actividades:buscar_solicitante.
+- Si está registrado: se completan nombre y teléfono, y se muestran sus cargos en organizaciones.
+- Si no está: "¿Desea agregar solicitante al sistema?". Con "Sí" se abre "Registrar solicitante" (nombre, teléfono y,
+  si corresponde, la organización que representa) y al guardar queda en la base de datos. Con "No" se borra el RUT.
+{% endcomment %}
+<div class="col-md-3">
+    <label class="form-label fw-semibold" for="id_rut_solicitante">{{ form.rut_solicitante.label }} <span class="text-danger">*</span></label>
+    <input type="text" name="rut_solicitante" id="id_rut_solicitante" maxlength="15" value="{{ form.rut_solicitante.value|default:'' }}" class="form-control {% if form.rut_solicitante.errors %}is-invalid{% endif %}" placeholder="12345678-5" autocomplete="off">
+    {% for error in form.rut_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+</div>
+<div class="col-md-5">
+    <label class="form-label fw-semibold" for="id_nombre_solicitante">{{ form.nombre_solicitante.label }} <span class="text-danger">*</span></label>
+    <input type="text" name="nombre_solicitante" id="id_nombre_solicitante" maxlength="200" value="{{ form.nombre_solicitante.value|default:'' }}" class="form-control {% if form.nombre_solicitante.errors %}is-invalid{% endif %}" placeholder="Nombre y apellido">
+    {% for error in form.nombre_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+</div>
+<div class="col-md-4">
+    <label class="form-label fw-semibold" for="id_telefono_solicitante">{{ form.telefono_solicitante.label }} <span class="text-danger">*</span></label>
+    <input type="tel" name="telefono_solicitante" id="id_telefono_solicitante" maxlength="20" value="{{ form.telefono_solicitante.value|default:'' }}" class="form-control {% if form.telefono_solicitante.errors %}is-invalid{% endif %}" placeholder="Ej: 912345678">
+    {% for error in form.telefono_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+</div>
+<div class="col-12">
+    <div id="solicitante_info" class="alert alert-success small py-2 mb-0 d-none"></div>
+    {{ form.agregar_solicitante }}
+    <div id="bloque_nuevo_solicitante" class="border rounded p-3 bg-light d-none">
+        <h6 class="fw-bold mb-1"><i class="bi bi-person-plus me-1 text-danger"></i>Registrar solicitante</h6>
+        <p class="small text-muted mb-2">Complete nombre y teléfono arriba: el solicitante queda guardado al registrar. Si es presidente, secretario o tesorero de una organización registrada, indíquelo aquí.</p>
+        <div class="row g-2">
+            <div class="col-md-7">
+                <label class="form-label small mb-1" for="{{ form.organizacion.id_for_label }}">{{ form.organizacion.label }}</label>
+                <select name="organizacion" id="{{ form.organizacion.id_for_label }}" class="form-select form-select-sm {% if form.organizacion.errors %}is-invalid{% endif %}">
+                    <option value="">No representa a una organización</option>
+                    {% for organizacion in form.fields.organizacion.queryset %}
+                    <option value="{{ organizacion.pk }}" {% if form.organizacion.value|stringformat:"s" == organizacion.pk|stringformat:"s" %}selected{% endif %}>{{ organizacion.nombre }}</option>
+                    {% endfor %}
+                </select>
+                {% for error in form.organizacion.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+            </div>
+            <div class="col-md-5">
+                <label class="form-label small mb-1" for="{{ form.cargo.id_for_label }}">{{ form.cargo.label }}</label>
+                <select name="cargo" id="{{ form.cargo.id_for_label }}" class="form-select form-select-sm {% if form.cargo.errors %}is-invalid{% endif %}">
+                    {% for valor, texto in form.fields.cargo.choices %}
+                    <option value="{{ valor }}" {% if form.cargo.value == valor %}selected{% endif %}>{{ texto }}</option>
+                    {% endfor %}
+                </select>
+                {% for error in form.cargo.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var rut = document.getElementById('id_rut_solicitante');
+    var nombre = document.getElementById('id_nombre_solicitante');
+    var telefono = document.getElementById('id_telefono_solicitante');
+    var agregar = document.getElementById('{{ form.agregar_solicitante.id_for_label }}');
+    var bloque = document.getElementById('bloque_nuevo_solicitante');
+    var info = document.getElementById('solicitante_info');
+    var url = "{% url 'actividades:buscar_solicitante' %}";
+    var ultimo = rut.value.trim();
+    var autollenado = false;  // nombre y teléfono los completó el sistema (no la persona que digita)
+    // Si el formulario volvió con errores después de responder "Sí", la sección sigue a la vista
+    bloque.classList.toggle('d-none', agregar.value !== 'True');
+
+    function nuevo(mostrar) {
+        agregar.value = mostrar ? 'True' : '';
+        bloque.classList.toggle('d-none', !mostrar);
+    }
+
+    function preguntar(alResponder) {
+        var pregunta = 'Este RUT no está registrado. ¿Desea agregar solicitante al sistema?';
+        if (window.Swal) {
+            Swal.fire({ icon: 'question', title: 'Solicitante no registrado', text: '¿Desea agregar solicitante al sistema?',
+                        showCancelButton: true, confirmButtonText: 'Sí, agregar', cancelButtonText: 'No',
+                        confirmButtonColor: '#AD0000' })
+                .then(function (r) { alResponder(r.isConfirmed); });
+        } else {
+            alResponder(window.confirm(pregunta));
+        }
+    }
+
+    rut.addEventListener('change', function () {
+        var valor = rut.value.trim();
+        if (valor === ultimo) { return; }
+        ultimo = valor;
+        info.classList.add('d-none');
+        nuevo(false);
+        if (autollenado) {  // los datos eran de otro RUT: se borran
+            nombre.value = '';
+            telefono.value = '';
+            autollenado = false;
+        }
+        if (!valor) { return; }
+        fetch(url + '?rut=' + encodeURIComponent(valor), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (datos) {
+                if (datos.encontrado) {
+                    rut.value = datos.rut;
+                    ultimo = datos.rut;
+                    nombre.value = datos.nombre;
+                    telefono.value = datos.telefono;
+                    autollenado = true;
+                    info.textContent = 'Solicitante registrado: ' + datos.nombre +
+                        (datos.cargos.length ? ' · ' + datos.cargos.join(', ') : '');
+                    info.classList.remove('d-none');
+                    return;
+                }
+                preguntar(function (si) {
+                    if (si) {
+                        rut.value = datos.rut;
+                        ultimo = datos.rut;
+                        nuevo(true);
+                        nombre.focus();
+                    } else {
+                        rut.value = '';
+                        ultimo = '';
+                        rut.focus();
+                    }
+                });
+            });
+    });
+})();
+</script>

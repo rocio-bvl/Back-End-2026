@@ -22,7 +22,7 @@ class PlanAuditoriaTest(TestCase):
         self.client.login(username='55555555-5', password=CLAVE)
         return self.client.post(reverse('actividades:actividad_crear'), {
             'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item': '1',
-            'nombre_usuario': 'Juan Pérez', 'telefono_usuario': '912345678', 'territorio': self.datos['territorio'].pk,
+            'rut_solicitante': '12312312-3', 'nombre_solicitante': 'Juan Pérez', 'telefono_solicitante': '912345678', 'agregar_solicitante': 'True', 'territorio': self.datos['territorio'].pk,
             'fecha_realizacion': timezone.localdate().isoformat(), 'comentario': 'Se inspeccionó', 'imagen': foto()})
 
     def test_cp_aud_001_registro_operacion_critica(self):

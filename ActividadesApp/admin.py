@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from UsuarioApp.admin_sgr import AdminSGR, TabularInlineSGR
 from ActividadesApp.models import (Actividad, Evidencia, Validacion, AtencionSocial, Territorio,
-                                   ComentarioActividad)
+                                   ComentarioActividad, Organizacion, Solicitante, Representante)
 
 
 class EvidenciaInline(TabularInlineSGR):
@@ -46,8 +46,8 @@ class ComentarioActividadAdmin(AdminSGR):
 
 
 class AtencionSocialAdmin(AdminSGR):
-    list_display = ("id", "fecha", "nombre_solicitante", "rut_solicitante", "tipo_atencion", "usuario", "requiere_visita")
-    search_fields = ("nombre_solicitante", "rut_solicitante")
+    list_display = ("id", "fecha", "solicitante", "tipo_atencion", "usuario", "requiere_visita")
+    search_fields = ("solicitante__nombre", "solicitante__rut")
     list_filter = ("tipo_atencion",)
 
 
@@ -57,3 +57,31 @@ admin.site.register(Validacion, ValidacionAdmin)
 admin.site.register(AtencionSocial, AtencionSocialAdmin)
 admin.site.register(Territorio, TerritorioAdmin)
 admin.site.register(ComentarioActividad, ComentarioActividadAdmin)
+
+
+class OrganizacionAdmin(AdminSGR):
+    list_display = ("nombre", "tipo", "delegacion", "socios_activos", "numero_registro_pj", "fecha_inscripcion")
+    search_fields = ("nombre", "domicilio_legal", "numero_registro_pj")
+    list_filter = ("tipo", "delegacion")
+
+
+class RepresentanteInline(TabularInlineSGR):
+    model = Representante
+    extra = 0
+
+
+class SolicitanteAdmin(AdminSGR):
+    list_display = ("nombre", "rut", "telefono")
+    search_fields = ("nombre", "rut", "telefono")
+    inlines = [RepresentanteInline]
+
+
+class RepresentanteAdmin(AdminSGR):
+    list_display = ("organizacion", "cargo", "solicitante")
+    search_fields = ("organizacion__nombre", "solicitante__nombre", "solicitante__rut")
+    list_filter = ("cargo",)
+
+
+admin.site.register(Organizacion, OrganizacionAdmin)
+admin.site.register(Solicitante, SolicitanteAdmin)
+admin.site.register(Representante, RepresentanteAdmin)

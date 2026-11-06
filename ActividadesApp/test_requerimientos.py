@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from ActividadesApp.choices import ITEM_FELICITACIONES, MAX_ACTIVIDADES_DIA
 from ActividadesApp.forms import inicio_semana_abierta
-from ActividadesApp.models import Actividad, AtencionSocial, Evidencia, Validacion
+from ActividadesApp.models import Actividad, AtencionSocial, Evidencia, Validacion, Organizacion, Solicitante, Representante
 from ActividadesApp.tests import BaseActividades
 from AuditoriaApp.models import Auditoria
 from IndicadoresApp.calculos import indicadores_usuario
@@ -20,27 +20,34 @@ from UsuarioApp.models import Catalogo
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
 class PersonaAtendidaTest(BaseActividades):
-    def test_nombre_y_telefono_son_obligatorios(self):
+    def test_rut_de_la_persona_atendida_es_obligatorio(self):
         self.entrar('55555555-5')
-        respuesta = self.registrar(nombre_usuario='', telefono_usuario='')
-        self.assertIn('nombre_usuario', respuesta.context['form'].errors)
-        self.assertIn('telefono_usuario', respuesta.context['form'].errors)
+        respuesta = self.registrar(rut_solicitante='', nombre_solicitante='', telefono_solicitante='')
+        self.assertIn('rut_solicitante', respuesta.context['form'].errors)
         self.assertEqual(Actividad.objects.count(), 0)
 
-    def test_se_vincula_sola_a_la_solicitud_con_el_mismo_telefono(self):
-        solicitud = AtencionSocial.objects.create(usuario=self.func, nombre_solicitante='Juan Pérez', rut_solicitante='11222333-9',
-                                                  telefono_solicitante='+56 9 1234 5678', tipo_atencion=self.tipo_atencion())
+    def test_se_vincula_sola_a_la_solicitud_de_esa_persona(self):
+        juan = Solicitante.objects.create(rut='11222333-9', nombre='Juan Pérez', telefono='+56 9 1234 5678')
+        solicitud = AtencionSocial.objects.create(usuario=self.func, solicitante=juan, tipo_atencion=self.tipo_atencion())
         self.entrar('55555555-5')
-        self.registrar(nombre_usuario='', telefono_usuario='912345678')
+        self.registrar(rut_solicitante='11.222.333-9', nombre_solicitante='', telefono_solicitante='')
         actividad = Actividad.objects.get()
-        self.assertEqual((actividad.solicitud, actividad.nombre_usuario), (solicitud, 'Juan Pérez'))
+        self.assertEqual((actividad.solicitud, actividad.solicitante), (solicitud, juan))
+
+    def test_la_solicitud_elegida_debe_ser_de_la_persona_atendida(self):
+        juan = Solicitante.objects.create(rut='11222333-9', nombre='Juan Pérez', telefono='912345678')
+        solicitud = AtencionSocial.objects.create(usuario=self.func, solicitante=juan, tipo_atencion=self.tipo_atencion())
+        self.entrar('55555555-5')
+        respuesta = self.registrar(solicitud=solicitud.pk)  # persona atendida: Juan Pérez de setUp, otro RUT
+        self.assertIn('solicitud', respuesta.context['form'].errors)
 
     def test_solicitud_social_exige_telefono(self):
         self.entrar('55555555-5')
         self.client.post(reverse('actividades:atencion_crear'), {
             'nombre_solicitante': 'Ana', 'rut_solicitante': '11.222.333-9', 'telefono_solicitante': '',
-            'tipo_atencion': self.tipo_atencion().pk})
+            'agregar_solicitante': 'True', 'tipo_atencion': self.tipo_atencion().pk})
         self.assertFalse(AtencionSocial.objects.exists())
+        self.assertFalse(Solicitante.objects.filter(rut='11222333-9').exists())
 
     def tipo_atencion(self):
         return Catalogo.objects.get_or_create(tipo='TIPO_ATENCION', nombre='Ayuda social')[0]
@@ -227,8 +234,8 @@ class DetalleAtencionTest(BaseActividades):
     def setUp(self):
         super().setUp()
         tipo = Catalogo.objects.create(tipo='TIPO_ATENCION', nombre='Ayuda social', estado='ACTIVO')
-        self.atencion = AtencionSocial.objects.create(usuario=self.func, nombre_solicitante='Rosa Prueba',
-                                                      rut_solicitante='9876543-3', tipo_atencion=tipo)
+        rosa = Solicitante.objects.create(rut='9876543-3', nombre='Rosa Prueba', telefono='933334444')
+        self.atencion = AtencionSocial.objects.create(usuario=self.func, solicitante=rosa, tipo_atencion=tipo)
         self.url = reverse('actividades:atencion_detalle', args=[self.atencion.pk])
 
     def test_ven_el_detalle_admin_coordinador_delegado_y_quien_la_registro(self):
@@ -288,3 +295,69 @@ class MiGestionUnificadaTest(BaseActividades):
         # El Funcionario no tiene la pestaña de su delegación: se abre Resumen
         self.assertEqual(self.pagina('55555555-5', pestana='delegacion').context['pestana'], 'resumen')
         self.assertNotContains(self.pagina('55555555-5'), '>Indicadores<')
+
+
+@override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
+class SolicitantesTest(BaseActividades):
+    """Solicitantes registrados por RUT y representantes de organizaciones."""
+    def setUp(self):
+        super().setUp()
+        self.tipo = Catalogo.objects.create(tipo='TIPO_ATENCION', nombre='Ayuda social', estado='ACTIVO')
+        self.junta = Organizacion.objects.create(nombre='JJVV Villa Ejemplo', numero_registro_pj='100',
+                                                 fecha_inscripcion=self.hoy, delegacion=self.datos['delegacion'])
+        self.entrar('55555555-5')
+
+    def atencion(self, **extra):
+        datos = {'rut_solicitante': '11.222.333-9', 'nombre_solicitante': 'Juan Ficticio', 'telefono_solicitante': '987654321',
+                 'tipo_atencion': self.tipo.pk, 'subtipo_atencion': ''}
+        datos.update(extra)
+        return self.client.post(reverse('actividades:atencion_crear'), datos)
+
+    def buscar(self, rut):
+        return self.client.get(reverse('actividades:buscar_solicitante'), {'rut': rut}).json()
+
+    def test_rut_no_registrado_pregunta_antes_de_agregar(self):
+        respuesta = self.atencion()
+        self.assertIn('no está registrado', str(respuesta.context['form'].errors['rut_solicitante']))
+        self.assertFalse(AtencionSocial.objects.exists())
+        self.assertFalse(self.buscar('11222333-9')['encontrado'])
+
+    def test_agregar_solicitante_como_representante(self):
+        self.atencion(agregar_solicitante='True', organizacion=self.junta.pk, cargo='PRESIDENTE')
+        solicitante = Solicitante.objects.get(rut='11222333-9')
+        self.assertEqual(AtencionSocial.objects.get().solicitante, solicitante)
+        self.assertEqual(Representante.objects.get().cargo, 'PRESIDENTE')
+        self.assertTrue(Auditoria.objects.filter(entidad='Solicitante', evento='CREACION').exists())
+        datos = self.buscar('11.222.333-9')
+        self.assertEqual((datos['encontrado'], datos['nombre']), (True, 'Juan Ficticio'))
+        self.assertEqual(datos['cargos'], ['Presidente de JJVV Villa Ejemplo'])
+
+    def test_registrado_se_reutiliza_sin_repetir_sus_datos(self):
+        self.atencion(agregar_solicitante='True')
+        self.atencion(nombre_solicitante='', telefono_solicitante='')  # solo el RUT
+        self.assertEqual((Solicitante.objects.count(), AtencionSocial.objects.count()), (1, 2))
+        self.assertEqual(set(AtencionSocial.objects.values_list('solicitante__nombre', flat=True)), {'Juan Ficticio'})
+
+    def test_corregir_el_telefono_lo_actualiza_en_un_solo_lugar(self):
+        self.atencion(agregar_solicitante='True')
+        self.atencion(telefono_solicitante='955554444')
+        self.assertEqual(Solicitante.objects.get().telefono, '955554444')
+        self.assertTrue(Auditoria.objects.filter(entidad='Solicitante', evento='MODIFICACION').exists())
+
+    def test_cargo_ocupado_no_se_repite(self):
+        self.atencion(agregar_solicitante='True', organizacion=self.junta.pk, cargo='PRESIDENTE')
+        respuesta = self.atencion(rut_solicitante='12345678-5', agregar_solicitante='True', organizacion=self.junta.pk,
+                                  cargo='PRESIDENTE')
+        self.assertIn('ya tiene presidente', str(respuesta.context['form'].errors['cargo']))
+
+    def test_actividad_con_rut_registrado(self):
+        Solicitante.objects.create(rut='11222333-9', nombre='Juan Ficticio', telefono='987654321')
+        self.registrar(rut_solicitante='11222333-9', nombre_solicitante='', telefono_solicitante='',
+                       agregar_solicitante='')
+        self.assertEqual(Actividad.objects.get().solicitante.nombre, 'Juan Ficticio')
+
+    def test_actividad_con_rut_nuevo_pregunta_y_lo_registra(self):
+        respuesta = self.registrar(rut_solicitante='11222333-9', agregar_solicitante='')
+        self.assertIn('no está registrado', str(respuesta.context['form'].errors['rut_solicitante']))
+        self.registrar(rut_solicitante='11222333-9')  # "Sí": agregar_solicitante viene en True
+        self.assertEqual(Actividad.objects.get().solicitante.rut, '11222333-9')

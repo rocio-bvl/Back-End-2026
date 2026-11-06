@@ -128,7 +128,7 @@ Luego se registra la ejecución, el Delegado valida (`VALIDADA`) o rechaza con m
 
 ## Registro de Atenciones (Gestión Social)
 
-Un funcionario registra la solicitud de una persona natural (fecha y funcionario automáticos). Las acciones para atenderla son actividades vinculadas a ella. Estado de la solicitud: **Pendiente** (sin actividades), **En proceso** (con actividades) y **Atendida** (todas sus actividades vinculadas fueron validadas).
+Un funcionario registra la solicitud de una persona natural (fecha y funcionario automáticos). La persona (solicitante) se identifica por su RUT: si ya está registrada, el sistema completa nombre y teléfono; si no, pregunta "¿Desea agregar solicitante al sistema?" y la registra, opcionalmente como presidente, secretario o tesorero de una organización. Sus datos se guardan una sola vez, en la tabla `solicitante`, y las atenciones y actividades la referencian. Las acciones para atenderla son actividades vinculadas a ella. Estado de la solicitud: **Pendiente** (sin actividades), **En proceso** (con actividades) y **Atendida** (todas sus actividades vinculadas fueron validadas).
 
 ## Pruebas automatizadas
 
@@ -144,7 +144,7 @@ python manage.py test
 |---|---|
 | `UsuarioApp` | Usuarios, roles, delegaciones, cargos, catálogos, login, recuperación de contraseña, Administración y comando `crear_grupos` |
 | `IndicadoresApp` | Periodos, metas, semáforo, resumen por delegación y tableros |
-| `ActividadesApp` | Actividades, evidencias, validación, territorios, Tubo de Trabajo y atenciones sociales |
+| `ActividadesApp` | Actividades, evidencias, validación, territorios, Tubo de Trabajo y gestión social: organizaciones, solicitantes, representantes y atenciones sociales |
 | `AuditoriaApp` | Bitácora de cambios y accesos denegados |
 | `config` | Configuración del proyecto (lee el `.env`) |
 
