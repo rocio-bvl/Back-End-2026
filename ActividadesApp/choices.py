@@ -19,10 +19,6 @@ ESTADOS_PENDIENTES = ['PROGRAMADA', 'EN_TUBO']
 # Reglas de ingreso (requerimientos de la municipalidad)
 MAX_ACTIVIDADES_DIA = 7  # actividades que un usuario puede ingresar por día (el Administrador queda exento)
 
-# Ítem de gestión de las felicitaciones de usuarios: solo el Delegado (o el Administrador) las informa, a nombre
-# del funcionario felicitado. Lo crea la migración UsuarioApp 0007.
-ITEM_FELICITACIONES = 'Felicitaciones de usuarios'
-
 # «enumeration» EstadoEvidencia
 estados_evidencia = (
     ('PENDIENTE', 'Pendiente'),

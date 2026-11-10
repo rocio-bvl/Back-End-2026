@@ -9,7 +9,11 @@ from functools import wraps
 from django.contrib.auth.decorators import login_required
 
 
+# ---------------------------------------------------------------------------
+# RUT: se guarda sin puntos y con guion (22043402-8). Lo mismo valida static/js/validaciones.js en el navegador
+# ---------------------------------------------------------------------------
 def limpiar_rut(rut):
+    """Paso 1 del cálculo: quita puntos y espacios y deja el guion antes del dígito verificador."""
     rut = rut.replace('.', '').replace(' ', '').upper()
     if '-' not in rut and len(rut) > 1:
         rut = rut[:-1] + '-' + rut[-1]
@@ -17,6 +21,11 @@ def limpiar_rut(rut):
 
 
 def validar_rut(rut):
+    """Dígito verificador por módulo 11:
+    2. se separa el número del dígito verificador;
+    3 y 4. cada dígito del número, de derecha a izquierda, se multiplica por la serie 2, 3, 4, 5, 6, 7 (y vuelve a 2);
+    5. se suman los productos;
+    6 y 7. el dígito es 11 menos el resto de dividir la suma por 11. Si da 10 es K, y si da 11 es 0."""
     rut = limpiar_rut(rut)
     if '-' not in rut:
         return False
@@ -38,6 +47,23 @@ def validar_rut(rut):
     else:
         esperado = str(resto)
     return dv == esperado
+
+
+# ---------------------------------------------------------------------------
+# Teléfono: 9 dígitos chilenos (celular 9XXXXXXXX o fijo con código de área), con o sin +56
+# ---------------------------------------------------------------------------
+def normalizar_telefono(telefono):
+    """Devuelve el teléfono con un solo formato (+56 9 1234 5678) o None si no es un número chileno válido.
+    Acepta espacios, guiones, paréntesis y el prefijo +56 o 56."""
+    digitos = ''.join(c for c in (telefono or '') if c.isdigit())
+    if len(digitos) == 11 and digitos.startswith('56'):
+        digitos = digitos[2:]
+    if len(digitos) != 9 or digitos[0] in '01':
+        return None
+    return f"+56 {digitos[0]} {digitos[1:5]} {digitos[5:]}"
+
+
+MENSAJE_TELEFONO = "Escriba un teléfono chileno de 9 dígitos, por ejemplo 9 1234 5678 o +56 51 220 6600."
 
 
 def delegacion_seleccionada(request):

@@ -17,6 +17,7 @@ urlpatterns = [
     path('tubo/', vactividades.tubo_trabajo, name="tubo_trabajo"),
     path('gestion-social/', vactividades.gestion_social, name="gestion_social"),
     path('solicitantes/buscar/', vactividades.buscar_solicitante, name="buscar_solicitante"),
+    path('solicitantes/sugerir/', vactividades.sugerir_solicitantes, name="sugerir_solicitantes"),
     path('gestion-social/nueva/', vactividades.atencion_crear, name="atencion_crear"),
     path('gestion-social/<int:pk>/', vactividades.atencion_detalle, name="atencion_detalle"),
     path('gestion-social/<int:pk>/vincular/', vactividades.atencion_vincular, name="atencion_vincular"),
