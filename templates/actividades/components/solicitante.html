@@ -1,5 +1,8 @@
 {% comment %}
 Solicitante (persona atendida), común a Agregar atención y Agregar actividad (SolicitanteMixin en forms.py).
+- Mientras se escribe el RUT o el nombre (desde 4 caracteres), se sugiere en gris un solicitante registrado
+  (actividades:sugerir_solicitantes). Tab acepta la sugerencia y completa RUT, nombre y teléfono; las flechas
+  cambian a otra coincidencia y Esc la descarta.
 - Se escribe el RUT y, al salir del campo, se consulta actividades:buscar_solicitante.
 - Si está registrado: se completan nombre y teléfono, y se muestran sus cargos en organizaciones.
 - Si no está: "¿Desea agregar solicitante al sistema?". Con "Sí" se abre "Registrar solicitante" (nombre, teléfono y,
@@ -7,20 +10,27 @@ Solicitante (persona atendida), común a Agregar atención y Agregar actividad (
 {% endcomment %}
 <div class="col-md-3">
     <label class="form-label fw-semibold" for="id_rut_solicitante">{{ form.rut_solicitante.label }} <span class="text-danger">*</span></label>
-    <input type="text" name="rut_solicitante" id="id_rut_solicitante" maxlength="15" value="{{ form.rut_solicitante.value|default:'' }}" class="form-control {% if form.rut_solicitante.errors %}is-invalid{% endif %}" placeholder="12345678-5" autocomplete="off">
-    {% for error in form.rut_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+    <div class="campo-sugerencia">
+        <input type="text" class="form-control sugerencia-fantasma" id="fantasma_rut" tabindex="-1" aria-hidden="true" readonly>
+        <input type="text" name="rut_solicitante" id="id_rut_solicitante" maxlength="15" value="{{ form.rut_solicitante.value|default:'' }}" class="form-control sugerencia-real {% if form.rut_solicitante.errors %}is-invalid{% endif %}" placeholder="12.345.678-5" autocomplete="off" data-rut aria-describedby="ayuda_sugerencia">
+        {% for error in form.rut_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+    </div>
 </div>
 <div class="col-md-5">
     <label class="form-label fw-semibold" for="id_nombre_solicitante">{{ form.nombre_solicitante.label }} <span class="text-danger">*</span></label>
-    <input type="text" name="nombre_solicitante" id="id_nombre_solicitante" maxlength="200" value="{{ form.nombre_solicitante.value|default:'' }}" class="form-control {% if form.nombre_solicitante.errors %}is-invalid{% endif %}" placeholder="Nombre y apellido">
-    {% for error in form.nombre_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+    <div class="campo-sugerencia">
+        <input type="text" class="form-control sugerencia-fantasma" id="fantasma_nombre" tabindex="-1" aria-hidden="true" readonly>
+        <input type="text" name="nombre_solicitante" id="id_nombre_solicitante" maxlength="200" value="{{ form.nombre_solicitante.value|default:'' }}" class="form-control sugerencia-real {% if form.nombre_solicitante.errors %}is-invalid{% endif %}" placeholder="Nombre y apellido" autocomplete="off" aria-describedby="ayuda_sugerencia">
+        {% for error in form.nombre_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+    </div>
 </div>
 <div class="col-md-4">
     <label class="form-label fw-semibold" for="id_telefono_solicitante">{{ form.telefono_solicitante.label }} <span class="text-danger">*</span></label>
-    <input type="tel" name="telefono_solicitante" id="id_telefono_solicitante" maxlength="20" value="{{ form.telefono_solicitante.value|default:'' }}" class="form-control {% if form.telefono_solicitante.errors %}is-invalid{% endif %}" placeholder="Ej: 912345678">
+    <input type="tel" name="telefono_solicitante" id="id_telefono_solicitante" maxlength="20" value="{{ form.telefono_solicitante.value|default:'' }}" class="form-control {% if form.telefono_solicitante.errors %}is-invalid{% endif %}" placeholder="Ej: 9 1234 5678" data-telefono>
     {% for error in form.telefono_solicitante.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
 </div>
 <div class="col-12">
+    <div id="ayuda_sugerencia" class="small text-muted d-none" aria-live="polite"></div>
     <div id="solicitante_info" class="alert alert-success small py-2 mb-0 d-none"></div>
     {{ form.agregar_solicitante }}
     <div id="bloque_nuevo_solicitante" class="border rounded p-3 bg-light d-none">
@@ -58,7 +68,8 @@ Solicitante (persona atendida), común a Agregar atención y Agregar actividad (
     var bloque = document.getElementById('bloque_nuevo_solicitante');
     var info = document.getElementById('solicitante_info');
     var url = "{% url 'actividades:buscar_solicitante' %}";
-    var ultimo = rut.value.trim();
+    function sinFormato(valor) { return window.SGR ? SGR.limpiarRut(valor) : valor.trim(); }
+    var ultimo = sinFormato(rut.value);
     var autollenado = false;  // nombre y teléfono los completó el sistema (no la persona que digita)
     // Si el formulario volvió con errores después de responder "Sí", la sección sigue a la vista
     bloque.classList.toggle('d-none', agregar.value !== 'True');
@@ -82,8 +93,8 @@ Solicitante (persona atendida), común a Agregar atención y Agregar actividad (
 
     rut.addEventListener('change', function () {
         var valor = rut.value.trim();
-        if (valor === ultimo) { return; }
-        ultimo = valor;
+        if (sinFormato(valor) === ultimo) { return; }
+        ultimo = sinFormato(valor);
         info.classList.add('d-none');
         nuevo(false);
         if (autollenado) {  // los datos eran de otro RUT: se borran
@@ -91,15 +102,15 @@ Solicitante (persona atendida), común a Agregar atención y Agregar actividad (
             telefono.value = '';
             autollenado = false;
         }
-        if (!valor) { return; }
+        if (!valor || (window.SGR && !SGR.rutValido(valor))) { return; }  // un RUT mal escrito no se busca
         fetch(url + '?rut=' + encodeURIComponent(valor), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function (r) { return r.json(); })
             .then(function (datos) {
                 if (datos.encontrado) {
-                    rut.value = datos.rut;
-                    ultimo = datos.rut;
+                    rut.value = window.SGR ? SGR.formatearRut(datos.rut) : datos.rut;
+                    ultimo = sinFormato(datos.rut);
                     nombre.value = datos.nombre;
-                    telefono.value = datos.telefono;
+                    telefono.value = (window.SGR && SGR.normalizarTelefono(datos.telefono)) || datos.telefono;
                     autollenado = true;
                     info.textContent = 'Solicitante registrado: ' + datos.nombre +
                         (datos.cargos.length ? ' · ' + datos.cargos.join(', ') : '');
@@ -108,8 +119,8 @@ Solicitante (persona atendida), común a Agregar atención y Agregar actividad (
                 }
                 preguntar(function (si) {
                     if (si) {
-                        rut.value = datos.rut;
-                        ultimo = datos.rut;
+                        rut.value = window.SGR ? SGR.formatearRut(datos.rut) : datos.rut;
+                        ultimo = sinFormato(datos.rut);
                         nuevo(true);
                         nombre.focus();
                     } else {
@@ -119,6 +130,91 @@ Solicitante (persona atendida), común a Agregar atención y Agregar actividad (
                     }
                 });
             });
+    });
+
+    // ---- Sugerencia al escribir: texto gris dentro del campo; Tab la acepta ----
+    var urlSugerir = "{% url 'actividades:sugerir_solicitantes' %}";
+    var ayuda = document.getElementById('ayuda_sugerencia');
+    var fantasmas = { rut: document.getElementById('fantasma_rut'), nombre: document.getElementById('fantasma_nombre') };
+    var sugerencias = [];   // hasta 5 solicitantes que calzan con lo escrito
+    var elegida = 0;        // cuál se muestra (las flechas la cambian)
+    var campoActivo = null; // rut o nombre: el campo donde se está escribiendo
+    var espera = null;
+
+    // Lo que falta para completar lo escrito. El RUT calza con o sin puntos (12.345 o 12345)
+    function resto(campo, escrito, s) {
+        if (campo === rut) {
+            var formateado = window.SGR ? SGR.formatearRut(s.rut) : s.rut;
+            if (formateado.indexOf(escrito) === 0) { return formateado.slice(escrito.length); }
+            if (s.rut.indexOf(escrito.toUpperCase()) === 0) { return s.rut.slice(escrito.length); }
+            return '';
+        }
+        return s.nombre.toLowerCase().indexOf(escrito.toLowerCase()) === 0 ? s.nombre.slice(escrito.length) : '';
+    }
+
+    function limpiarSugerencia() {
+        sugerencias = [];
+        fantasmas.rut.value = '';
+        fantasmas.nombre.value = '';
+        ayuda.classList.add('d-none');
+    }
+
+    function mostrarSugerencia() {
+        fantasmas.rut.value = '';
+        fantasmas.nombre.value = '';
+        var s = sugerencias[elegida];
+        var falta = s ? resto(campoActivo, campoActivo.value, s) : '';
+        if (!s || !falta) { ayuda.classList.add('d-none'); return; }
+        (campoActivo === rut ? fantasmas.rut : fantasmas.nombre).value = campoActivo.value + falta;
+        var telefonoTexto = (window.SGR && SGR.normalizarTelefono(s.telefono)) || s.telefono;
+        ayuda.textContent = 'Tab para completar: ' + s.nombre + ' · ' + (window.SGR ? SGR.formatearRut(s.rut) : s.rut) +
+            ' · ' + telefonoTexto + (sugerencias.length > 1 ? '   (' + (elegida + 1) + ' de ' + sugerencias.length + ', flechas para cambiar)' : '');
+        ayuda.classList.remove('d-none');
+    }
+
+    function pedirSugerencias(campo) {
+        campoActivo = campo;
+        var escrito = campo.value.trim();
+        clearTimeout(espera);
+        if (escrito.replace(/[.\s-]/g, '').length < 4) { limpiarSugerencia(); return; }
+        espera = setTimeout(function () {  // espera a que se deje de escribir un momento
+            fetch(urlSugerir + '?q=' + encodeURIComponent(escrito), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (datos) {
+                    if (campo.value.trim() !== escrito) { return; }  // ya se escribió otra cosa
+                    sugerencias = datos.sugerencias;
+                    elegida = 0;
+                    mostrarSugerencia();
+                });
+        }, 200);
+    }
+
+    function completar(s) {
+        rut.value = window.SGR ? SGR.formatearRut(s.rut) : s.rut;
+        nombre.value = s.nombre;
+        telefono.value = (window.SGR && SGR.normalizarTelefono(s.telefono)) || s.telefono;
+        limpiarSugerencia();
+        autollenado = false;                      // los datos son del RUT que se acaba de completar
+        rut.dispatchEvent(new Event('change'));   // muestra "Solicitante registrado" y sus cargos
+        autollenado = true;
+    }
+
+    [rut, nombre].forEach(function (campo) {
+        campo.addEventListener('input', function () { pedirSugerencias(campo); });
+        campo.addEventListener('keydown', function (evento) {
+            var hay = sugerencias.length && campoActivo === campo && resto(campo, campo.value, sugerencias[elegida]);
+            if (!hay) { return; }
+            if (evento.key === 'Tab' && !evento.shiftKey) {
+                completar(sugerencias[elegida]);   // sin preventDefault: el cursor pasa al campo siguiente
+            } else if (evento.key === 'ArrowDown' || evento.key === 'ArrowUp') {
+                evento.preventDefault();
+                elegida = (elegida + (evento.key === 'ArrowDown' ? 1 : sugerencias.length - 1)) % sugerencias.length;
+                mostrarSugerencia();
+            } else if (evento.key === 'Escape') {
+                limpiarSugerencia();
+            }
+        });
+        campo.addEventListener('blur', function () { setTimeout(limpiarSugerencia, 0); });
     });
 })();
 </script>

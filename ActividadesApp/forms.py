@@ -6,9 +6,9 @@ from django import forms
 from django.conf import settings
 from django.utils import timezone
 
-from ActividadesApp.choices import MAX_ACTIVIDADES_DIA, ITEM_FELICITACIONES, cargos_representante
+from ActividadesApp.choices import MAX_ACTIVIDADES_DIA, cargos_representante
 from ActividadesApp.models import Actividad, Territorio, AtencionSocial, Organizacion, Solicitante, Representante
-from UsuarioApp.funciones import limpiar_rut, validar_rut
+from UsuarioApp.funciones import limpiar_rut, validar_rut, normalizar_telefono, MENSAJE_TELEFONO
 from UsuarioApp.models import Catalogo, Usuario
 
 
@@ -67,14 +67,6 @@ def actividades_ingresadas_hoy(usuario):
     return Actividad.objects.filter(usuario=usuario, fecha__gte=inicio, fecha__lt=inicio + timedelta(days=1)).count()
 
 
-def solo_digitos(texto):
-    return ''.join(c for c in (texto or '') if c.isdigit())
-
-
-def es_item_felicitaciones(item):
-    return item is not None and item.nombre == ITEM_FELICITACIONES
-
-
 # ---------------------------------------------------------------------------
 # Solicitante: lo comparten Agregar atención y Agregar actividad
 # ---------------------------------------------------------------------------
@@ -92,6 +84,7 @@ class SolicitanteMixin:
         self.fields['rut_solicitante'] = forms.CharField(max_length=15, required=False, label="RUT del solicitante")
         self.fields['nombre_solicitante'] = forms.CharField(max_length=200, required=False, label="Nombre del solicitante")
         self.fields['telefono_solicitante'] = forms.CharField(max_length=20, required=False, label="Teléfono")
+        # RUT y teléfono también se revisan al escribir: static/js/validaciones.js
         self.fields['agregar_solicitante'] = forms.BooleanField(required=False, widget=forms.HiddenInput)
         self.fields['organizacion'] = forms.ModelChoiceField(queryset=Organizacion.objects.all(), required=False,
                                                              label="Organización que representa (opcional)",
@@ -134,8 +127,10 @@ class SolicitanteMixin:
             self.add_error('nombre_solicitante', "Indique el nombre del solicitante.")
         if not telefono:
             self.add_error('telefono_solicitante', "Indique el teléfono del solicitante.")
-        elif not 8 <= len(solo_digitos(telefono)) <= 12:
-            self.add_error('telefono_solicitante', "Escriba un teléfono válido (entre 8 y 12 dígitos).")
+        elif normalizar_telefono(telefono) is None:
+            self.add_error('telefono_solicitante', MENSAJE_TELEFONO)
+        else:
+            telefono = normalizar_telefono(telefono)  # siempre en el mismo formato: +56 9 1234 5678
         datos['nombre_solicitante'] = nombre
         datos['telefono_solicitante'] = telefono
 
@@ -204,18 +199,11 @@ class ActividadForm(SolicitanteMixin, forms.Form):
         self.solicitud_encontrada = None  # solicitud social que el sistema vinculó sola, por el solicitante
         self.agregar_campos_solicitante()
         self.datos_iniciales_solicitante(actividad.solicitante if actividad is not None else None)
-        items = Catalogo.objects.filter(tipo='ITEM_GESTION', estado='ACTIVO').order_by('id')
-        if usuario is not None and not (usuario.es_administrador() or usuario.es_delegado()):
-            # Las felicitaciones las informa el Delegado, nunca el propio funcionario
-            items = items.exclude(nombre=ITEM_FELICITACIONES)
-        self.fields['item'].queryset = items
+        self.fields['item'].queryset = Catalogo.objects.filter(tipo='ITEM_GESTION', estado='ACTIVO').order_by('id')
         self.fields['territorio'].queryset = territorios_para(usuario) if usuario else Territorio.objects.none()
         if usuario is not None:
             self.fields['encargado'].queryset = funcionarios_para(usuario)
             self.fields['solicitud'].queryset = solicitudes_para(usuario)
-            if usuario.es_delegado():
-                self.fields['encargado'].label = "Funcionario felicitado (solo para Felicitaciones de usuarios)"
-                self.fields['encargado'].empty_label = "Seleccione..."
         if not self.is_bound:
             self.initial.setdefault('fecha_realizacion', timezone.localdate())
 
@@ -238,12 +226,9 @@ class ActividadForm(SolicitanteMixin, forms.Form):
             self.solicitud_encontrada = candidatas[0]
             datos['solicitud'] = candidatas[0]
 
-    def es_felicitacion(self):
-        return es_item_felicitaciones(self.cleaned_data.get('item'))
-
     def es_gestion(self):
-        """Lo que ingresa el Delegado es una gestión (sin puntaje), salvo las felicitaciones de usuarios."""
-        return self.usuario is not None and self.usuario.es_delegado() and not self.es_felicitacion()
+        """Lo que ingresa el Delegado es una gestión: queda registrada, pero no suma puntaje."""
+        return self.usuario is not None and self.usuario.es_delegado()
 
     def revisar_reglas_de_ingreso(self, datos, hoy):
         """Máximo de actividades por día (el Administrador queda exento) y cierre de la semana."""
@@ -258,17 +243,6 @@ class ActividadForm(SolicitanteMixin, forms.Form):
             if fecha < desde:
                 self.add_error('fecha_realizacion', f"La semana de esa fecha ya está cerrada: solo se pueden ingresar "
                                                     f"actividades desde el {desde:%d/%m/%Y}.")
-
-    def revisar_felicitacion(self, datos, hoy):
-        if not self.es_felicitacion():
-            if self.usuario is not None and self.usuario.es_delegado():
-                datos['encargado'] = None  # la gestión es del propio Delegado
-            return
-        if not datos.get('encargado'):
-            self.add_error('encargado', "Indique el funcionario felicitado.")
-        if datos.get('depende_externos') or datos.get('fecha_realizacion') is None or datos['fecha_realizacion'] > hoy:
-            self.add_error('fecha_realizacion', "Una felicitación se informa cuando ya se recibió: use la fecha de hoy "
-                                                "o una anterior.")
 
     def clean_imagen(self):
         imagen = self.cleaned_data.get('imagen')
@@ -285,7 +259,8 @@ class ActividadForm(SolicitanteMixin, forms.Form):
         self.resolver_solicitante(datos)
         self.vincular_solicitud(datos)
         self.revisar_reglas_de_ingreso(datos, hoy)
-        self.revisar_felicitacion(datos, hoy)
+        if self.es_gestion():
+            datos['encargado'] = None  # la gestión es del propio Delegado
         if datos.get('depende_externos'):
             # En el Tubo todavía no hay evidencia. La fecha es opcional: si se elige, no puede ser pasada
             fecha = datos.get('fecha_realizacion')

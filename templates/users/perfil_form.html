@@ -52,7 +52,7 @@ no se editan aquí: los asigna quien administra los usuarios.
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold" for="id_telefono">{{ form.telefono.label }}</label>
-                                <input type="text" name="telefono" id="id_telefono" maxlength="20" value="{{ form.telefono.value|default:'' }}" class="form-control {% if form.telefono.errors %}is-invalid{% endif %}" placeholder="Ej: 912345678">
+                                <input type="tel" name="telefono" id="id_telefono" maxlength="20" data-telefono placeholder="Ej: 9 1234 5678" value="{{ form.telefono.value|default:'' }}" class="form-control {% if form.telefono.errors %}is-invalid{% endif %}">
                                 {% for error in form.telefono.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                             </div>
                         </div>

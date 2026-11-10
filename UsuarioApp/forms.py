@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 
 from UsuarioApp.choices import roles
 from UsuarioApp.funciones import opciones_delegacion
-from UsuarioApp.funciones import limpiar_rut, validar_rut
+from UsuarioApp.funciones import limpiar_rut, validar_rut, normalizar_telefono, MENSAJE_TELEFONO
 from UsuarioApp.models import Usuario, Delegacion
 from ActividadesApp.models import Territorio
 
@@ -13,6 +13,16 @@ def territorio_de_la_delegacion(territorio, codigo_delegacion):
     """El territorio debe ser de la misma delegación que el usuario."""
     if territorio is not None and (territorio.delegacion is None or territorio.delegacion.nombre != codigo_delegacion):
         raise ValidationError("El territorio no pertenece a la delegación elegida.")
+
+
+def telefono_opcional(valor):
+    """El teléfono del usuario del sistema es opcional; si se escribe, debe ser válido y queda en un solo formato."""
+    if not (valor or '').strip():
+        return ''
+    telefono = normalizar_telefono(valor)
+    if telefono is None:
+        raise ValidationError(MENSAJE_TELEFONO)
+    return telefono
 
 
 class UsuarioCrearForm(forms.Form):
@@ -48,6 +58,9 @@ class UsuarioCrearForm(forms.Form):
         if Usuario.objects.filter(email__iexact=email).exists():
             raise ValidationError("Ya existe un usuario con ese correo.")
         return email
+
+    def clean_telefono(self):
+        return telefono_opcional(self.cleaned_data.get('telefono'))
 
     def clean(self):
         datos = super().clean()
@@ -86,6 +99,9 @@ class UsuarioEditarForm(forms.ModelForm):
         if roles_permitidos is not None:
             self.fields['rol'].choices = roles_permitidos
 
+    def clean_telefono(self):
+        return telefono_opcional(self.cleaned_data.get('telefono'))
+
     def clean(self):
         datos = super().clean()
         if datos.get('territorio') is not None and datos.get('rol') != 'Funcionario':
@@ -106,6 +122,9 @@ class PerfilForm(forms.ModelForm):
         fields = ['foto', 'telefono', 'email']
         labels = {'foto': "Foto de perfil (JPG o PNG, máx. 2 MB)", 'telefono': "Teléfono", 'email': "Correo electrónico"}
         widgets = {'foto': forms.FileInput(attrs={'accept': '.jpg,.jpeg,.png'})}
+
+    def clean_telefono(self):
+        return telefono_opcional(self.cleaned_data.get('telefono'))
 
     def clean_foto(self):
         foto = self.cleaned_data.get('foto')

@@ -1,5 +1,5 @@
 """Pruebas de los requerimientos de la municipalidad (noviembre 2026): persona atendida obligatoria, máximo diario,
-cierre de semana, puntaje decidido por el Delegado, gestiones del Delegado, felicitaciones, tope de 120%, ausencias,
+cierre de semana, puntaje decidido por el Delegado, gestiones del Delegado, tope de 120%, ausencias,
 alertas de validación y reporte de atrasos."""
 from datetime import timedelta
 
@@ -7,7 +7,7 @@ from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from ActividadesApp.choices import ITEM_FELICITACIONES, MAX_ACTIVIDADES_DIA
+from ActividadesApp.choices import MAX_ACTIVIDADES_DIA
 from ActividadesApp.forms import inicio_semana_abierta
 from ActividadesApp.models import Actividad, AtencionSocial, Evidencia, Validacion, Organizacion, Solicitante, Representante
 from ActividadesApp.tests import BaseActividades
@@ -131,30 +131,6 @@ class PuntajeTest(BaseActividades):
         html = self.client.get(reverse('actividades:mi_gestion')).content.decode()
         self.assertIn('TOPE ALCANZADO', html)
         self.assertEqual(meta.periodo.tope_cumplimiento, 120)
-
-
-@override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
-class FelicitacionesTest(BaseActividades):
-    def setUp(self):
-        super().setUp()
-        self.item = Catalogo.objects.get(tipo='ITEM_GESTION', nombre=ITEM_FELICITACIONES)
-
-    def test_el_funcionario_no_puede_elegir_felicitaciones(self):
-        self.entrar('55555555-5')
-        items = self.client.get(reverse('actividades:actividad_crear')).context['form'].fields['item'].queryset
-        self.assertNotIn(self.item, items)
-
-    def test_el_delegado_informa_la_felicitacion_y_suma_al_funcionario(self):
-        MetaDesempeno.objects.create(valor_objetivo=2, ponderador=0, cargo=self.datos['cargo'], item=self.item,
-                                     periodo=self.datos['periodo'])
-        self.entrar('33333333-3')
-        self.registrar(item=self.item.pk)  # sin funcionario felicitado no se guarda
-        self.assertFalse(Actividad.objects.exists())
-        self.registrar(item=self.item.pk, encargado=self.func.pk)
-        felicitacion = Actividad.objects.get()
-        self.assertEqual((felicitacion.estado, felicitacion.es_gestion, felicitacion.otorga_puntaje()), ('VALIDADA', False, True))
-        avance = {ind.meta.item_id: ind.avance_actual for ind in indicadores_usuario(self.func, self.datos['periodo'], self.hoy)}
-        self.assertEqual(avance[self.item.pk], 1)
 
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
@@ -341,8 +317,33 @@ class SolicitantesTest(BaseActividades):
     def test_corregir_el_telefono_lo_actualiza_en_un_solo_lugar(self):
         self.atencion(agregar_solicitante='True')
         self.atencion(telefono_solicitante='955554444')
-        self.assertEqual(Solicitante.objects.get().telefono, '955554444')
+        self.assertEqual(Solicitante.objects.get().telefono, '+56 9 5555 4444')
         self.assertTrue(Auditoria.objects.filter(entidad='Solicitante', evento='MODIFICACION').exists())
+
+    def test_telefono_del_solicitante_debe_ser_chileno(self):
+        respuesta = self.atencion(agregar_solicitante='True', telefono_solicitante='1234')
+        self.assertIn('telefono_solicitante', respuesta.context['form'].errors)
+        self.atencion(agregar_solicitante='True', telefono_solicitante='+56 9 8765 4321')
+        self.assertEqual(Solicitante.objects.get().telefono, '+56 9 8765 4321')
+
+    def sugerir(self, texto):
+        return self.client.get(reverse('actividades:sugerir_solicitantes'), {'q': texto}).json()['sugerencias']
+
+    def test_sugiere_por_inicio_del_rut_o_del_nombre(self):
+        Solicitante.objects.create(rut='12345678-5', nombre='María Ejemplo', telefono='+56 9 1111 2222')
+        Solicitante.objects.create(rut='12349999-1', nombre='Mario Rojas', telefono='+56 9 3333 4444')
+        self.assertEqual([s['nombre'] for s in self.sugerir('12.345')], ['María Ejemplo'])
+        self.assertEqual([s['nombre'] for s in self.sugerir('123456785')], ['María Ejemplo'])  # sin guion
+        self.assertEqual([s['rut'] for s in self.sugerir('1234')], ['12345678-5', '12349999-1'])
+        self.assertEqual([s['nombre'] for s in self.sugerir('mari')], ['María Ejemplo', 'Mario Rojas'])
+
+    def test_sugerencias_con_minimo_de_caracteres_y_maximo_de_personas(self):
+        for numero in range(7):
+            Solicitante.objects.create(rut=f'1500000{numero}-0', nombre=f'Persona {numero}')
+        self.assertEqual(self.sugerir('150'), [])          # menos de 4 caracteres: nada
+        self.assertEqual(len(self.sugerir('1500')), 5)     # a lo más 5
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('actividades:sugerir_solicitantes'), {'q': '1500'}).status_code, 302)
 
     def test_cargo_ocupado_no_se_repite(self):
         self.atencion(agregar_solicitante='True', organizacion=self.junta.pk, cargo='PRESIDENTE')

@@ -61,7 +61,8 @@
                             <!-- Teléfono -->
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold">Teléfono</label>
-                                <input type="text" name="telefono" maxlength="20" class="form-control" value="{{ form.telefono.value|default:'' }}" placeholder="Ej: 912345678">
+                                <input type="tel" name="telefono" maxlength="20" class="form-control {% if form.telefono.errors %}is-invalid{% endif %}" value="{{ form.telefono.value|default:'' }}" placeholder="Ej: 9 1234 5678" data-telefono>
+                                {% for error in form.telefono.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                             </div>
 
                             <!-- Rol de Sistema -->

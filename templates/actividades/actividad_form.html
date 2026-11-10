@@ -9,7 +9,7 @@
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-muni text-white fw-bold py-3 d-flex align-items-center">
                     <i class="bi bi-journal-plus me-2 fs-5"></i>
-                    <span>{% if modo_edicion %}Modificar Actividad {{ actividad.folio }} {% elif es_delegado %}Registrar Gestión o Felicitación{% else %}Registrar Actividad Territorial{% endif %}</span>
+                    <span>{% if modo_edicion %}Modificar Actividad {{ actividad.folio }} {% elif es_delegado %}Registrar Gestión{% else %}Registrar Actividad Territorial{% endif %}</span>
                 </div>
                 <div class="card-body p-4">
                     <div class="alert alert-light border small mb-4" role="note">
@@ -20,7 +20,7 @@
                             <li><strong>Depende de factores externos:</strong> pasa al <strong>Tubo de Trabajo</strong>. La fecha de realización es opcional: si todavía no se sabe, se agrega después.</li>
                             <li><strong>Reglas de ingreso:</strong> máximo 7 actividades por día. La semana se cierra el lunes siguiente: desde el martes ya no se ingresan actividades realizadas la semana anterior.</li>
                             <li><strong>Puntaje:</strong> lo da la acción realizada (por ejemplo, el taller), no su coordinación previa. Sin el nombre y el teléfono de la persona atendida, la actividad no tiene puntaje.</li>
-                            {% if es_delegado %}<li><strong>Delegado:</strong> lo que usted ingresa queda como <strong>gestión</strong> y no suma puntaje. Las <strong>Felicitaciones de usuarios</strong> se informan a nombre del funcionario felicitado y suman a él.</li>{% endif %}
+                            {% if es_delegado %}<li><strong>Delegado:</strong> lo que usted ingresa queda como <strong>gestión</strong> y no suma puntaje.</li>{% endif %}
                         </ul>
                     </div>
 
@@ -68,7 +68,8 @@
                                 {% endif %}
                             </div>
 
-                            <!-- Encargado: se busca entre los Funcionarios registrados -->
+                            <!-- Encargado: se busca entre los Funcionarios registrados. La gestión del Delegado es suya: no lleva -->
+                            {% if not es_delegado %}
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold" for="buscar_encargado">{{ form.encargado.label }}</label>
                                 <input type="search" id="buscar_encargado" class="form-control form-control-sm mb-1" placeholder="Buscar funcionario por nombre o territorio...">
@@ -79,8 +80,9 @@
                                     {% endfor %}
                                 </select>
                                 {% for error in form.encargado.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
-                                <small class="text-muted">{% if es_delegado %}Solo para Felicitaciones de usuarios: el funcionario felicitado recibe el punto.{% else %}Si lo deja en "Yo mismo", la actividad queda a su cargo.{% endif %}</small>
+                                <small class="text-muted">Si lo deja en "Yo mismo", la actividad queda a su cargo.</small>
                             </div>
+                            {% endif %}
 
                             <!-- Vincular a una solicitud social registrada antes -->
                             <div class="col-12">
@@ -98,7 +100,7 @@
                                                 </tr>
                                                 {% for solicitud in form.fields.solicitud.queryset %}
                                                 <tr>
-                                                    <td><input class="form-check-input" type="radio" name="solicitud" id="solicitud_{{ solicitud.pk }}" value="{{ solicitud.pk }}" data-rut="{{ solicitud.solicitante.rut }}" {% if form.solicitud.value|stringformat:"s" == solicitud.pk|stringformat:"s" %}checked{% endif %}></td>
+                                                    <td><input class="form-check-input" type="radio" name="solicitud" id="solicitud_{{ solicitud.pk }}" value="{{ solicitud.pk }}" data-solicitante-rut="{{ solicitud.solicitante.rut }}" {% if form.solicitud.value|stringformat:"s" == solicitud.pk|stringformat:"s" %}checked{% endif %}></td>
                                                     <td><label for="solicitud_{{ solicitud.pk }}" class="mb-0 fw-bold">{{ solicitud.codigo }}</label></td>
                                                     <td>{{ solicitud.fecha|date:"d/m/Y" }}</td>
                                                     <td>{{ solicitud.solicitante.nombre }}</td>
@@ -205,6 +207,7 @@
 
         // Filtro de texto para buscar encargado y solicitud social
         function filtrar(entrada, filas) {
+            if (!entrada) { return; }  // el Delegado no tiene buscador de encargado
             entrada.addEventListener('input', function () {
                 var texto = entrada.value.toLowerCase().trim();
                 Array.prototype.forEach.call(filas(), function (fila) {
@@ -220,10 +223,10 @@
         });
 
         // Al elegir una solicitud social, la persona atendida es su solicitante: se escribe su RUT y se buscan sus datos
-        Array.prototype.forEach.call(document.querySelectorAll('input[name="solicitud"][data-rut]'), function (radio) {
+        Array.prototype.forEach.call(document.querySelectorAll('input[name="solicitud"][data-solicitante-rut]'), function (radio) {
             radio.addEventListener('change', function () {
                 var rut = document.getElementById('id_rut_solicitante');
-                rut.value = radio.dataset.rut;
+                rut.value = radio.dataset.solicitanteRut;
                 rut.dispatchEvent(new Event('change'));
             });
         });

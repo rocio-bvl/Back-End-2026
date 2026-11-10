@@ -6,7 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from IndicadoresApp.models import Periodo, MetaDesempeno
-from UsuarioApp.funciones import limpiar_rut, validar_rut
+from UsuarioApp.funciones import limpiar_rut, validar_rut, normalizar_telefono
 from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion, Catalogo
 
 from io import StringIO
@@ -50,6 +50,36 @@ class RutTest(TestCase):
     def test_validar_rut(self):
         self.assertTrue(validar_rut('11.111.111-1'))
         self.assertFalse(validar_rut('11111111-2'))
+
+    def test_validar_rut_como_el_rutificador(self):
+        # El ejemplo del Excel: 22.043.402-8 (suma 69, resto 3, 11 - 3 = 8)
+        self.assertTrue(validar_rut('22.043.402-8'))
+        self.assertFalse(validar_rut('22.043.402-7'))
+        self.assertTrue(validar_rut('10.000.013-K'))   # 11 - resto = 10: el dígito es K
+        self.assertTrue(validar_rut('10.000.004-0'))   # 11 - resto = 11: el dígito es 0
+        self.assertFalse(validar_rut('22.043.402'))    # sin dígito verificador no calza
+        self.assertFalse(validar_rut('22.O43.402-8'))  # letra O en vez de cero
+
+
+class TelefonoTest(TestCase):
+    def test_formatos_aceptados_quedan_iguales(self):
+        for escrito in ['912345678', '9 1234 5678', '+56 9 1234 5678', '56912345678', '(+56) 9-1234-5678']:
+            self.assertEqual(normalizar_telefono(escrito), '+56 9 1234 5678', escrito)
+        self.assertEqual(normalizar_telefono('51 220 6600'), '+56 5 1220 6600')  # fijo con código de área
+
+    def test_rechazados(self):
+        for escrito in ['12345678', '91234567', '9123456789', '012345678', '112345678', 'abc', '+54 9 1234 5678']:
+            self.assertIsNone(normalizar_telefono(escrito), escrito)
+
+    def test_formularios_de_usuario_rechazan_telefono_invalido(self):
+        crear_datos_base()
+        usuario = crear_usuario('55555555-5', 'Funcionario')
+        self.client.login(username='55555555-5', password=CLAVE)
+        respuesta = self.client.post(reverse('users:perfil_editar'), {'email': usuario.email, 'telefono': '12345'})
+        self.assertIn('telefono', respuesta.context['form'].errors)
+        self.client.post(reverse('users:perfil_editar'), {'email': usuario.email, 'telefono': ''})  # opcional
+        usuario.refresh_from_db()
+        self.assertEqual(usuario.telefono, '')
 
 
 class LoginYPermisosTest(TestCase):
@@ -457,11 +487,11 @@ class PerfilTest(TestCase):
         from ActividadesApp.tests import foto
         self.assertRedirects(self.guardar(foto=foto()), reverse('actividades:mi_gestion'))
         self.func.refresh_from_db()
-        self.assertEqual(self.func.telefono, '912345678')
+        self.assertEqual(self.func.telefono, '+56 9 1234 5678')  # queda en el formato único
         self.assertTrue(self.func.foto.name.startswith('perfiles/'))
         html = self.client.get(reverse('actividades:mi_gestion')).content.decode()
         self.assertIn(self.func.foto.url, html)
-        self.assertIn('912345678', html)
+        self.assertIn('+56 9 1234 5678', html)
         # Quitar la foto
         self.guardar(quitar_foto='on')
         self.func.refresh_from_db()

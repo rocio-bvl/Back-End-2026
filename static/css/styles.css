@@ -172,3 +172,11 @@ body { background-color: #f8f9fa; }
 .estado-registrada { color: #6c757d; }
 .estado-rechazada { color: #dc3545; }
 .estado-validada { color: #198754; }
+
+/* Sugerencia al escribir (texto gris dentro del campo, se acepta con Tab): templates/actividades/components/solicitante.html.
+   Detrás del campo real hay una copia de solo lectura que muestra lo escrito más el resto sugerido */
+.campo-sugerencia { position: relative; }
+.campo-sugerencia .sugerencia-fantasma {
+    position: absolute; inset: 0; color: #9aa0a6; background-color: #fff; pointer-events: none;
+}
+.campo-sugerencia .sugerencia-real { position: relative; background-color: transparent; }

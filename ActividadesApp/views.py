@@ -2,7 +2,8 @@ from datetime import date, timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q, F
+from django.db.models import Q, F, Value
+from django.db.models.functions import Replace
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -247,8 +248,8 @@ def guardar_evidencia(actividad, usuario, comentario, imagen):
 def actividad_crear(request):
     if not request.user.is_authenticated:
         return redirect('users:login')
-    # Registran actividades el Funcionario y el Admin; el Delegado ingresa sus gestiones (sin puntaje) y las
-    # felicitaciones de usuarios. El Coordinador solo supervisa.
+    # Registran actividades el Funcionario y el Admin; el Delegado ingresa sus gestiones (sin puntaje).
+    # El Coordinador solo supervisa.
     if not request.user.puede_agregar_actividad():
         return acceso_denegado(request, 'Registrar Actividad')
 
@@ -285,18 +286,6 @@ def actividad_crear(request):
                 messages.info(request, f"La persona atendida ya estaba en el Registro de Atenciones: la actividad quedó "
                                        f"vinculada a la solicitud {form.solicitud_encontrada.codigo()}.")
             avisar_tope(request, actividad)
-
-            if form.es_felicitacion():
-                # El Delegado informa la felicitación con respaldo formal: queda validada y suma al funcionario felicitado
-                evidencia = guardar_evidencia(actividad, request.user, datos['comentario'].strip(), datos['imagen'])
-                Validacion.objects.create(evidencia=evidencia, decision='APROBAR', otorga_puntaje=True,
-                                          observacion="Felicitación informada por el Delegado.", verificador=request.user)
-                evidencia.estado_revision = 'APROBADA'
-                evidencia.save()
-                actividad.sincronizar_estado()
-                registrar_auditoria(request.user, 'MODIFICACION', 'Evidencia', evidencia.pk, 'PENDIENTE', 'APROBADA (felicitación)')
-                messages.success(request, f"Felicitación {actividad.folio()} registrada para {actividad.encargado}.")
-                return redirect('actividades:mi_gestion')
 
             if estado == 'EVIDENCIA_INGRESADA':
                 guardar_evidencia(actividad, request.user, datos['comentario'].strip(), datos['imagen'])
@@ -894,6 +883,30 @@ def buscar_solicitante(request):
         'encontrado': True, 'rut': solicitante.rut, 'nombre': solicitante.nombre, 'telefono': solicitante.telefono,
         'cargos': [f"{c.get_cargo_display()} de {c.organizacion}" for c in solicitante.cargos.all()],
     })
+
+
+# Sugerencias al escribir: desde 4 caracteres y a lo más 5 personas, para no exponer la lista completa
+SUGERENCIAS_MINIMO = 4
+SUGERENCIAS_MAXIMO = 5
+
+
+@login_required
+def sugerir_solicitantes(request):
+    """Solicitantes registrados cuyo RUT o nombre empieza con lo escrito (responde en JSON).
+    Con dígitos busca por RUT, con o sin puntos y guion (12.345 o 12345); con letras, por nombre."""
+    texto = request.GET.get('q', '').strip()
+    limpio = texto.replace('.', '').replace('-', '').replace(' ', '').upper()
+    if len(limpio) < SUGERENCIAS_MINIMO:
+        return JsonResponse({'sugerencias': []})
+    if limpio[:-1].isdigit() or limpio.isdigit():
+        # El RUT se guarda con guion (12345678-5): se compara sin él para que 123456785 también calce
+        solicitantes = (Solicitante.objects.annotate(rut_sin_guion=Replace('rut', Value('-'), Value('')))
+                        .filter(rut_sin_guion__startswith=limpio).order_by('rut'))
+    else:
+        solicitantes = Solicitante.objects.filter(nombre__istartswith=texto).order_by('nombre')
+    sugerencias = [{'rut': s.rut, 'nombre': s.nombre, 'telefono': s.telefono}
+                   for s in solicitantes[:SUGERENCIAS_MAXIMO]]
+    return JsonResponse({'sugerencias': sugerencias})
 
 
 def atencion_form(request, atencion=None):
