@@ -16,4 +16,5 @@ db.sqlite3
 .vscode/
 .idea/
 analysis/
+logs/
 staticfiles/

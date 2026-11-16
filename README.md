@@ -135,6 +135,8 @@ Un funcionario registra la solicitud de una persona natural (fecha y funcionario
 
 El sistema incluye un asistente de chat con IA en un widget flotante (abajo a la derecha), disponible para los roles **Admin, Coordinador y Delegado** y para el superusuario. El rol **Funcionario** no ve el widget y, si invoca los endpoints directamente, recibe `403` con el intento registrado en la auditoría (`ACCESO_DENEGADO`). Sin sesión, el usuario es enviado al login. El código vive en `ChatbotApp` y el historial se guarda por usuario en la tabla `mensaje_chat`; el botón **Nueva** del widget borra la conversación propia.
 
+El asistente responde con **contexto real del SGR** (Fase 2): documentación interna y FAQ cargadas en la base (`DocumentoConocimiento`) más datos agregados de actividades, metas, atenciones, usuarios y ausencias, filtrados por el alcance del rol. Cada usuario tiene su **propia caché** y cada interacción queda registrada en `EventoChatbot` (prompt, contexto, mensajes, respuesta, modelo, origen, latencia, tokens, guardrails y documentos usados). El detalle técnico está en [`docs/chatbot.md`](docs/chatbot.md).
+
 La conversación se envía al proveedor **desde el servidor**: la ApiKey se lee del `.env`, nunca se incluye en plantillas, JavaScript ni respuestas, y los errores del proveedor se muestran con un mensaje genérico. El cliente HTTP usa solo la biblioteca estándar (`urllib.request`), por lo que no se agregaron dependencias.
 
 Configuración en el `.env` (cualquier proveedor compatible con la API *OpenAI Chat Completions*):
@@ -149,6 +151,15 @@ CHATBOT_TIMEOUT=30
 CHATBOT_LOCAL_API_URL='http://127.0.0.1:11434/v1/chat/completions'
 CHATBOT_LOCAL_MODEL=''
 CHATBOT_LOCAL_TIMEOUT=120
+
+# Fase 2: RAG, caché por usuario y observabilidad
+CHATBOT_PROMPT_VERSION=2.0
+CHATBOT_CACHE_TTL=600         # segundos de vida de una respuesta cacheada
+CHATBOT_RATE_LIMIT=30         # consultas por usuario y ventana
+CHATBOT_RATE_VENTANA=3600     # segundos de la ventana
+CHATBOT_RAG_MAX_CARACTERES=4000
+CHATBOT_MAX_RESPUESTA=4000
+CHATBOT_LOG_LEVEL=INFO
 ```
 
 | Proveedor | `CHATBOT_API_URL` | Ejemplo de `CHATBOT_MODEL` |
@@ -171,9 +182,24 @@ Endpoints (JSON, solo usuarios autenticados con acceso):
 
 | Ruta | Método | Uso |
 |---|---|---|
-| `/chatbot/mensaje/` | POST | Envía la pregunta y devuelve `{"respuesta", "fecha"}` (400/403/502/503 ante errores) |
+| `/chatbot/mensaje/` | POST | Envía la pregunta y devuelve `{"respuesta", "fecha"}` (400/403/429/502/503 ante errores) |
 | `/chatbot/historial/` | GET | Últimos 50 mensajes del usuario, en orden cronológico |
 | `/chatbot/limpiar/` | POST | Borra la conversación del usuario autenticado |
+
+### RAG, caché y observabilidad (Fase 2)
+
+- **Documentación**: `python manage.py cargar_conocimiento_chatbot` carga 12 documentos iniciales
+  (idempotente, se puede ejecutar varias veces). El Administrador los edita en Django Admin.
+- **Datos por rol**: Admin, Coordinador y superusuario reciben datos de toda la municipalidad; el
+  Delegado, solo de su delegación. El contexto no incluye nombres, RUT ni teléfonos.
+- **Guardrails**: se rechazan los intentos claros de prompt injection, se aplica un rate limit por
+  usuario (`429`) y se sanean secretos/truncado en la salida.
+- **Caché por usuario**: clave `chatbot:respuesta:{usuario_id}:{sha256(...)}`; nunca se comparte
+  entre usuarios. TTL configurable (`CHATBOT_CACHE_TTL`, 600 s por defecto).
+- **Observabilidad**: cada interacción (incluidos bloqueos y errores) queda en `EventoChatbot` y en
+  `logs/chatbot.log`. El evento es de solo lectura en Django Admin.
+- **Limitación**: la caché es `LocMemCache`, por proceso. Con varios workers cada uno tiene su
+  propia caché y su propio contador de rate limit.
 
 ## Pruebas automatizadas
 
@@ -181,7 +207,7 @@ Endpoints (JSON, solo usuarios autenticados con acceso):
 python manage.py test
 ```
 
-246 pruebas con `django.test`, sobre una base temporal. Cubren login, grupos y permisos, protección de vistas, recuperación de contraseña, tableros por perfil, mantenedores, buscadores, transacciones, auditoría y chatbot (con la llamada al proveedor de IA mockeada: nunca se usa la red ni una clave real).
+269 pruebas con `django.test`, sobre una base temporal. Cubren login, grupos y permisos, protección de vistas, recuperación de contraseña, tableros por perfil, mantenedores, buscadores, transacciones, auditoría y chatbot (con la llamada al proveedor de IA mockeada: nunca se usa la red ni una clave real). Las pruebas del chatbot incluyen RAG de documentos y de datos por rol, idempotencia del comando de carga, caché por usuario y TTL, rate limit, prompt injection, saneo de salida, eventos de observabilidad y el cliente detallado.
 
 ## Estructura del proyecto
 
@@ -191,7 +217,7 @@ python manage.py test
 | `IndicadoresApp` | Periodos, metas, semáforo, resumen por delegación y tableros |
 | `ActividadesApp` | Actividades, evidencias, validación, territorios, Tubo de Trabajo y gestión social: organizaciones, solicitantes, representantes y atenciones sociales |
 | `AuditoriaApp` | Bitácora de cambios y accesos denegados |
-| `ChatbotApp` | Asistente de chat con IA: modelo `MensajeChat`, cliente del proveedor, endpoints JSON, widget, JS y CSS |
+| `ChatbotApp` | Asistente de chat con IA: modelos `MensajeChat`, `DocumentoConocimiento` y `EventoChatbot`, cliente del proveedor, RAG, guardrails, caché por usuario, endpoints JSON, widget, JS y CSS |
 | `config` | Configuración del proyecto (lee el `.env`) |
 
 ## Ramas

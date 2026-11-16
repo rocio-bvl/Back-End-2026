@@ -149,9 +149,14 @@ class PlanChatbotMensajeTest(BaseChatbotTest):
         self.assertEqual([m.emisor for m in guardados], ['USUARIO', 'ASISTENTE'])
         self.assertEqual(guardados[0].contenido, '¿Cómo registro una actividad?')
         self.assertEqual(guardados[1].contenido, 'Registra la actividad en Mi Gestión.')
-        # El contexto enviado al proveedor lleva el rol de cada mensaje
-        self.assertEqual(simulado.call_args[0][0],
-                         [{'role': 'user', 'content': '¿Cómo registro una actividad?'}])
+        # El contexto enviado al proveedor lleva el sistema RAG, el historial y la pregunta final
+        mensajes_enviados = simulado.call_args[0][0]
+        self.assertEqual(mensajes_enviados[0]['role'], 'system')
+        self.assertIn('CONTEXTO DEL SGR', mensajes_enviados[0]['content'])
+        self.assertEqual(mensajes_enviados[-1],
+                         {'role': 'user', 'content': '¿Cómo registro una actividad?'})
+        self.assertEqual([m['content'] for m in mensajes_enviados].count(
+            '¿Cómo registro una actividad?'), 1)
 
     def test_cp_chat_010_contexto_recortado_al_maximo(self):
         for numero in range(20):
@@ -161,9 +166,11 @@ class PlanChatbotMensajeTest(BaseChatbotTest):
                 respuesta = enviar(self.client, 'pregunta final')
         self.assertEqual(respuesta.status_code, 200)
         contexto = simulado.call_args[0][0]
-        self.assertEqual(len(contexto), 4)
+        # 1 mensaje de sistema (contexto RAG) + historial recortado (4) + la pregunta final
+        self.assertEqual(len(contexto), 6)
+        self.assertEqual(contexto[0]['role'], 'system')
         self.assertEqual(contexto[-1], {'role': 'user', 'content': 'pregunta final'})
-        self.assertTrue(all(mensaje['role'] in ('user', 'assistant') for mensaje in contexto))
+        self.assertTrue(all(mensaje['role'] in ('user', 'assistant') for mensaje in contexto[1:]))
 
     def test_cp_chat_011_json_invalido_400(self):
         respuesta = self.client.post(reverse('chatbot:mensaje'), data='esto no es json',

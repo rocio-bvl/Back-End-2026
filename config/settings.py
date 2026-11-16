@@ -192,3 +192,61 @@ CHATBOT_LOCAL_REASONING_EFFORT = os.getenv('CHATBOT_LOCAL_REASONING_EFFORT', 'no
 CHATBOT_ACTIVO = bool((CHATBOT_API_KEY and CHATBOT_MODEL) or CHATBOT_LOCAL_MODEL)
 CHATBOT_MAX_MENSAJE = 2000    # caracteres máximos por pregunta del usuario
 CHATBOT_MAX_HISTORIAL = 12    # mensajes (6 turnos) que se envían al proveedor como contexto
+
+# ----- Fase 2: RAG, caché por usuario y observabilidad -----
+# Versión del prompt de sistema: se incrementa al cambiarlo y queda en cada EventoChatbot y en la clave de caché.
+CHATBOT_PROMPT_VERSION = os.getenv('CHATBOT_PROMPT_VERSION', '2.0')
+CHATBOT_CACHE_TTL = int(os.getenv('CHATBOT_CACHE_TTL') or '600')          # segundos de vida de una respuesta cacheada
+CHATBOT_RATE_LIMIT = int(os.getenv('CHATBOT_RATE_LIMIT') or '30')         # consultas permitidas por ventana
+CHATBOT_RATE_VENTANA = int(os.getenv('CHATBOT_RATE_VENTANA') or '3600')   # segundos de la ventana del rate limit
+CHATBOT_RAG_MAX_CARACTERES = int(os.getenv('CHATBOT_RAG_MAX_CARACTERES') or '4000')  # presupuesto del contexto RAG
+CHATBOT_MAX_RESPUESTA = int(os.getenv('CHATBOT_MAX_RESPUESTA') or '4000')            # tope de la respuesta saneada
+
+# Caché en memoria del proceso (sin dependencias). LocMemCache es por proceso: con varios workers
+# la caché y el rate limit no se comparten entre ellos (trade-off documentado en docs/chatbot.md).
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'sgr-chatbot',
+        'TIMEOUT': CHATBOT_CACHE_TTL,
+    }
+}
+
+# Carpeta de logs del chatbot: se crea sola al arrancar (no se versiona, ver .gitignore).
+LOGS_DIR = BASE_DIR / 'logs'
+try:
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    # Sin permisos de escritura la aplicación sigue funcionando: el logger escribe solo en consola.
+    pass
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'chatbot': {
+            'format': '%(asctime)s %(levelname)s %(name)s %(message)s',
+        },
+    },
+    'handlers': {
+        'chatbot_consola': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'chatbot',
+        },
+        'chatbot_archivo': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': str(LOGS_DIR / 'chatbot.log'),
+            'maxBytes': 1024 * 1024,   # 1 MB
+            'backupCount': 5,
+            'encoding': 'utf-8',
+            'formatter': 'chatbot',
+        },
+    },
+    'loggers': {
+        'chatbot': {
+            'handlers': ['chatbot_consola', 'chatbot_archivo'],
+            'level': os.getenv('CHATBOT_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+    },
+}
