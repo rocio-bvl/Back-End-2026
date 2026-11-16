@@ -30,7 +30,7 @@ Integrantes: Juliet Araya y Rocío Vásquez.
 
 2. Crear la base de datos vacía `municipalidad` (utf8mb4) en MySQL o phpMyAdmin.
 
-3. Copiar `.env.example` como `.env`, en la misma carpeta que `manage.py`, y completar los valores: `SECRET_KEY`, datos de la base (`DB_*`) y, si se quiere enviar correos reales, los datos de correo (ver más abajo). El archivo `.env` no se sube a GitHub.
+3. Copiar `.env.example` como `.env`, en la misma carpeta que `manage.py`, y completar los valores: `SECRET_KEY`, datos de la base (`DB_*`) y, si se quiere enviar correos reales, los datos de correo; para el asistente de chat con IA, la `CHATBOT_*` (ver más abajo). El archivo `.env` no se sube a GitHub.
 
 4. Crear las tablas, cargar los datos de ejemplo y crear los grupos, en este orden:
 
@@ -86,6 +86,7 @@ Las vistas se protegen con `@login_required` o con `@permiso_requerido(permiso, 
 | Metas generales de la municipalidad | Agrega y edita | Visualiza | Visualiza | No |
 | Metas propias de una delegación | Todas | Visualiza | Las de su delegación | No |
 | Auditoría (solo lectura) | Sí | Sí | No | No |
+| Asistente de chat con IA | Sí | Sí | Sí | No |
 | Entrar a Django Admin | Sí (superusuario) | No | No | No |
 
 ## Funcionalidades
@@ -130,13 +131,57 @@ Luego se registra la ejecución, el Delegado valida (`VALIDADA`) o rechaza con m
 
 Un funcionario registra la solicitud de una persona natural (fecha y funcionario automáticos). La persona (solicitante) se identifica por su RUT: si ya está registrada, el sistema completa nombre y teléfono; si no, pregunta "¿Desea agregar solicitante al sistema?" y la registra, opcionalmente como presidente, secretario o tesorero de una organización. Sus datos se guardan una sola vez, en la tabla `solicitante`, y las atenciones y actividades la referencian. Las acciones para atenderla son actividades vinculadas a ella. Estado de la solicitud: **Pendiente** (sin actividades), **En proceso** (con actividades) y **Atendida** (todas sus actividades vinculadas fueron validadas).
 
+## Chatbot con IA
+
+El sistema incluye un asistente de chat con IA en un widget flotante (abajo a la derecha), disponible para los roles **Admin, Coordinador y Delegado** y para el superusuario. El rol **Funcionario** no ve el widget y, si invoca los endpoints directamente, recibe `403` con el intento registrado en la auditoría (`ACCESO_DENEGADO`). Sin sesión, el usuario es enviado al login. El código vive en `ChatbotApp` y el historial se guarda por usuario en la tabla `mensaje_chat`; el botón **Nueva** del widget borra la conversación propia.
+
+La conversación se envía al proveedor **desde el servidor**: la ApiKey se lee del `.env`, nunca se incluye en plantillas, JavaScript ni respuestas, y los errores del proveedor se muestran con un mensaje genérico. El cliente HTTP usa solo la biblioteca estándar (`urllib.request`), por lo que no se agregaron dependencias.
+
+Configuración en el `.env` (cualquier proveedor compatible con la API *OpenAI Chat Completions*):
+
+```
+CHATBOT_API_KEY='clave-del-proveedor'
+CHATBOT_API_URL='https://api.openai.com/v1/chat/completions'
+CHATBOT_MODEL='gpt-4o-mini'
+CHATBOT_TIMEOUT=30
+
+# Alternativa local (Ollama): se usa si CHATBOT_MODEL queda vacío
+CHATBOT_LOCAL_API_URL='http://127.0.0.1:11434/v1/chat/completions'
+CHATBOT_LOCAL_MODEL=''
+CHATBOT_LOCAL_TIMEOUT=120
+```
+
+| Proveedor | `CHATBOT_API_URL` | Ejemplo de `CHATBOT_MODEL` |
+|---|---|---|
+| OpenAI | `https://api.openai.com/v1/chat/completions` | `gpt-4o-mini` |
+| OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | `openai/gpt-4o-mini` |
+| Groq | `https://api.groq.com/openai/v1/chat/completions` | `llama-3.3-70b-versatile` |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` | `gemini-2.0-flash` |
+| Ollama (local) | `http://127.0.0.1:11434/v1/chat/completions` | `qwen3.5_progra_128k:latest` |
+
+El cliente elige el proveedor en este orden:
+
+1. **API remota**: si `CHATBOT_API_KEY` y `CHATBOT_MODEL` tienen valor, se usa `CHATBOT_API_URL` con esa clave.
+2. **Modelo local (Ollama)**: si `CHATBOT_MODEL` queda vacío y `CHATBOT_LOCAL_MODEL` tiene valor, se usa `CHATBOT_LOCAL_API_URL`, sin clave ni internet.
+3. Si no hay ninguna de las dos configuraciones, el chatbot queda **desactivado** y el endpoint responde `503`.
+
+Para usar un **modelo local con Ollama** basta con tener Ollama corriendo (`ollama serve`, por defecto en `http://127.0.0.1:11434`) y el modelo descargado (`ollama pull qwen3.5_progra_128k:latest` o el que se prefiera). El nombre debe ser el ID exacto que muestra `ollama list`. Si el modelo es de **razonamiento** (por ejemplo las familias Qwen), `CHATBOT_LOCAL_REASONING_EFFORT='none'` hace que la respuesta llegue en `content` en lugar de quedarse en `reasoning`; dejar esa variable vacía si el servidor local no acepta el parámetro. Cambiar de proveedor solo requiere editar el `.env` y reiniciar el servidor; no hay que tocar código. Cada mensaje se limita a 2000 caracteres y al proveedor se le envían como contexto los últimos 12 mensajes del usuario.
+
+Endpoints (JSON, solo usuarios autenticados con acceso):
+
+| Ruta | Método | Uso |
+|---|---|---|
+| `/chatbot/mensaje/` | POST | Envía la pregunta y devuelve `{"respuesta", "fecha"}` (400/403/502/503 ante errores) |
+| `/chatbot/historial/` | GET | Últimos 50 mensajes del usuario, en orden cronológico |
+| `/chatbot/limpiar/` | POST | Borra la conversación del usuario autenticado |
+
 ## Pruebas automatizadas
 
 ```
 python manage.py test
 ```
 
-175 pruebas con `django.test`, sobre una base temporal. Cubren login, grupos y permisos, protección de vistas, recuperación de contraseña, tableros por perfil, mantenedores, buscadores, transacciones y auditoría.
+246 pruebas con `django.test`, sobre una base temporal. Cubren login, grupos y permisos, protección de vistas, recuperación de contraseña, tableros por perfil, mantenedores, buscadores, transacciones, auditoría y chatbot (con la llamada al proveedor de IA mockeada: nunca se usa la red ni una clave real).
 
 ## Estructura del proyecto
 
@@ -146,6 +191,7 @@ python manage.py test
 | `IndicadoresApp` | Periodos, metas, semáforo, resumen por delegación y tableros |
 | `ActividadesApp` | Actividades, evidencias, validación, territorios, Tubo de Trabajo y gestión social: organizaciones, solicitantes, representantes y atenciones sociales |
 | `AuditoriaApp` | Bitácora de cambios y accesos denegados |
+| `ChatbotApp` | Asistente de chat con IA: modelo `MensajeChat`, cliente del proveedor, endpoints JSON, widget, JS y CSS |
 | `config` | Configuración del proyecto (lee el `.env`) |
 
 ## Ramas

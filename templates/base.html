@@ -13,6 +13,10 @@
 
     <!-- Definición de Clases de Paleta Municipal (Proyecto/static/css/styles.css). ?v= cambia cuando se modifica la hoja: obliga al navegador a descargar la versión nueva -->
     <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=2026-11-07">
+    {% if user.puede_usar_chatbot %}
+    <!-- Asistente de chat con IA: solo Admin, Coordinador, Delegado y superusuario -->
+    <link rel="stylesheet" href="{% static 'css/chatbot.css' %}">
+    {% endif %}
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -280,6 +284,10 @@
         });
     });
 </script>
+{% if user.puede_usar_chatbot %}
+{% include 'chatbot/widget.html' %}
+<script src="{% static 'js/chatbot.js' %}"></script>
+{% endif %}
 {% block extra_js %}{% endblock %}
 </body>
 </html>

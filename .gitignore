@@ -15,5 +15,5 @@ media/
 db.sqlite3
 .vscode/
 .idea/
-
+analysis/
 staticfiles/

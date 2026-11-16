@@ -5,7 +5,7 @@ from django.utils import timezone
 from UsuarioApp.choices import (roles, orden_roles, estados_registro, tipos_catalogo,
                                 ROLES_ADMINISTRACION, ROLES_VER_USUARIOS, ROLES_GESTION_USUARIOS, ROLES_METAS,
                                 ROLES_REGISTRO, ROLES_VERIFICACION, ROLES_ASIGNAN_ENCARGADO, ROLES_RESERVADOS,
-                                ROLES_DELEGACIONES, ROLES_AUSENCIAS)
+                                ROLES_DELEGACIONES, ROLES_AUSENCIAS, ROLES_CHATBOT)
 
 
 class Catalogo(models.Model):
@@ -223,6 +223,11 @@ class Usuario(AbstractUser):
     def puede_asignar_encargado(self):
         """Admin y Coordinador en todas las delegaciones; el Delegado, en la suya."""
         return self.tiene_rol(ROLES_ASIGNAN_ENCARGADO)
+
+    def puede_usar_chatbot(self):
+        """Admin, Coordinador y Delegado (y el superusuario) usan el asistente de chat con IA.
+        El Funcionario no: la plantilla no muestra el widget y el endpoint responde 403."""
+        return self.is_superuser or self.tiene_rol(ROLES_CHATBOT)
 
     def puede_gestionar_metas(self):
         """El Admin agrega y edita todas las metas (generales y de cada delegación); el Delegado, las de su

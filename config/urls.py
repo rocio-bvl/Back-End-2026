@@ -10,6 +10,7 @@ urlpatterns = [
     path('indicadores/', include('IndicadoresApp.urls')),
     path('actividades/', include('ActividadesApp.urls')),
     path('auditoria/', include('AuditoriaApp.urls')),
+    path('chatbot/', include('ChatbotApp.urls')),
     path('', vusuario.inicio, name="home"),
 ]
 

@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'IndicadoresApp',
     'ActividadesApp',
     'AuditoriaApp',
+    'ChatbotApp',
 ]
 
 MIDDLEWARE = [
@@ -169,3 +170,25 @@ MAX_IMAGEN_EVIDENCIA = 5 * 1024 * 1024
 
 # messages.error se muestra con la clase de Bootstrap "alert-danger"
 MESSAGE_TAGS = {message_constants.ERROR: 'danger'}
+
+
+# Chatbot con IA: la clave NUNCA se expone al navegador, solo la usa el servidor en ChatbotApp/cliente_ia.py.
+# Si no hay proveedor configurado (ni API ni modelo local), el chatbot se desactiva y el endpoint responde 503
+# (el widget se muestra solo a los roles con acceso, así que el aviso aparece dentro del panel de chat).
+# La URL debe hablar la API "OpenAI Chat Completions" (OpenAI, OpenRouter, Groq, Gemini compatible).
+CHATBOT_API_KEY = os.getenv('CHATBOT_API_KEY', '')
+CHATBOT_API_URL = os.getenv('CHATBOT_API_URL', 'https://api.openai.com/v1/chat/completions')
+# Modelo de la API remota. Si queda vacío se usa el modelo local configurado más abajo (Ollama).
+CHATBOT_MODEL = os.getenv('CHATBOT_MODEL', 'gpt-4o-mini')
+CHATBOT_TIMEOUT = int(os.getenv('CHATBOT_TIMEOUT') or '30')  # segundos: igual que EMAIL_PORT, 'or' cubre la variable vacía
+# Alternativa local (Ollama u otro servidor compatible): se usa cuando no hay modelo de API configurado.
+# Ollama no valida la clave, así que aquí no se necesita CHATBOT_API_KEY.
+CHATBOT_LOCAL_API_URL = os.getenv('CHATBOT_LOCAL_API_URL', 'http://127.0.0.1:11434/v1/chat/completions')
+CHATBOT_LOCAL_MODEL = os.getenv('CHATBOT_LOCAL_MODEL', '')
+CHATBOT_LOCAL_TIMEOUT = int(os.getenv('CHATBOT_LOCAL_TIMEOUT') or '120')  # un modelo local puede tardar más
+# Modelos locales de razonamiento: con 'none' la respuesta llega en 'content' y no solo en 'reasoning'.
+# Dejar vacío para no enviar el parámetro (otros servidores locales podrían no aceptarlo).
+CHATBOT_LOCAL_REASONING_EFFORT = os.getenv('CHATBOT_LOCAL_REASONING_EFFORT', 'none')
+CHATBOT_ACTIVO = bool((CHATBOT_API_KEY and CHATBOT_MODEL) or CHATBOT_LOCAL_MODEL)
+CHATBOT_MAX_MENSAJE = 2000    # caracteres máximos por pregunta del usuario
+CHATBOT_MAX_HISTORIAL = 12    # mensajes (6 turnos) que se envían al proveedor como contexto
