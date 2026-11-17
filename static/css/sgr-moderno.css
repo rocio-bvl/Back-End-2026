@@ -1,0 +1,212 @@
+/* ==========================================================================================================
+   SGR moderno: capa visual (animaciones y estilos) sobre Bootstrap 5.3 y styles.css.
+   - No cambia la estructura de las páginas, la paleta municipal, la letra (Segoe UI del framework municipal)
+     ni las imágenes oficiales: solo forma, sombras, espaciado y movimiento.
+   - Se carga DESPUÉS de bootstrap.min.css, frameworkV1.css y styles.css (templates/base.html), por eso sus
+     reglas mandan sobre las anteriores cuando tienen la misma especificidad.
+   - Para volver al diseño anterior basta con quitar el <link> de este archivo en base.html.
+   ========================================================================================================== */
+
+/* Variables propias (custom properties de CSS): un solo lugar para ajustar radios, sombras y la curva de
+   movimiento de todo el sistema */
+:root {
+    --sgr-rojo: #AD0000;                 /* mismo rojo municipal de styles.css */
+    --sgr-radio: 1rem;
+    --sgr-sombra: 0 1px 2px rgba(16, 24, 40, .04), 0 4px 16px rgba(16, 24, 40, .06);
+    --sgr-sombra-hover: 0 2px 4px rgba(16, 24, 40, .06), 0 12px 28px rgba(16, 24, 40, .10);
+    --sgr-curva: cubic-bezier(.22, .61, .36, 1);   /* "ease-out": arranca rápido y frena suave */
+}
+
+/* Números de tablas y tarjetas con ancho fijo (tabular-nums): 0,0% y 52,2% quedan alineados en columna */
+.tabla-sgr td,
+.card h3 { font-variant-numeric: tabular-nums; }
+
+
+/* 1. ENTRADA DE LA PÁGINA ------------------------------------------------------------------------------------
+   Cada pantalla tiene un <main>: al cargar, su contenido aparece subiendo 12 px en medio segundo.
+   "both" mantiene el estado final (transform: none) al terminar, para no afectar a los elementos fijos. */
+main { animation: sgr-entrar .5s var(--sgr-curva) both; }
+
+@keyframes sgr-entrar {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: none; }
+}
+
+
+/* 2. APARICIÓN AL DESPLAZAR ----------------------------------------------------------------------------------
+   static/js/animaciones.js agrega .sgr-revelar a tarjetas, tablas y alertas, y .sgr-visible cuando entran en
+   pantalla. --sgr-retraso escalona las de una misma fila (0, 70, 140 y 210 ms). */
+.sgr-revelar {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .55s var(--sgr-curva), transform .55s var(--sgr-curva);
+    transition-delay: var(--sgr-retraso, 0ms);
+}
+.sgr-revelar.sgr-visible { opacity: 1; transform: none; }
+
+
+/* 3. TARJETAS ------------------------------------------------------------------------------------------------
+   Más redondeadas y con sombra en dos capas (una corta y nítida, otra amplia y difusa), que se ve más natural
+   que la sombra única de Bootstrap. !important porque las plantillas usan la utilidad shadow-sm, que también
+   lo lleva. */
+.card {
+    border-radius: var(--sgr-radio);
+    box-shadow: var(--sgr-sombra) !important;
+    transition: transform .25s var(--sgr-curva), box-shadow .25s var(--sgr-curva);
+}
+.card > .card-header:first-child { border-radius: var(--sgr-radio) var(--sgr-radio) 0 0; }
+
+/* Solo las tarjetas que son un enlace (<a class="card">, los accesos de Mi Gestión en
+   templates/indicadores/components/acceso.html) se elevan al pasar el mouse: indica que se pueden pinchar */
+a.card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--sgr-sombra-hover) !important;
+}
+
+.tarjeta-tabla {
+    border-radius: var(--sgr-radio);
+    box-shadow: var(--sgr-sombra);
+}
+
+
+/* 4. BARRA DE PESTAÑAS (base.html, #sgrTabs) -----------------------------------------------------------------
+   La barra roja superior ya es fija (sticky-top de Bootstrap). La de pestañas queda fija justo debajo:
+   --sgr-alto-navbar lo calcula animaciones.js con el alto real de la barra roja (cambia en celular cuando se
+   abre el menú). Mantiene su gris (bg-gris-10) y suma una sombra corta que la separa del contenido de abajo.
+   No se usa backdrop-filter (desenfoque): crea un nuevo contenedor para los elementos position: fixed y
+   recortaría los menús Seguimiento y Administración. z-index 1010: bajo la barra roja (1020).
+   Solo desde 768 px: en celular las dos barras fijas ocuparían demasiada pantalla. */
+@media (min-width: 768px) {
+    .sgr-barra-pestanas {
+        position: sticky;
+        top: var(--sgr-alto-navbar, 66px);
+        z-index: 1010;
+        box-shadow: 0 6px 16px -12px rgba(16, 24, 40, .35);
+    }
+}
+
+/* Subrayado rojo que crece desde el centro al pasar el mouse o en la pestaña activa. Es un fondo (gradiente de
+   un color) y no un ::after, porque Bootstrap ya usa ::after para la flecha de los menús desplegables */
+#sgrTabs .nav-link {
+    background: linear-gradient(var(--sgr-rojo), var(--sgr-rojo)) center bottom / 0 3px no-repeat !important;
+    transition: color .2s, background-size .3s var(--sgr-curva);
+}
+#sgrTabs .nav-link:hover,
+#sgrTabs .nav-link.active { background-size: calc(100% - 1.5rem) 3px !important; }
+
+/* La pestaña activa ya no necesita el borde ni el fondo blanco de styles.css: la marca el subrayado */
+#sgrTabs .nav-link.active {
+    border-bottom: 0 !important;
+}
+
+/* Menús desplegables (Seguimiento, Administración, usuario): sin borde, sombra y entrada corta */
+.dropdown-menu {
+    border: 0;
+    border-radius: .75rem;
+    box-shadow: var(--sgr-sombra-hover);
+    animation: sgr-menu .18s var(--sgr-curva);
+}
+@keyframes sgr-menu {
+    from { opacity: 0; transform: translateY(-6px) scale(.98); }
+    to   { opacity: 1; transform: none; }
+}
+
+
+/* 5. TABLAS (.tabla-sgr de styles.css) -----------------------------------------------------------------------
+   Encabezado más liviano (gris claro y línea fina) y una línea roja a la izquierda de la fila al pasar el
+   mouse. La línea es una sombra interior (inset), así no cambia el ancho de la celda ni mueve la tabla. */
+.tabla-sgr thead th {
+    background: #fafafa;
+    color: #5f6672;
+    letter-spacing: .05em;
+    border-bottom: 1px solid #e6e8ec;
+}
+.tabla-sgr tbody tr { transition: background-color .2s; }
+.tabla-sgr tbody tr td:first-child {
+    box-shadow: inset 0 0 0 var(--sgr-rojo);
+    transition: box-shadow .2s;
+}
+.tabla-sgr tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 var(--sgr-rojo); }
+.tabla-sgr td { border-color: #f0f1f4; }
+
+/* Etiquetas de estado con forma de píldora */
+.badge {
+    border-radius: 999px;
+    padding: .35em .75em;
+    letter-spacing: .02em;
+}
+
+
+/* 6. PESTAÑAS INTERNAS (Mi Gestión, Felicitaciones, Administración) ------------------------------------------
+   Sin "carpeta" de borde: un indicador rojo bajo la pestaña activa. El contenido entra con fundido y un leve
+   desplazamiento: Bootstrap ya agrega .fade y .show al cambiar de pestaña, aquí solo se define la transición */
+.nav-tabs:not(#sgrTabs) .nav-link {
+    border: 0;
+    border-bottom: 3px solid transparent;
+    transition: color .2s, border-color .25s;
+}
+.nav-tabs:not(#sgrTabs) .nav-link.active {
+    border-bottom-color: var(--sgr-rojo) !important;
+    color: var(--sgr-rojo);
+    background: transparent;
+}
+.tab-pane.fade {
+    transform: translateY(6px);
+    transition: opacity .3s var(--sgr-curva), transform .3s var(--sgr-curva);
+}
+.tab-pane.fade.show { transform: none; }
+
+
+/* 7. FORMULARIOS, BOTONES Y MODALES --------------------------------------------------------------------------
+   El foco de los campos usa un halo rojo suave en vez del azul de Bootstrap, para seguir la paleta municipal */
+.form-control,
+.form-select {
+    border-radius: .6rem;
+    border-color: #dfe2e7;
+    transition: border-color .2s, box-shadow .2s;
+}
+.form-control:focus,
+.form-select:focus {
+    border-color: #cc6666;
+    box-shadow: 0 0 0 .22rem rgba(173, 0, 0, .12);
+}
+
+.btn {
+    border-radius: .6rem;
+    transition: transform .15s var(--sgr-curva), box-shadow .2s, background-color .2s;
+}
+.btn:hover  { transform: translateY(-1px); }
+.btn:active { transform: none; }
+
+/* Bootstrap ya anima los modales (bajan desde arriba); aquí entran subiendo y con una leve escala */
+.modal.fade .modal-dialog {
+    transform: translateY(16px) scale(.97);
+    transition: transform .3s var(--sgr-curva);
+}
+.modal.show .modal-dialog { transform: none; }
+.modal-content {
+    border: 0;
+    border-radius: var(--sgr-radio);
+}
+
+
+/* 8. SEPARACIÓN DE SECCIONES ---------------------------------------------------------------------------------
+   Los <hr> de formularios y paneles pasan a ser una línea fina que se desvanece en los extremos */
+main hr {
+    height: 1px;
+    border: 0;
+    opacity: 1;
+    background: linear-gradient(90deg, transparent, #e2e4e9 15%, #e2e4e9 85%, transparent);
+}
+
+
+/* ACCESIBILIDAD ----------------------------------------------------------------------------------------------
+   Si la persona activó "reducir movimiento" en su sistema operativo (Windows: Configuración > Accesibilidad >
+   Efectos visuales > Efectos de animación), el sistema se ve igual pero sin animaciones. Pauta WCAG 2.3.3 */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+    .sgr-revelar { opacity: 1; transform: none; }
+}

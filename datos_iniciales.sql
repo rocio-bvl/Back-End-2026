@@ -83,9 +83,9 @@ INSERT INTO `cargo` (`id`, `codigo`, `nombre`, `vigencia_inicio`, `vigencia_fin`
 -- Periodos trimestrales (días computables = días corridos del trimestre)
 -- ---------------------------------------------------------------------------
 INSERT INTO `periodo` (`id`, `nombre`, `fecha_inicio`, `fecha_termino`, `dias_computables`, `estado`,
-                    `umbral_verde`, `umbral_ambar`, `umbral_colectivo`, `tope_cumplimiento`) VALUES
-(1, 'T3 - 2026', '2026-07-01', '2026-09-30', 92, 'ACTIVO', 100.00, 60.00, 80.00, 150.00),
-(2, 'T4 - 2026', '2026-10-01', '2026-12-31', 92, 'ACTIVO', 100.00, 60.00, 80.00, 150.00);
+                    `umbral_verde`, `umbral_ambar`, `umbral_colectivo`, `tope_cumplimiento`, `puntos_felicitacion`) VALUES
+(1, 'T3 - 2026', '2026-07-01', '2026-09-30', 92, 'ACTIVO', 100.00, 60.00, 80.00, 120.00, 1.00),
+(2, 'T4 - 2026', '2026-10-01', '2026-12-31', 92, 'ACTIVO', 100.00, 60.00, 80.00, 120.00, 1.00);
 
 -- ---------------------------------------------------------------------------
 -- Metas por cargo (los ponderadores de cada cargo suman 100).

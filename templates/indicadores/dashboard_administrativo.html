@@ -7,7 +7,7 @@ rápidos. Su avance, pendientes y evidencias van en las tarjetas de la cabecera.
     <div class="card border-0 shadow-sm border-start border-4 border-{% if cumple_colectivo %}success{% else %}warning{% endif %} p-3 mb-4">
         <span class="text-muted small">Puntaje colectivo de mi delegación</span>
         <h3 class="fw-bold mb-0">{{ puntaje_colectivo }}% <small class="fs-6 text-muted fw-normal">· meta colectiva hoy: {{ meta_colectiva }}%</small></h3>
-        <small class="text-muted">Los puntajes se miran en equipo: el avance de cada uno suma al de la delegación.</small>
+        <small class="text-muted">Promedio del avance de los funcionarios de tu delegación. Para cumplir la meta colectiva, el promedio debe llegar al {{ umbral_colectivo|default:80|floatformat:0 }}% de lo esperado a la fecha.</small>
     </div>
     {% endif %}
     <h6 class="fw-bold mb-3">Accesos rápidos</h6>

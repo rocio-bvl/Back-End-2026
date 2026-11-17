@@ -1,0 +1,146 @@
+{% extends 'base.html' %}
+
+{% block title %}Felicitaciones y Reclamos | Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+{% comment %}
+Felicitaciones y reclamos de usuarios sobre los funcionarios. Solo la usan el Delegado (funcionarios de su
+delegación) y el Administrador (todos): la vista lo controla (IndicadoresApp/views.py, felicitaciones_reclamos) y la
+barra solo muestra el enlace a ellos (base.html, puede_gestionar_felicitaciones).
+- Felicitación: suma al cumplimiento total del funcionario los puntos del periodo, aunque su cargo no tenga meta de
+  felicitaciones. Eliminarla quita esos puntos.
+- Reclamo: no afecta el puntaje. Queda Pendiente hasta que se registra la respuesta o la acción tomada.
+{% endcomment %}
+<main class="container-fluid p-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h3 class="fw-bold m-0"><i class="bi bi-chat-square-heart me-2 text-danger"></i>Felicitaciones y Reclamos</h3>
+        {% if periodo %}<span class="badge bg-muni fs-6">{{ periodo }} · cada felicitación suma {{ periodo.puntos_felicitacion }} pp</span>{% endif %}
+    </div>
+
+    {% if form_felicitacion.non_field_errors %}<div class="alert alert-danger">{% for error in form_felicitacion.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
+
+    <ul class="nav nav-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if pestana != 'reclamos' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-felicitaciones" type="button" role="tab">
+                Felicitaciones <span class="badge bg-success ms-1">{{ felicitaciones|length }}</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if pestana == 'reclamos' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-reclamos" type="button" role="tab">
+                Reclamos {% if pendientes %}<span class="badge bg-danger ms-1">{{ pendientes }} pendiente{{ pendientes|pluralize }}</span>{% endif %}
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content card border-0 shadow-sm border-top-0 rounded-0 rounded-bottom">
+        <!-- Felicitaciones -->
+        <div class="tab-pane fade {% if pestana != 'reclamos' %}show active{% endif %} p-3" id="tab-felicitaciones" role="tabpanel">
+            <form method="post" action="{% url 'indicadores:felicitacion_crear' %}" class="row g-2 align-items-end mb-3">
+                {% csrf_token %}
+                <div class="col-md-4">
+                    <label class="form-label small mb-1" for="{{ form_felicitacion.persona.id_for_label }}">{{ form_felicitacion.persona.label }}</label>
+                    {{ form_felicitacion.persona }}
+                    <datalist id="personas_felicitacion">
+                        {% for opcion in form_felicitacion.opciones_persona %}<option value="{{ opcion }}">{% endfor %}
+                    </datalist>
+                    {% for error in form_felicitacion.persona.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1" for="{{ form_felicitacion.fecha.id_for_label }}">Fecha</label>
+                    {{ form_felicitacion.fecha }}
+                    {% for error in form_felicitacion.fecha.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small mb-1" for="{{ form_felicitacion.motivo.id_for_label }}">Motivo</label>
+                    {{ form_felicitacion.motivo }}
+                    {% for error in form_felicitacion.motivo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button type="submit" class="btn btn-sm btn-muni"><i class="bi bi-plus-circle me-1"></i>Registrar felicitación</button>
+                </div>
+            </form>
+            <div class="tarjeta-tabla table-responsive">
+                <table class="table table-hover tabla-sgr">
+                    <thead><tr><th>FECHA</th><th>FUNCIONARIO</th><th>MOTIVO</th><th class="text-center">PUNTOS</th><th>REGISTRADA POR</th><th class="text-center">ACCIONES</th></tr></thead>
+                    <tbody>
+                        {% for felicitacion in felicitaciones %}
+                        <tr>
+                            <td>{{ felicitacion.fecha|date:"d/m/Y" }}</td>
+                            <td><strong>{{ felicitacion.funcionario.get_full_name|default:felicitacion.funcionario.username }}</strong><small class="d-block text-muted">{{ felicitacion.funcionario.delegacion|default:"Sin delegación" }}</small></td>
+                            <td>{{ felicitacion.motivo }}</td>
+                            <td class="text-center">{% if felicitacion.ajuste %}+{{ felicitacion.ajuste.valor }} pp{% else %}-{% endif %}</td>
+                            <td>{{ felicitacion.registrado_por.get_full_name|default:felicitacion.registrado_por.username }}</td>
+                            <td class="text-center">
+                                <form method="post" action="{% url 'indicadores:felicitacion_eliminar' felicitacion.pk %}" data-confirmar="¿Eliminar la felicitación a {{ felicitacion.funcionario.get_full_name }}? Sus puntos dejarán de sumar.">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar" aria-label="Eliminar"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="text-center text-muted py-3">No hay felicitaciones registradas en el periodo.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Reclamos -->
+        <div class="tab-pane fade {% if pestana == 'reclamos' %}show active{% endif %} p-3" id="tab-reclamos" role="tabpanel">
+            <form method="post" action="{% url 'indicadores:reclamo_crear' %}" class="row g-2 align-items-end mb-3">
+                {% csrf_token %}
+                <div class="col-md-4">
+                    <label class="form-label small mb-1" for="{{ form_reclamo.persona.id_for_label }}">{{ form_reclamo.persona.label }}</label>
+                    {{ form_reclamo.persona }}
+                    <datalist id="personas_reclamo">
+                        {% for opcion in form_reclamo.opciones_persona %}<option value="{{ opcion }}">{% endfor %}
+                    </datalist>
+                    {% for error in form_reclamo.persona.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1" for="{{ form_reclamo.fecha.id_for_label }}">Fecha</label>
+                    {{ form_reclamo.fecha }}
+                    {% for error in form_reclamo.fecha.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small mb-1" for="{{ form_reclamo.motivo.id_for_label }}">Motivo</label>
+                    {{ form_reclamo.motivo }}
+                    {% for error in form_reclamo.motivo.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                </div>
+                <div class="col-md-2 d-grid">
+                    <button type="submit" class="btn btn-sm btn-muni"><i class="bi bi-plus-circle me-1"></i>Registrar reclamo</button>
+                </div>
+            </form>
+            <div class="tarjeta-tabla table-responsive">
+                <table class="table table-hover tabla-sgr">
+                    <thead><tr><th>FECHA</th><th>FUNCIONARIO</th><th>MOTIVO</th><th class="text-center">ESTADO</th><th>RESPUESTA O ACCIÓN TOMADA</th></tr></thead>
+                    <tbody>
+                        {% for reclamo in reclamos %}
+                        <tr>
+                            <td>{{ reclamo.fecha|date:"d/m/Y" }}</td>
+                            <td><strong>{{ reclamo.funcionario.get_full_name|default:reclamo.funcionario.username }}</strong><small class="d-block text-muted">{{ reclamo.funcionario.delegacion|default:"Sin delegación" }}</small></td>
+                            <td>{{ reclamo.motivo }}<small class="d-block text-muted">Registrado por {{ reclamo.registrado_por.get_full_name|default:reclamo.registrado_por.username }}</small></td>
+                            <td class="text-center"><span class="badge {% if reclamo.estado == 'RESUELTO' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ reclamo.get_estado_display|upper }}</span></td>
+                            <td>
+                                {% if reclamo.estado == 'RESUELTO' %}
+                                {{ reclamo.respuesta }}
+                                <small class="d-block text-muted">{{ reclamo.respondido_por.get_full_name|default:reclamo.respondido_por.username }} · {{ reclamo.fecha_respuesta|date:"d/m/Y H:i" }}</small>
+                                {% else %}
+                                <form method="post" action="{% url 'indicadores:reclamo_responder' reclamo.pk %}" class="d-flex gap-1">
+                                    {% csrf_token %}
+                                    <textarea name="respuesta" rows="1" class="form-control form-control-sm" placeholder="Respuesta o acción tomada" required></textarea>
+                                    <button type="submit" class="btn btn-sm btn-outline-success text-nowrap"><i class="bi bi-check2-circle me-1"></i>Responder</button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-center text-muted py-3">No hay reclamos registrados.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

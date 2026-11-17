@@ -217,22 +217,22 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                                         {% if request.user.puede_gestionar_usuarios %}
                                         <td class="text-center">
                                             {% if usr.editable %}
-                                            <div class="d-flex flex-wrap gap-1 justify-content-center">
-                                                <a href="{% url 'users:usuario_editar' usr.pk %}" class="btn btn-sm btn-outline-warning text-nowrap"><i class="bi bi-pencil-square me-1"></i>Modificar</a>
+                                            <div class="d-flex flex-nowrap gap-1 justify-content-center">
+                                                <a href="{% url 'users:usuario_editar' usr.pk %}" class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Modificar" aria-label="Modificar"><i class="bi bi-pencil-square"></i></a>
                                                 {% if usr.pk != request.user.pk %}
                                                 <form method="post" action="{% url 'users:usuario_desactivar' usr.pk %}">
                                                     {% csrf_token %}
                                                     {% if usr.is_active %}
-                                                    <button type="submit" class="btn btn-sm btn-outline-secondary text-nowrap"><i class="bi bi-person-slash me-1"></i>Desactivar</button>
+                                                    <button type="submit" class="btn btn-sm btn-outline-secondary" data-bs-toggle="tooltip" title="Desactivar" aria-label="Desactivar"><i class="bi bi-person-slash"></i></button>
                                                     {% else %}
-                                                    <button type="submit" class="btn btn-sm btn-outline-success text-nowrap"><i class="bi bi-person-check me-1"></i>Activar</button>
+                                                    <button type="submit" class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Activar" aria-label="Activar"><i class="bi bi-person-check"></i></button>
                                                     {% endif %}
                                                 </form>
                                                 {% endif %}
                                                 {% if usr.eliminable %}
                                                 <form method="post" action="{% url 'users:usuario_eliminar' usr.pk %}" data-confirmar="¿Eliminar a {{ usr.get_full_name|default:usr.username }}? Si tiene actividades registradas no se podrá eliminar; en ese caso, desactívelo.">
                                                     {% csrf_token %}
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger text-nowrap"><i class="bi bi-trash me-1"></i>Eliminar</button>
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Eliminar" aria-label="Eliminar"><i class="bi bi-trash"></i></button>
                                                 </form>
                                                 {% endif %}
                                             </div>

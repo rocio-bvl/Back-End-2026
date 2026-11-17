@@ -14,7 +14,7 @@ from ActividadesApp.tests import BaseActividades
 from AuditoriaApp.models import Auditoria
 from IndicadoresApp.calculos import indicadores_usuario
 from IndicadoresApp.forms import AusenciaForm
-from IndicadoresApp.models import Ausencia, MetaDesempeno
+from IndicadoresApp.models import Ausencia, MetaDesempeno, AjusteDesempeno, Felicitacion, Reclamo
 from UsuarioApp.models import Catalogo
 
 
@@ -272,6 +272,25 @@ class MiGestionUnificadaTest(BaseActividades):
         self.assertEqual(self.pagina('55555555-5', pestana='delegacion').context['pestana'], 'resumen')
         self.assertNotContains(self.pagina('55555555-5'), '>Indicadores<')
 
+    def test_tabla_lateral_avance_del_mismo_cargo_de_mayor_a_menor(self):
+        # Felicitación al Funcionario de Rural: queda primero aunque sea de otra delegación
+        self.entrar('11111111-1')
+        self.client.post(reverse('indicadores:felicitacion_crear'),
+                         {'felicitacion-persona': self.otro.username, 'felicitacion-fecha': self.hoy.isoformat(),
+                          'felicitacion-motivo': 'Gracias'})
+        respuesta = self.pagina('55555555-5')
+        ranking = respuesta.context['ranking_cargo']
+        self.assertEqual({fila['id'] for fila in ranking}, {self.func.pk, self.companero.pk, self.otro.pk})
+        self.assertEqual(ranking[0]['id'], self.otro.pk)
+        self.assertEqual(ranking[0]['delegacion'], str(self.rural))
+        avances = [fila['avance'] for fila in ranking]
+        self.assertEqual(avances, sorted(avances, reverse=True))
+        self.assertEqual([fila['lugar'] for fila in ranking], [1, 2, 2])  # empate: comparten el lugar
+        self.assertEqual([fila['es_yo'] for fila in ranking if fila['id'] == self.func.pk], [True])
+        self.assertContains(respuesta, 'Avance Actual')
+        # Sin cargo (Delegado y Admin de los datos de prueba) no hay tabla lateral
+        self.assertEqual(self.pagina('33333333-3').context['ranking_cargo'], [])
+
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
 class SolicitantesTest(BaseActividades):
@@ -362,3 +381,89 @@ class SolicitantesTest(BaseActividades):
         self.assertIn('no está registrado', str(respuesta.context['form'].errors['rut_solicitante']))
         self.registrar(rut_solicitante='11222333-9')  # "Sí": agregar_solicitante viene en True
         self.assertEqual(Actividad.objects.get().solicitante.rut, '11222333-9')
+
+
+@override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
+class FelicitacionesYReclamosTest(BaseActividades):
+    """Pantalla solo para Delegado y Administrador; la felicitación suma puntos al cumplimiento total."""
+    def setUp(self):
+        super().setUp()
+        self.periodo = self.datos['periodo']
+        self.url = reverse('indicadores:felicitaciones_reclamos')
+
+    def total(self, usuario):
+        from IndicadoresApp.calculos import seguimiento_usuario
+        return seguimiento_usuario(usuario, self.periodo, self.hoy)['avance_logrado']
+
+    def felicitar(self, funcionario, **extra):
+        datos = {'persona': funcionario.username, 'fecha': self.hoy.isoformat(), 'motivo': 'Muy buena atención'}
+        datos = {f'felicitacion-{campo}': valor for campo, valor in datos.items()}
+        datos.update({f'felicitacion-{campo}': valor for campo, valor in extra.items()})
+        return self.client.post(reverse('indicadores:felicitacion_crear'), datos)
+
+    def test_solo_delegado_y_admin_ven_la_pantalla_y_el_enlace(self):
+        for rut in ['33333333-3', '11111111-1']:
+            self.entrar(rut)
+            self.assertEqual(self.client.get(self.url).status_code, 200, rut)
+            self.assertIn(self.url, self.client.get(reverse('actividades:mi_gestion')).content.decode(), rut)
+        for rut in ['55555555-5', '22222222-2']:  # Funcionario y Coordinador
+            self.entrar(rut)
+            self.assertRedirects(self.client.get(self.url), reverse('actividades:mi_gestion'), msg_prefix=rut)
+            self.assertNotIn(self.url, self.client.get(reverse('actividades:mi_gestion')).content.decode(), rut)
+
+    def test_la_felicitacion_suma_aunque_el_item_no_este_en_las_metas(self):
+        self.periodo.puntos_felicitacion = 2
+        self.periodo.save()
+        antes = self.total(self.func)
+        self.entrar('33333333-3')
+        self.felicitar(self.func)
+        felicitacion = Felicitacion.objects.get()
+        self.assertEqual((felicitacion.funcionario, felicitacion.ajuste.valor), (self.func, 2))
+        self.assertEqual(self.total(self.func), antes + 2)
+        self.assertTrue(Auditoria.objects.filter(entidad='Felicitacion', evento='CREACION').exists())
+        # Al eliminarla, los puntos dejan de sumar
+        self.client.post(reverse('indicadores:felicitacion_eliminar', args=[felicitacion.pk]))
+        self.assertFalse(AjusteDesempeno.objects.exists())
+        self.assertEqual(self.total(self.func), antes)
+
+    def test_el_delegado_solo_elige_funcionarios_de_su_delegacion(self):
+        self.entrar('33333333-3')
+        self.felicitar(self.otro)  # Rural
+        self.assertFalse(Felicitacion.objects.exists())
+        self.entrar('11111111-1')  # el Administrador, a cualquiera
+        self.felicitar(self.otro)
+        self.assertEqual(Felicitacion.objects.get().funcionario, self.otro)
+
+    def test_las_felicitaciones_respetan_el_tope(self):
+        self.periodo.puntos_felicitacion = 500
+        self.periodo.save()
+        self.entrar('33333333-3')
+        self.felicitar(self.func)
+        self.assertEqual(self.total(self.func), self.periodo.tope_cumplimiento)
+
+    def test_sin_metas_se_registra_y_avisa(self):
+        self.func.cargo = None
+        self.func.save()
+        self.entrar('33333333-3')
+        respuesta = self.client.post(reverse('indicadores:felicitacion_crear'),
+                                     {'felicitacion-persona': self.func.username, 'felicitacion-fecha': self.hoy.isoformat(),
+                                      'felicitacion-motivo': 'Gracias'},
+                                     follow=True)
+        self.assertTrue(Felicitacion.objects.exists())
+        self.assertIn('no tiene metas', respuesta.content.decode())
+
+    def test_reclamo_queda_pendiente_hasta_que_se_responde(self):
+        self.entrar('33333333-3')
+        self.client.post(reverse('indicadores:reclamo_crear'),
+                         {'reclamo-persona': self.func.username, 'reclamo-fecha': self.hoy.isoformat(),
+                          'reclamo-motivo': 'No llegó a la visita'})
+        reclamo = Reclamo.objects.get()
+        self.assertEqual(reclamo.estado, 'PENDIENTE')
+        antes = self.total(self.func)
+        self.client.post(reverse('indicadores:reclamo_responder', args=[reclamo.pk]), {'respuesta': ''})
+        reclamo.refresh_from_db()
+        self.assertEqual(reclamo.estado, 'PENDIENTE')  # sin respuesta no se cierra
+        self.client.post(reverse('indicadores:reclamo_responder', args=[reclamo.pk]), {'respuesta': 'Se reprogramó'})
+        reclamo.refresh_from_db()
+        self.assertEqual((reclamo.estado, reclamo.respondido_por), ('RESUELTO', self.delegado))
+        self.assertEqual(self.total(self.func), antes)  # el reclamo no afecta el puntaje

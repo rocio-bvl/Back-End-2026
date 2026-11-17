@@ -16,7 +16,7 @@ from ActividadesApp.forms import (ActividadForm, EvidenciaForm, FechaRealizacion
 from ActividadesApp.models import (Actividad, Evidencia, Validacion, AtencionSocial, ComentarioActividad,
                                 Territorio, Solicitante, DIAS_POR_VENCER)
 from AuditoriaApp.registro import registrar_auditoria
-from IndicadoresApp.calculos import indicadores_usuario, total_ponderado
+from IndicadoresApp.calculos import indicadores_usuario, total_ponderado, ranking_cargo
 from IndicadoresApp.models import periodo_vigente
 from UsuarioApp.funciones import opciones_delegacion, limpiar_rut
 from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado, permiso_requerido
@@ -206,6 +206,8 @@ def mi_gestion(request):
         'opciones_delegacion': opciones_delegacion(),
         'delegacion_activa': codigo,
         'delegacion_nombre': nombre,
+        # Tabla lateral: Avance Actual de quienes tienen el mismo cargo (cualquier perfil con cargo asignado)
+        'ranking_cargo': ranking_cargo(usuario, periodo, hoy),
     }
     # Pestaña abierta (?pestana=): solo una de las que tiene el perfil; si no, Resumen
     disponibles = ['resumen']

@@ -28,7 +28,7 @@ Las tarjetas de arriba siguen al selector de delegación; la tabla muestra todas
                         <td data-cell="RESPONSABLES">{{ fila.responsables }}</td>
                         <td data-cell="PENDIENTES">{{ fila.compromisos_pendientes_count }}</td>
                         <td data-cell="POR VALIDAR">{{ fila.por_validar }}</td>
-                        <td class="fw-bold" data-cell="PUNTAJE COLECTIVO">{{ fila.avance_periodo_porcentaje }}{% if fila.cumple_colectivo %} <i class="bi bi-check-circle-fill text-success" title="Cumple la meta colectiva"></i>{% endif %}</td>
+                        <td class="fw-bold" data-cell="PUNTAJE COLECTIVO">{{ fila.puntaje_colectivo }}%{% if fila.cumple_colectivo %} <i class="bi bi-check-circle-fill text-success" title="Cumple la meta colectiva"></i>{% endif %}</td>
                         <td data-cell="SEMÁFORO">
                             {% if fila.semaforo_color == 'VERDE' %}<span class="badge bg-success">VERDE</span>
                             {% elif fila.semaforo_color == 'AMBAR' %}<span class="badge bg-warning text-dark">ÁMBAR</span>

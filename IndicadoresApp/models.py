@@ -4,7 +4,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from IndicadoresApp.choices import semaforos, estados_periodo
+from IndicadoresApp.choices import semaforos, estados_periodo, estados_reclamo
 
 
 class Periodo(models.Model):
@@ -18,6 +18,9 @@ class Periodo(models.Model):
     umbral_colectivo = models.DecimalField(max_digits=5, decimal_places=2, default=80, verbose_name="Umbral colectivo (%)")
     # Una vez cumplido el 120% de un ítem, más actividades ya no suben el puntaje
     tope_cumplimiento = models.DecimalField(max_digits=5, decimal_places=2, default=120, verbose_name="Tope de cumplimiento (%)")
+    # Lo que suma cada felicitación al cumplimiento total del funcionario (puntos porcentuales). Lo fija el Admin
+    puntos_felicitacion = models.DecimalField(max_digits=5, decimal_places=2, default=1,
+                                              verbose_name="Puntos por felicitación (pp)")
 
     def __str__(self):
         return self.nombre_completo()
@@ -269,3 +272,61 @@ def dias_ausencia(usuario, periodo):
             dias.add(dia)
             dia = dia + timedelta(days=1)
     return len(dias)
+
+
+# ---------------------------------------------------------------------------
+# Felicitaciones y reclamos: los registran el Delegado (funcionarios de su delegación) y el Administrador
+# ---------------------------------------------------------------------------
+class Felicitacion(models.Model):
+    """Felicitación de un usuario (vecino) a un funcionario. Suma al cumplimiento total del funcionario los puntos
+    del periodo (puntos_felicitacion), aunque su cargo no tenga meta para felicitaciones: para eso crea un ajuste
+    de desempeño. Al eliminarla, el ajuste se borra con ella."""
+    funcionario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                    related_name='felicitaciones_recibidas', verbose_name="Funcionario felicitado")
+    fecha = models.DateField(default=timezone.localdate, verbose_name="Fecha de la felicitación")
+    motivo = models.TextField(verbose_name="Motivo")
+    periodo = models.ForeignKey(Periodo, on_delete=models.PROTECT, related_name='felicitaciones', verbose_name="Periodo")
+    ajuste = models.OneToOneField(AjusteDesempeno, on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name='felicitacion', verbose_name="Ajuste de desempeño")
+    registrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                       related_name='felicitaciones_registradas', verbose_name="Registrada por")
+
+    def __str__(self):
+        return f"Felicitación a {self.funcionario} ({self.fecha:%d/%m/%Y})"
+
+    def delete(self, *args, **kwargs):
+        ajuste = self.ajuste
+        super().delete(*args, **kwargs)
+        if ajuste is not None:
+            ajuste.delete()  # sin felicitación, sus puntos dejan de sumar
+
+    class Meta:
+        db_table = "felicitacion"
+        verbose_name = "Felicitación"
+        verbose_name_plural = "Felicitaciones"
+        ordering = ["-fecha", "-pk"]
+
+
+class Reclamo(models.Model):
+    """Reclamo de un usuario (vecino) sobre la atención de un funcionario. No afecta el puntaje: queda Pendiente
+    hasta que el Delegado o el Administrador registra la respuesta o la acción tomada."""
+    funcionario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                    related_name='reclamos_recibidos', verbose_name="Funcionario")
+    fecha = models.DateField(default=timezone.localdate, verbose_name="Fecha del reclamo")
+    motivo = models.TextField(verbose_name="Motivo")
+    estado = models.CharField(max_length=10, choices=estados_reclamo, default='PENDIENTE', verbose_name="Estado")
+    respuesta = models.TextField(blank=True, default="", verbose_name="Respuesta o acción tomada")
+    fecha_respuesta = models.DateTimeField(null=True, blank=True, verbose_name="Fecha de la respuesta")
+    respondido_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                       related_name='reclamos_respondidos', verbose_name="Respondido por")
+    registrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                       related_name='reclamos_registrados', verbose_name="Registrado por")
+
+    def __str__(self):
+        return f"Reclamo sobre {self.funcionario} ({self.fecha:%d/%m/%Y})"
+
+    class Meta:
+        db_table = "reclamo"
+        verbose_name = "Reclamo"
+        verbose_name_plural = "Reclamos"
+        ordering = ["estado", "-fecha", "-pk"]

@@ -13,4 +13,9 @@ urlpatterns = [
     path('ausencias/nueva/', vindicadores.ausencia_crear, name="ausencia_crear"),
     path('ausencias/<int:pk>/eliminar/', vindicadores.ausencia_eliminar, name="ausencia_eliminar"),
     path('atrasos-validacion/', vindicadores.atrasos_validacion, name="atrasos_validacion"),
+    path('felicitaciones/', vindicadores.felicitaciones_reclamos, name="felicitaciones_reclamos"),
+    path('felicitaciones/nueva/', vindicadores.felicitacion_crear, name="felicitacion_crear"),
+    path('felicitaciones/<int:pk>/eliminar/', vindicadores.felicitacion_eliminar, name="felicitacion_eliminar"),
+    path('reclamos/nuevo/', vindicadores.reclamo_crear, name="reclamo_crear"),
+    path('reclamos/<int:pk>/responder/', vindicadores.reclamo_responder, name="reclamo_responder"),
 ]

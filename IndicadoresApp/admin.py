@@ -1,11 +1,12 @@
 from django.contrib import admin
 
 from UsuarioApp.admin_sgr import AdminSGR
-from IndicadoresApp.models import Periodo, MetaDesempeno, IndicadorDesempeno, AjusteDesempeno, Ausencia
+from IndicadoresApp.models import (Periodo, MetaDesempeno, IndicadorDesempeno, AjusteDesempeno, Ausencia, Felicitacion,
+                                   Reclamo)
 
 
 class PeriodoAdmin(AdminSGR):
-    list_display = ("nombre", "fecha_inicio", "fecha_termino", "dias_computables", "estado")
+    list_display = ("nombre", "fecha_inicio", "fecha_termino", "dias_computables", "puntos_felicitacion", "estado")
     search_fields = ("nombre",)
     list_filter = ("estado",)
     ordering = ("-fecha_inicio",)
@@ -37,8 +38,22 @@ class AusenciaAdmin(AdminSGR):
     list_filter = ("tipo",)
 
 
+class FelicitacionAdmin(AdminSGR):
+    list_display = ("fecha", "funcionario", "periodo", "registrado_por")
+    search_fields = ("funcionario__username", "funcionario__first_name", "funcionario__last_name", "motivo")
+    list_filter = ("periodo",)
+
+
+class ReclamoAdmin(AdminSGR):
+    list_display = ("fecha", "funcionario", "estado", "registrado_por", "respondido_por")
+    search_fields = ("funcionario__username", "funcionario__first_name", "funcionario__last_name", "motivo")
+    list_filter = ("estado",)
+
+
 admin.site.register(Periodo, PeriodoAdmin)
 admin.site.register(MetaDesempeno, MetaDesempenoAdmin)
 admin.site.register(IndicadorDesempeno, IndicadorDesempenoAdmin)
 admin.site.register(AjusteDesempeno, AjusteDesempenoAdmin)
 admin.site.register(Ausencia, AusenciaAdmin)
+admin.site.register(Felicitacion, FelicitacionAdmin)
+admin.site.register(Reclamo, ReclamoAdmin)
