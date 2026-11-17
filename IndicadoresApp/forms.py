@@ -95,29 +95,20 @@ class MetaForm(forms.Form):
         return meta, evento, antes
 
 
-class AusenciaForm(forms.ModelForm):
-    """Vacaciones, día administrativo o licencia de un funcionario o delegado. La persona se busca por nombre o RUT
-    entre las que puede gestionar quien la registra (el Delegado, solo los Funcionarios de su delegación)."""
-    persona = forms.CharField(label="Funcionario o delegado", max_length=200,
-                              widget=forms.TextInput(attrs={'list': 'personas_ausencia', 'autocomplete': 'off',
-                                                            'placeholder': 'Escriba nombre o RUT'}))
+class BuscadorPersonaForm(forms.ModelForm):
+    """Base de los formularios que eligen a una persona registrada escribiendo su nombre o RUT (con sugerencias de
+    un <datalist>): ausencias, felicitaciones y reclamos. Quien usa el formulario entrega las personas posibles."""
+    lista = 'personas'               # id del <datalist> con las sugerencias en la plantilla
+    etiqueta_persona = "Funcionario"
+    persona = forms.CharField(max_length=200, widget=forms.TextInput(attrs={'autocomplete': 'off',
+                                                                          'placeholder': 'Escriba nombre o RUT'}))
 
-    class Meta:
-        from IndicadoresApp.models import Ausencia
-        model = Ausencia
-        fields = ['tipo', 'desde', 'hasta', 'observacion']
-        widgets = {'desde': forms.DateInput(attrs={'type': 'date'}), 'hasta': forms.DateInput(attrs={'type': 'date'})}
-
-    def __init__(self, *args, registrador=None, **kwargs):
+    def __init__(self, *args, personas=None, **kwargs):
         super().__init__(*args, **kwargs)
         from UsuarioApp.models import Usuario
-        if registrador is not None:
-            self.personas = registrador.usuarios_para_ausencias().order_by('first_name', 'last_name')
-        else:
-            self.personas = Usuario.objects.none()
-        self.order_fields(['persona', 'tipo', 'desde', 'hasta', 'observacion'])
-        for nombre, campo in self.fields.items():
-            campo.widget.attrs['class'] = 'form-select form-select-sm' if nombre == 'tipo' else 'form-control form-control-sm'
+        self.personas = personas.order_by('first_name', 'last_name') if personas is not None else Usuario.objects.none()
+        self.fields['persona'].label = self.etiqueta_persona
+        self.fields['persona'].widget.attrs['list'] = self.lista
 
     @staticmethod
     def texto_persona(usuario):
@@ -141,6 +132,26 @@ class AusenciaForm(forms.ModelForm):
             raise forms.ValidationError("Elija una persona de la lista (busque por nombre o RUT).")
         return encontrados[0]
 
+
+class AusenciaForm(BuscadorPersonaForm):
+    """Vacaciones, día administrativo o licencia de un funcionario o delegado. La persona se busca por nombre o RUT
+    entre las que puede gestionar quien la registra (el Delegado, solo los Funcionarios de su delegación)."""
+    lista = 'personas_ausencia'
+    etiqueta_persona = "Funcionario o delegado"
+
+    class Meta:
+        from IndicadoresApp.models import Ausencia
+        model = Ausencia
+        fields = ['tipo', 'desde', 'hasta', 'observacion']
+        widgets = {'desde': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}), 'hasta': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'})}
+
+    def __init__(self, *args, registrador=None, **kwargs):
+        personas = registrador.usuarios_para_ausencias() if registrador is not None else None
+        super().__init__(*args, personas=personas, **kwargs)
+        self.order_fields(['persona', 'tipo', 'desde', 'hasta', 'observacion'])
+        for nombre, campo in self.fields.items():
+            campo.widget.attrs['class'] = 'form-select form-select-sm' if nombre == 'tipo' else 'form-control form-control-sm'
+
     def clean(self):
         datos = super().clean()
         if datos.get('desde') and datos.get('hasta') and datos['hasta'] < datos['desde']:
@@ -148,3 +159,79 @@ class AusenciaForm(forms.ModelForm):
         if datos.get('persona'):
             self.instance.usuario = datos['persona']
         return datos
+
+
+class FelicitacionForm(BuscadorPersonaForm):
+    """Felicitación de un usuario a un funcionario registrado. El funcionario se elige por nombre o RUT entre los
+    que puede gestionar quien la registra (el Delegado, los de su delegación; el Administrador, todos)."""
+    lista = 'personas_felicitacion'
+    etiqueta_persona = "Funcionario felicitado"
+
+    class Meta:
+        from IndicadoresApp.models import Felicitacion
+        model = Felicitacion
+        fields = ['fecha', 'motivo']
+        widgets = {'fecha': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}), 'motivo': forms.Textarea(attrs={'rows': 2})}
+
+    def __init__(self, *args, registrador=None, periodo=None, **kwargs):
+        personas = registrador.funcionarios_para_felicitaciones() if registrador is not None else None
+        super().__init__(*args, personas=personas, **kwargs)
+        self.periodo = periodo
+        self.order_fields(['persona', 'fecha', 'motivo'])
+        for campo in self.fields.values():
+            campo.widget.attrs['class'] = 'form-control form-control-sm'
+
+    def clean(self):
+        from django.utils import timezone
+        datos = super().clean()
+        fecha = datos.get('fecha')
+        if self.periodo is None:
+            raise forms.ValidationError("No hay un periodo vigente: la felicitación no tendría a qué sumar.")
+        if fecha is not None and (fecha > timezone.localdate() or fecha < self.periodo.fecha_inicio):
+            self.add_error('fecha', f"La fecha debe estar entre el inicio del periodo ({self.periodo.fecha_inicio:%d/%m/%Y}) y hoy.")
+        if datos.get('persona'):
+            self.instance.funcionario = datos['persona']
+        return datos
+
+
+class ReclamoForm(BuscadorPersonaForm):
+    """Reclamo de un usuario sobre la atención de un funcionario. Queda Pendiente hasta que se responde."""
+    lista = 'personas_reclamo'
+    etiqueta_persona = "Funcionario"
+
+    class Meta:
+        from IndicadoresApp.models import Reclamo
+        model = Reclamo
+        fields = ['fecha', 'motivo']
+        widgets = {'fecha': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}), 'motivo': forms.Textarea(attrs={'rows': 2})}
+
+    def __init__(self, *args, registrador=None, **kwargs):
+        personas = registrador.funcionarios_para_felicitaciones() if registrador is not None else None
+        super().__init__(*args, personas=personas, **kwargs)
+        self.order_fields(['persona', 'fecha', 'motivo'])
+        for campo in self.fields.values():
+            campo.widget.attrs['class'] = 'form-control form-control-sm'
+
+    def clean(self):
+        from django.utils import timezone
+        datos = super().clean()
+        if datos.get('fecha') is not None and datos['fecha'] > timezone.localdate():
+            self.add_error('fecha', "La fecha del reclamo no puede ser posterior a hoy.")
+        if datos.get('persona'):
+            self.instance.funcionario = datos['persona']
+        return datos
+
+
+class RespuestaReclamoForm(forms.ModelForm):
+    """Respuesta o acción tomada: al guardarla, el reclamo queda Resuelto."""
+    class Meta:
+        from IndicadoresApp.models import Reclamo
+        model = Reclamo
+        fields = ['respuesta']
+        widgets = {'respuesta': forms.Textarea(attrs={'rows': 2, 'class': 'form-control form-control-sm'})}
+
+    def clean_respuesta(self):
+        respuesta = self.cleaned_data['respuesta'].strip()
+        if not respuesta:
+            raise forms.ValidationError("Escriba la respuesta o la acción tomada.")
+        return respuesta

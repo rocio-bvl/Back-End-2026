@@ -5,7 +5,7 @@ from django.utils import timezone
 from UsuarioApp.choices import (roles, orden_roles, estados_registro, tipos_catalogo,
                                 ROLES_ADMINISTRACION, ROLES_VER_USUARIOS, ROLES_GESTION_USUARIOS, ROLES_METAS,
                                 ROLES_REGISTRO, ROLES_VERIFICACION, ROLES_ASIGNAN_ENCARGADO, ROLES_RESERVADOS,
-                                ROLES_DELEGACIONES, ROLES_AUSENCIAS)
+                                ROLES_DELEGACIONES, ROLES_AUSENCIAS, ROLES_FELICITACIONES)
 
 
 class Catalogo(models.Model):
@@ -210,6 +210,21 @@ class Usuario(AbstractUser):
         if self.puede_registrar_ausencias():
             return usuarios.filter(roles_asignados__rol__codigo__in=['Delegado', 'Funcionario']).distinct()
         return usuarios.none()
+
+    def puede_gestionar_felicitaciones(self):
+        """Felicitaciones y reclamos: el Administrador (todos los funcionarios) y el Delegado (los de su delegación)."""
+        if self.es_delegado():
+            return self.delegacion_id is not None
+        return self.tiene_rol(ROLES_FELICITACIONES)
+
+    def funcionarios_para_felicitaciones(self):
+        """Funcionarios a los que puede registrar una felicitación o un reclamo."""
+        funcionarios = Usuario.objects.filter(is_active=True, roles_asignados__rol__codigo='Funcionario')
+        if self.es_delegado():
+            funcionarios = funcionarios.filter(delegacion_id=self.delegacion_id)
+        elif not self.puede_gestionar_felicitaciones():
+            return Usuario.objects.none()
+        return funcionarios.select_related('delegacion', 'cargo').distinct()
 
     def puede_vincular_atenciones(self):
         """Admin, Coordinador y Delegado vinculan actividades ya registradas a una atención social. Para el

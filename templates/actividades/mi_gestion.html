@@ -12,8 +12,10 @@ tarjetas de avance, accesos de gestión y pestañas). Lo que cambia según quié
 {% with usuario=request.user activa=pestana %}
 <main class="container-fluid p-4 perfil">
 
-    <!-- 1. Cabecera: "Gestión (perfil)" con los datos de quien inició sesión -->
-    <div class="card border-0 shadow-sm mb-4 overflow-hidden">
+    <!-- 1. Cabecera: "Gestión (perfil)" con los datos de quien inició sesión y, al lado, el avance de su mismo cargo -->
+    <div class="row g-4 mb-4">
+    <div class="{% if ranking_cargo %}col-xl-8{% else %}col-12{% endif %}">
+    <div class="card border-0 shadow-sm overflow-hidden h-100">
         <div class="perfil-portada bg-muni-b1"></div>
         <div class="card-body pt-0 px-4">
             <div class="d-flex flex-wrap align-items-end gap-3 perfil-cabecera">
@@ -43,13 +45,40 @@ tarjetas de avance, accesos de gestión y pestañas). Lo que cambia según quié
             </div>
         </div>
     </div>
+    </div>
+    {% if ranking_cargo %}
+    <!-- Avance Actual de los funcionarios con el mismo cargo (todas las delegaciones), de mayor a menor -->
+    <div class="col-xl-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-gris-90 text-white fw-bold py-3">
+                <i class="bi bi-bar-chart-line me-2"></i>Avance Actual: {{ usuario.cargo }}
+            </div>
+            <div class="tarjeta-tabla ranking-cargo">
+                <table class="table tabla-sgr tabla-compacta mb-0">
+                    <thead><tr><th class="text-center">N°</th><th class="text-start">FUNCIONARIO</th><th class="text-start">DELEGACIÓN</th><th class="text-end">AVANCE</th></tr></thead>
+                    <tbody>
+                        {% for fila in ranking_cargo %}
+                        <tr class="{% if fila.es_yo %}ranking-yo{% endif %}">
+                            <td class="text-center fw-bold">{{ fila.lugar }}°</td>
+                            <td class="text-start">{{ fila.nombre }}{% if fila.es_yo %} <span class="badge bg-muni ms-1">Tú</span>{% endif %}</td>
+                            <td class="text-start text-muted">{{ fila.delegacion }}</td>
+                            <td class="text-end fw-bold">{{ fila.avance }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    </div>
 
     <!-- 2. Avance: el Funcionario ve el suyo; Admin, Coordinador y Delegado, el de la delegación elegida -->
     {% if tipo_tablero == 'administrativo' %}
     <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3">
             <div class="card border-0 shadow-sm border-start border-4 border-{% if mi_avance.color == 'VERDE' %}success{% elif mi_avance.color == 'AMBAR' %}warning{% elif mi_avance.color == 'ROJO' %}danger{% else %}secondary{% endif %} p-3 h-100">
-                <span class="text-muted small">Mi avance del periodo</span>
+                <span class="text-muted small">Avance Actual</span>
                 {% if mi_avance %}
                 <h3 class="fw-bold mb-0">{{ mi_avance.avance_logrado }}%</h3>
                 <small class="text-muted">Objetivo hoy: {{ mi_avance.objetivo_hoy }}%</small>

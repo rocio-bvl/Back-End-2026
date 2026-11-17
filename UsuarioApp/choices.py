@@ -17,6 +17,7 @@ ROLES_VER_USUARIOS = ['Admin', 'Coordinador', 'Delegado']  # ven la pantalla de 
 ROLES_GESTION_USUARIOS = ['Admin', 'Coordinador', 'Delegado']
 ROLES_DELEGACIONES = ['Admin', 'Coordinador']              # agregan, modifican y eliminan delegaciones
 ROLES_AUSENCIAS = ['Admin', 'Coordinador', 'Delegado']     # registran vacaciones, días administrativos y licencias
+ROLES_FELICITACIONES = ['Admin', 'Delegado']               # felicitaciones y reclamos (el Delegado, de su delegación)
 ROLES_METAS = ['Admin', 'Delegado']                        # agregan y editan metas (el Delegado, las de su delegación)
 ROLES_REGISTRO = ['Admin', 'Funcionario']                  # agregan actividades (el Coordinador solo las ve)
 ROLES_VERIFICACION = ['Admin', 'Delegado']                 # validan la evidencia (el Delegado, en su delegación)
@@ -61,6 +62,9 @@ GRUPO_DE_ROL = {
 
 _VER = ['ActividadesApp.view_actividad', 'ActividadesApp.view_atencionsocial']
 _AUSENCIAS = ['IndicadoresApp.view_ausencia', 'IndicadoresApp.add_ausencia', 'IndicadoresApp.delete_ausencia']
+_FELICITACIONES = ['IndicadoresApp.view_felicitacion', 'IndicadoresApp.add_felicitacion',
+                   'IndicadoresApp.delete_felicitacion', 'IndicadoresApp.view_reclamo', 'IndicadoresApp.add_reclamo',
+                   'IndicadoresApp.change_reclamo']
 PERMISOS_POR_GRUPO = {
     'Administrador': _VER + [
         'ActividadesApp.add_actividad', 'ActividadesApp.add_evidencia', 'ActividadesApp.add_comentarioactividad',
@@ -75,7 +79,7 @@ PERMISOS_POR_GRUPO = {
         'IndicadoresApp.view_metadesempeno', 'IndicadoresApp.add_metadesempeno', 'IndicadoresApp.change_metadesempeno',
         'IndicadoresApp.delete_metadesempeno',
         'AuditoriaApp.view_auditoria',
-    ] + _AUSENCIAS,
+    ] + _AUSENCIAS + _FELICITACIONES,
     # Coordinador: gestiona delegaciones (con sus territorios) y delegados, y supervisa. No interviene en las
     # actividades de los funcionarios
     'Supervisor': _VER + [
@@ -94,7 +98,7 @@ PERMISOS_POR_GRUPO = {
         'UsuarioApp.view_usuario', 'UsuarioApp.add_usuario', 'UsuarioApp.change_usuario', 'UsuarioApp.view_delegacion',
         'IndicadoresApp.view_metadesempeno', 'IndicadoresApp.add_metadesempeno', 'IndicadoresApp.change_metadesempeno',
         'IndicadoresApp.delete_metadesempeno',
-    ] + _AUSENCIAS,
+    ] + _AUSENCIAS + _FELICITACIONES,
     'Administrativo': _VER + [
         'ActividadesApp.add_actividad', 'ActividadesApp.add_evidencia', 'ActividadesApp.add_comentarioactividad',
         'ActividadesApp.add_atencionsocial', 'ActividadesApp.change_atencionsocial',

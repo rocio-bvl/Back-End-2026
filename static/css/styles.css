@@ -42,9 +42,12 @@
 .btn-importante { background-color: #AD0000; color: #ffffff !important; border: 2px solid #e08000; }
 
 /* Tipografía y Utilidades */
-.tx-1 { font-size: 0.7rem; }
-.tx-2 { font-size: 0.8rem; }
+/* Escala de texto: ningún texto de la interfaz baja de 0.75rem (12 px) para que se lea */
+.tx-1 { font-size: 0.75rem; }
+.tx-2 { font-size: 0.85rem; }
 .tx-8 { font-size: 1.2rem; }
+/* Etiquetas (badge) de Bootstrap: 0.75em quedaba en 10 px dentro de textos chicos */
+.badge { font-size: max(.75rem, .75em); }
 
 .ls-nav-tabs .nav-link.active {
     color: #AD0000 !important;
@@ -65,17 +68,17 @@ body { background-color: #f8f9fa; }
     --bs-table-hover-bg: #fdf3f3;
     /* rojo municipal muy suave al pasar el mouse */
     --bs-table-border-color: #eceef1;
-    font-size: 0.85rem;
+    font-size: 0.92rem;
     margin-bottom: 0;
 }
 
 .tabla-sgr thead th {
     background: #f8f9fa;
     color: #6c757d;
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: .04em;
+    letter-spacing: .03em;
     border-bottom: 2px solid #AD0000;
     /* el acento de color va solo aquí */
     white-space: nowrap;
@@ -83,10 +86,21 @@ body { background-color: #f8f9fa; }
 }
 
 .tabla-sgr td {
-    padding-top: .75rem;
-    padding-bottom: .75rem;
+    padding-top: .7rem;
+    padding-bottom: .7rem;
     vertical-align: middle;
+    line-height: 1.4;
 }
+
+/* El framework municipal (frameworkV1.css) reduce td y thead al 80% (70% en pantallas angostas) y eso se suma a
+   nuestro tamaño. En las tablas SGR se anula para que manden solo los tamaños definidos en esta hoja */
+.tabla-sgr thead,
+.tabla-sgr td { font-size: inherit; }
+
+/* Texto secundario y etiquetas dentro de las tablas: proporcionales a la celda, nunca bajo 0.75rem (12 px) */
+.tabla-sgr small,
+.tabla-sgr .small { font-size: max(.75rem, .88em); }
+.tabla-sgr .badge { font-size: .75rem; font-weight: 600; }
 
 .tabla-sgr tbody tr:last-child td {
     border-bottom: 0;
@@ -114,12 +128,16 @@ body { background-color: #f8f9fa; }
 
 /* Variante compacta para tablas con muchas columnas o en columnas angostas */
 .tabla-sgr.tabla-compacta {
+    font-size: 0.85rem;
+}
+
+.tabla-sgr.tabla-compacta thead th {
     font-size: 0.75rem;
 }
 
 .tabla-sgr.tabla-compacta th,
 .tabla-sgr.tabla-compacta td {
-    padding: .5rem .4rem;
+    padding: .55rem .5rem;
 }
 
 /* Mi Gestión con formato de perfil */
@@ -180,3 +198,23 @@ body { background-color: #f8f9fa; }
     position: absolute; inset: 0; color: #9aa0a6; background-color: #fff; pointer-events: none;
 }
 .campo-sugerencia .sugerencia-real { position: relative; background-color: transparent; }
+
+/* Tabla lateral de Mi Gestión: Avance Actual del mismo cargo. Con muchos funcionarios se desplaza dentro de la tarjeta */
+.ranking-cargo { max-height: 340px; overflow-y: auto; border: 0; border-radius: 0 0 .75rem .75rem; }
+.ranking-cargo thead th { position: sticky; top: 0; z-index: 1; }
+.tabla-sgr tr.ranking-yo td { background-color: #f9dcdc; }
+/* En pantallas angostas el framework municipal convierte cada fila en un bloque apilado; esta tabla tiene solo 4
+   columnas cortas, así que se mantiene como tabla normal */
+@media screen and (max-width: 768px) {
+    .ranking-cargo thead { display: table-header-group; }
+    .ranking-cargo tr { display: table-row; margin-bottom: 0; }
+    .ranking-cargo td { display: table-cell; border-bottom: 1px solid #eceef1; }
+}
+
+/* Barra de pestañas: cada pestaña en una sola línea; los menús (Seguimiento, Administración) con el color municipal */
+#sgrTabs .nav-link { white-space: nowrap; }
+#sgrTabs .dropdown-menu { font-size: .9rem; text-transform: none; }
+#sgrTabs .dropdown-item.active,
+#sgrTabs .dropdown-item:active { background-color: #AD0000; color: #ffffff; }
+#sgrTabs .dropdown-item.active i,
+#sgrTabs .dropdown-item:active i { color: #ffffff !important; }
