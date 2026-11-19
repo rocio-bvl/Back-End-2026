@@ -9,7 +9,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 
-from ActividadesApp.choices import ESTADOS_PENDIENTES
+from ActividadesApp.choices import ESTADOS_PENDIENTES, MAX_GESTIONES_ATENCION
 # validar_imagen se importa aquí porque las pruebas la usan como ActividadesApp.views.validar_imagen
 from ActividadesApp.forms import (ActividadForm, EvidenciaForm, FechaRealizacionForm, ComentarioForm, EncargadoForm,
                                 AtencionForm, solicitudes_para, validar_imagen)
@@ -17,7 +17,7 @@ from ActividadesApp.models import (Actividad, Evidencia, Validacion, AtencionSoc
                                 Territorio, Solicitante, DIAS_POR_VENCER)
 from AuditoriaApp.registro import registrar_auditoria
 from IndicadoresApp.calculos import indicadores_usuario, total_ponderado, ranking_cargo
-from IndicadoresApp.models import periodo_vigente
+from IndicadoresApp.models import periodo_vigente, estado_medicion
 from UsuarioApp.funciones import opciones_delegacion, limpiar_rut
 from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado, permiso_requerido
 from UsuarioApp.models import Usuario
@@ -72,11 +72,11 @@ def puede_cambiar_puntaje(usuario, actividad):
 
 
 def candidatos_encargado(usuario, actividad):
-    """Funcionarios activos que se pueden asignar: el Delegado elige entre los de su delegación;
-    el Coordinador y el Admin, entre todos los de las delegaciones registradas."""
+    """Funcionarios activos que se pueden asignar: siempre los de la misma delegación de la actividad (la de quien la
+    registró), así su avance suma en esa delegación. Vale para el Delegado, el Coordinador y el Admin."""
     funcionarios = Usuario.objects.filter(is_active=True, roles_asignados__rol__codigo='Funcionario').select_related('delegacion')
-    if usuario.es_delegado():
-        funcionarios = funcionarios.filter(delegacion_id=usuario.delegacion_id)
+    # El Delegado, además, solo llega aquí con actividades de su delegación (puede_asignar_encargado)
+    funcionarios = funcionarios.filter(delegacion_id=actividad.usuario.delegacion_id)
     return funcionarios.distinct().order_by('delegacion__nombre', 'first_name', 'last_name')
 
 
@@ -139,7 +139,7 @@ def mi_gestion(request):
     resumen = {
         'cumplimiento': cumplimiento,
         'barra': int(min(cumplimiento, 100)),  # ancho de la barra de progreso (máximo 100%)
-        'tiene_metas': bool(indicadores),
+        'tiene_metas': bool(indicadores), 'aviso_medicion': estado_medicion(usuario.cargo_id, periodo, usuario.delegacion_id) if periodo and usuario.cargo_id else '',
         'completadas': completadas.count(),
         'pendientes': len(pendientes),
         'en_revision': mias.filter(estado='EVIDENCIA_INGRESADA').count(),
@@ -830,6 +830,10 @@ def atencion_vincular(request, pk):
         return redirect(detalle)
     if not request.user.puede_vincular_atenciones() or not puede_ver_atencion(request.user, atencion):
         return acceso_denegado(request, 'Vincular Actividad')
+    if not atencion.admite_gestion():
+        # RF-015: hasta 3 gestiones por atención social
+        messages.error(request, f"La atención {atencion.codigo()} ya tiene {MAX_GESTIONES_ATENCION} gestiones, el máximo permitido.")
+        return redirect(detalle)
     actividad = actividades_vinculables(request.user, atencion).filter(pk=request.POST.get('actividad', '0') or 0).first()
     if actividad is None:
         messages.error(request, "Esa actividad no se puede vincular: ya tiene una solicitud o es de otra delegación.")
@@ -851,11 +855,15 @@ def atencion_detalle(request, pk):
     if not puede_ver_atencion(request.user, atencion):
         return acceso_denegado(request, f"la atención {atencion.codigo()}")
     actividades = atencion.actividades.select_related('usuario', 'encargado', 'item', 'territorio').order_by('fecha')
-    puede_vincular = request.user.puede_vincular_atenciones()
+    # RF-015: con 3 gestiones la atención ya no admite otra (no se ofrece vincular ni crear una nueva)
+    admite_gestion = atencion.admite_gestion()
+    puede_vincular = request.user.puede_vincular_atenciones() and admite_gestion
     q = request.GET.get('q', '').strip()
     data = {
         'atencion': atencion,
         'actividades': actividades,
+        'admite_gestion': admite_gestion,
+        'max_gestiones': MAX_GESTIONES_ATENCION,
         'puede_vincular': puede_vincular,
         'q': q,
         'candidatas': buscar_para_vincular(request.user, atencion, q) if puede_vincular and q else None,
@@ -1086,6 +1094,8 @@ def validar_evidencia(request, pk):
         messages.success(request, f"Actividad {evidencia.actividad.folio()} validada: queda completada y {texto}.")
     else:
         messages.success(request, f"Evidencia {evidencia.codigo()} rechazada: el funcionario debe agregarla de nuevo.")
+        from ActividadesApp.avisos import aviso_rechazo  # aviso por correo con el motivo
+        aviso_rechazo(evidencia, observacion, request.user)
     return redirect('actividades:verificacion')
 
 

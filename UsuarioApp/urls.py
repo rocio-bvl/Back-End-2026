@@ -7,6 +7,7 @@ app_name = 'users'
 
 urlpatterns = [
     path('login/', vusuario.iniciar_sesion, name="login"),
+    path('login/codigo/', vusuario.verificar_codigo, name="verificar_codigo"),
     path('logout/', vusuario.cerrar_sesion, name="logout"),
     path('administracion/', vusuario.administracion, name="administracion"),
     path('crear/', vusuario.usuario_crear, name="usuario_crear"),

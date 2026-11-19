@@ -1,7 +1,6 @@
-from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
+from ActividadesApp.archivos import archivo_protegido
 from UsuarioApp import views as vusuario
 
 urlpatterns = [
@@ -11,7 +10,6 @@ urlpatterns = [
     path('actividades/', include('ActividadesApp.urls')),
     path('auditoria/', include('AuditoriaApp.urls')),
     path('', vusuario.inicio, name="home"),
+    # Fotografías subidas: pasan por Django para revisar la sesión y el permiso (ActividadesApp/archivos.py)
+    path('media/<path:ruta>', archivo_protegido, name="archivo_protegido"),
 ]
-
-# En desarrollo (DEBUG = True) Django sirve las fotografías subidas en /media/
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

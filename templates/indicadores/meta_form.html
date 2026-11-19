@@ -27,9 +27,9 @@
                                 {% for error in form.valor_objetivo.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-semibold" for="id_ponderador">{{ form.ponderador.label }}</label>
-                                <input type="number" name="ponderador" id="id_ponderador" min="0.01" max="100" step="0.01" value="{{ form.ponderador.value|default:''|stringformat:'s' }}" class="form-control {% if form.ponderador.errors %}is-invalid{% endif %}">
-                                {% for error in form.ponderador.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                <label class="form-label fw-semibold">Ponderador (%)</label>
+                                {# El ponderador no se cambia aquí: es uno solo por cargo e ítem (Administración > Metas > Ponderación) #}
+                                <input type="text" class="form-control" value="{{ meta.ponderador }}%" readonly>
                             </div>
                         </div>
                         <hr class="my-4">

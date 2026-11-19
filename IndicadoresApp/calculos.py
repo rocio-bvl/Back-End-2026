@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from IndicadoresApp.models import IndicadorDesempeno, metas_para, dias_ausencia
+from IndicadoresApp.models import IndicadorDesempeno, metas_para, dias_ausencia, estado_medicion
 
 
 def indicadores_usuario(usuario, periodo, fecha):
@@ -38,7 +38,7 @@ def seguimiento_usuario(usuario, periodo, fecha):
         logrado = avance * 100 / objetivo_hoy
     else:
         logrado = Decimal('100')
-    return {
+    fila = {
         'id': usuario.pk,
         'area': usuario.area() or '-',
         'responsable': usuario.get_full_name() or usuario.username,
@@ -49,6 +49,11 @@ def seguimiento_usuario(usuario, periodo, fecha):
         'dias_ausencia': indicadores[0].dias_ausencia() if indicadores else dias_ausencia(usuario, periodo),
         'items_en_tope': [ind.meta.item.nombre for ind in indicadores if ind.en_tope()],
     }
+    # Si la ponderación de su cargo no suma 100% (o falta una meta), el funcionario no se mide: sin color (RN-001)
+    fila['sin_medir'] = estado_medicion(usuario.cargo_id, periodo, usuario.delegacion_id) if usuario.cargo_id else ''
+    if fila['sin_medir']:
+        fila['color'] = ''
+    return fila
 
 
 def ranking_cargo(usuario, periodo, fecha):
@@ -61,11 +66,14 @@ def ranking_cargo(usuario, periodo, fecha):
     pares = Usuario.objects.filter(is_active=True, cargo_id=usuario.cargo_id).select_related('delegacion', 'cargo', 'cargo__area')
     filas = []
     for par in pares:
+        seguimiento = seguimiento_usuario(par, periodo, fecha)
+        if seguimiento['sin_medir']:
+            continue  # cargo con ponderación incompleta: no entra al ranking
         filas.append({
             'id': par.pk,
             'nombre': par.get_full_name() or par.username,
             'delegacion': str(par.delegacion) if par.delegacion_id else 'Sin delegación',
-            'avance': seguimiento_usuario(par, periodo, fecha)['avance_logrado'],
+            'avance': seguimiento['avance_logrado'],
             'es_yo': par.pk == usuario.pk,
         })
     filas.sort(key=lambda fila: (-fila['avance'], fila['nombre']))

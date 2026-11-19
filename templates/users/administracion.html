@@ -27,18 +27,23 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
 
     <ul class="nav nav-tabs mb-4 ls-nav-tabs" id="adminTab" role="tablist">
         <li class="nav-item">
-            <button class="nav-link {% if pestana != 'metas' %}active{% endif %}" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button">
+            <button class="nav-link {% if pestana != 'metas' and pestana != 'periodos' %}active{% endif %}" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button">
                 {% if vista == 'delegado' %}Funcionarios{% else %}Gestión{% endif %}
             </button>
         </li>
         <li class="nav-item">
             <button class="nav-link {% if pestana == 'metas' %}active{% endif %}" id="goals-tab" data-bs-toggle="tab" data-bs-target="#goals" type="button">Metas</button>
         </li>
+        {% if form_periodo %}
+        <li class="nav-item">
+            <button class="nav-link {% if pestana == 'periodos' %}active{% endif %}" id="periods-tab" data-bs-toggle="tab" data-bs-target="#periods" type="button">Periodos</button>
+        </li>
+        {% endif %}
     </ul>
 
     <div class="tab-content" id="adminTabContent">
         <!-- Pestaña 1: Gestión / Usuarios -->
-        <div class="tab-pane fade {% if pestana != 'metas' %}show active{% endif %}" id="users">
+        <div class="tab-pane fade {% if pestana != 'metas' and pestana != 'periodos' %}show active{% endif %}" id="users">
 
             {% if vista != 'delegado' %}
             <!-- Apartados: Delegaciones y Usuarios -->
@@ -254,13 +259,53 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
         <!-- Pestaña 2: Metas -->
         <div class="tab-pane fade {% if pestana == 'metas' %}show active{% endif %}" id="goals">
             {% if form_meta %}
+            {# Ponderación (RF-006): una sola por cargo e ítem para toda la municipalidad. Coordinador y Administrador #}
+            <div class="card shadow-sm border-0 p-3 mb-4">
+                <h5 class="fw-bold">Ponderación por cargo</h5>
+                <p class="text-muted small mb-0">
+                    El ponderador es cuánto pesa cada ítem en la nota de un cargo. Vale para toda la municipalidad y los de un cargo deben sumar 100%:
+                    mientras no sumen 100%, los funcionarios de ese cargo no se miden. Si el ítem ya tiene ponderador, se actualiza.
+                </p>
+                <form method="post" action="{% url 'indicadores:guardar_ponderacion' %}" class="mt-3">
+                    {% csrf_token %}
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="pond_cargo">Cargo</label>
+                            <select name="cargo" id="pond_cargo" class="form-select" required>
+                                <option value="" selected disabled>Seleccione un cargo...</option>
+                                {% for cargo in cargos %}
+                                <option value="{{ cargo.id }}">{{ cargo.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="pond_item">Ítem de gestión</label>
+                            <select name="item" id="pond_item" class="form-select" required>
+                                <option value="" selected disabled>Seleccione un ítem...</option>
+                                {% for item in items_gestion %}
+                                <option value="{{ item.id }}">{{ item.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold" for="pond_valor">Ponderador (%)</label>
+                            <input type="number" name="ponderador" id="pond_valor" class="form-control" min="0.01" max="100" step="0.01" placeholder="Ej: 40" required>
+                        </div>
+                        <div class="col-md-2 d-grid">
+                            <button type="submit" class="btn btn-muni fw-bold" {% if not hay_periodo %}disabled{% endif %}>
+                                <i class="bi bi-check-lg me-1"></i>Guardar ponderación
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
             <div class="card shadow-sm border-0 p-3 mb-4">
                 <h5 class="fw-bold">Agregar meta</h5>
                 <p class="text-muted small mb-0">
-                    Cada meta indica cuántas actividades validadas debe lograr un cargo en el trimestre para un ítem.
-                    {% if solo_mi_delegacion %}Las metas de su delegación reemplazan a las generales para los cargos que defina.
-                    {% else %}Las metas generales valen para toda la municipalidad; una delegación con metas propias para un cargo usa las suyas.{% endif %}
-                    Los ponderadores de un cargo deben sumar 100%. Si la meta ya existe, se actualiza.
+                    Cada meta indica cuántas actividades validadas debe lograr un cargo en el trimestre para un ítem que ya tenga ponderación.
+                    La meta general vale para toda la municipalidad; con una delegación, cambia el valor objetivo de ese ítem solo en esa delegación
+                    (el ponderador sigue siendo el mismo). Si la meta ya existe, se actualiza.
                 </p>
                 <form method="post" action="{% url 'indicadores:guardar_metas' %}" class="mt-3">
                     {% csrf_token %}
@@ -299,10 +344,6 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                             <label class="form-label fw-semibold" for="meta_valor">Meta del trimestre</label>
                             <input type="number" name="valor_objetivo" id="meta_valor" class="form-control" min="1" step="1" placeholder="Ej: 30" required>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label fw-semibold" for="meta_ponderador">Ponderador (%)</label>
-                            <input type="number" name="ponderador" id="meta_ponderador" class="form-control" min="0.01" max="100" step="0.01" placeholder="Ej: 40" required>
-                        </div>
                         <div class="col-md-2 d-grid">
                             <button type="submit" class="btn btn-muni fw-bold" {% if not hay_periodo %}disabled{% endif %}>
                                 <i class="bi bi-check-lg me-1"></i>Guardar meta
@@ -310,13 +351,61 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                         </div>
                     </div>
                     {% if not hay_periodo %}
-                    <div class="alert alert-warning mt-3 mb-0">No hay un periodo vigente. Créelo en Django Admin (Periodos) para poder definir metas.</div>
+                    <div class="alert alert-warning mt-3 mb-0">No hay un periodo vigente. Créelo en la pestaña Periodos para poder definir metas.</div>
                     {% endif %}
                 </form>
             </div>
             {% else %}
-            <div class="alert alert-light border small"><i class="bi bi-eye me-1"></i>Vista de consulta: las metas las definen el Administrador y cada Delegado para su delegación.</div>
+            <div class="alert alert-light border small"><i class="bi bi-eye me-1"></i>Vista de consulta: las metas y las ponderaciones las definen el Coordinador y el Administrador.</div>
             {% endif %}
+
+            <div class="card shadow-sm border-0 p-3 mb-4">
+                <h5 class="fw-bold">Ponderación del periodo vigente</h5>
+                {% for bloque in ponderaciones %}
+                <div class="tarjeta-tabla table-responsive mt-2 mb-3">
+                    <table class="table table-hover tabla-sgr mb-0">
+                        <thead>
+                            <tr>
+                                <th>{{ bloque.cargo.nombre }}</th>
+                                <th colspan="2" class="text-center">
+                                    Total {{ bloque.total }}%
+                                    {% if bloque.total == 100 %}<span class="badge bg-success ms-1">OK</span>
+                                    {% else %}<span class="badge bg-warning text-dark ms-1">Faltan {{ bloque.faltan }}%: este cargo no se mide</span>{% endif %}
+                                </th>
+                            </tr>
+                            <tr class="text-center">
+                                <th>Ítem</th>
+                                <th>Ponderador</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for ponderacion in bloque.filas %}
+                            <tr>
+                                <td>{{ ponderacion.item.nombre }}</td>
+                                <td class="text-center">{{ ponderacion.ponderador }}%</td>
+                                <td class="text-center">
+                                    {% if ponderacion.editable %}
+                                    <div class="d-flex gap-1 justify-content-center">
+                                        <a href="{% url 'indicadores:ponderacion_editar' ponderacion.pk %}" class="btn btn-sm btn-outline-warning"><i class="bi bi-pencil-square me-1"></i>Modificar</a>
+                                        <form method="post" action="{% url 'indicadores:ponderacion_eliminar' ponderacion.pk %}" data-confirmar="¿Quitar la ponderación de {{ ponderacion.item.nombre }} para {{ bloque.cargo.nombre }}?">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>Eliminar</button>
+                                        </form>
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted small">Solo lectura</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% empty %}
+                <p class="text-muted mb-0">Aún no hay ponderaciones definidas para el periodo vigente.</p>
+                {% endfor %}
+            </div>
 
             <div class="card shadow-sm border-0 p-3">
                 <h5 class="fw-bold">Metas del periodo vigente</h5>
@@ -338,17 +427,13 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                 {% endif %}
                 {% for grupo in metas_agrupadas %}
                 <h6 class="fw-bold mt-3 {% if grupo.general %}text-danger{% endif %}"><i class="bi {% if grupo.general %}bi-building{% else %}bi-geo-alt{% endif %} me-1"></i>{{ grupo.nombre }}</h6>
+                {% if not grupo.general %}<p class="text-muted small mb-1">Los ítems que no aparecen aquí usan la meta general.</p>{% endif %}
                 {% for bloque in grupo.cargos %}
                 <div class="tarjeta-tabla table-responsive mt-2 mb-3">
                     <table class="table table-hover tabla-sgr mb-0">
                         <thead>
                             <tr>
-                                <th colspan="2">{{ bloque.cargo.nombre }}</th>
-                                <th colspan="2" class="text-center">
-                                    Total {{ bloque.total }}%
-                                    {% if bloque.total == 100 %}<span class="badge bg-success ms-1">OK</span>
-                                    {% else %}<span class="badge bg-warning text-dark ms-1">Debe sumar 100%</span>{% endif %}
-                                </th>
+                                <th colspan="4">{{ bloque.cargo.nombre }}</th>
                             </tr>
                             <tr class="text-center">
                                 <th>Ítem</th>
@@ -387,6 +472,109 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                 {% endfor %}
             </div>
         </div>
+
+        {% if form_periodo %}
+        <!-- Pestaña 3: Periodos de medición (RF-005, RF-007): Coordinador y Administrador -->
+        <div class="tab-pane fade {% if pestana == 'periodos' %}show active{% endif %}" id="periods">
+            <div class="card shadow-sm border-0 p-3 mb-4">
+                <h5 class="fw-bold">Nuevo periodo de medición</h5>
+                <p class="text-muted small mb-0">
+                    El periodo fija las fechas, los días computables (vacío: se calculan con las fechas), los umbrales del semáforo,
+                    el tope de cumplimiento por ítem y lo que suma cada felicitación. Dos periodos no pueden cruzarse.
+                </p>
+                <form method="post" action="{% url 'indicadores:periodo_crear' %}" class="mt-3">
+                    {% csrf_token %}
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="per_nombre">Nombre</label>
+                            <input type="text" name="nombre" id="per_nombre" class="form-control" placeholder="Ej: T1 - 2027" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="per_fecha_inicio">Fecha de inicio</label>
+                            <input type="date" name="fecha_inicio" id="per_fecha_inicio" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="per_fecha_termino">Fecha de término</label>
+                            <input type="date" name="fecha_termino" id="per_fecha_termino" class="form-control" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="per_dias_computables">Días computables</label>
+                            <input type="number" name="dias_computables" id="per_dias_computables" class="form-control" placeholder="Vacío: se calculan" min="1">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="per_umbral_verde">Umbral verde (%)</label>
+                            <input type="number" name="umbral_verde" id="per_umbral_verde" class="form-control" placeholder="100" step="0.01" required value="100">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="per_umbral_ambar">Umbral ámbar (%)</label>
+                            <input type="number" name="umbral_ambar" id="per_umbral_ambar" class="form-control" placeholder="60" step="0.01" required value="60">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="per_umbral_colectivo">Umbral colectivo (%)</label>
+                            <input type="number" name="umbral_colectivo" id="per_umbral_colectivo" class="form-control" placeholder="80" step="0.01" required value="80">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="per_tope_cumplimiento">Tope de cumplimiento (%)</label>
+                            <input type="number" name="tope_cumplimiento" id="per_tope_cumplimiento" class="form-control" placeholder="120" step="0.01" required value="120">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="per_puntos_felicitacion">Puntos por felicitación</label>
+                            <input type="number" name="puntos_felicitacion" id="per_puntos_felicitacion" class="form-control" placeholder="1" step="0.01" required value="1">
+                        </div>
+                        <div class="col-md-4 d-grid">
+                            <button type="submit" class="btn btn-muni fw-bold"><i class="bi bi-check-lg me-1"></i>Guardar periodo</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card shadow-sm border-0 p-3">
+                <h5 class="fw-bold">Periodos registrados</h5>
+                <div class="tarjeta-tabla table-responsive mt-2">
+                    <table class="table table-hover tabla-sgr mb-0 text-center">
+                        <thead>
+                            <tr>
+                                <th class="text-start">Periodo</th>
+                                <th>Fechas</th>
+                                <th>Días</th>
+                                <th>Verde / Ámbar</th>
+                                <th>Colectivo</th>
+                                <th>Tope</th>
+                                <th>Felicitación</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for per in periodos %}
+                            <tr>
+                                <td class="text-start">{{ per }}{% if per.pk == periodo_activo.pk %} <span class="badge bg-success ms-1">Vigente</span>{% endif %}</td>
+                                <td>{{ per.fecha_inicio|date:"d/m/Y" }} a {{ per.fecha_termino|date:"d/m/Y" }}</td>
+                                <td>{{ per.dias_computables }}</td>
+                                <td>{{ per.umbral_verde|floatformat:0 }}% / {{ per.umbral_ambar|floatformat:0 }}%</td>
+                                <td>{{ per.umbral_colectivo|floatformat:0 }}%</td>
+                                <td>{{ per.tope_cumplimiento|floatformat:0 }}%</td>
+                                <td>{{ per.puntos_felicitacion }} pp</td>
+                                <td>{% if per.periodo_cerrado %}<span class="badge bg-secondary">Cerrado</span>{% else %}<span class="badge bg-success">Abierto</span>{% endif %}</td>
+                                <td>
+                                    <div class="d-flex gap-1 justify-content-center">
+                                        <a href="{% url 'indicadores:periodo_editar' per.pk %}" class="btn btn-sm btn-outline-warning"><i class="bi bi-pencil-square me-1"></i>Modificar</a>
+                                        <form method="post" action="{% url 'indicadores:periodo_estado' per.pk %}" data-confirmar="{% if per.periodo_cerrado %}¿Reabrir {{ per }}? Se podrán volver a registrar actividades.{% else %}¿Cerrar {{ per }}? No se podrán registrar más actividades en él.{% endif %}">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary text-nowrap">{% if per.periodo_cerrado %}<i class="bi bi-unlock me-1"></i>Reabrir{% else %}<i class="bi bi-lock me-1"></i>Cerrar{% endif %}</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="9" class="text-muted py-3">Aún no hay periodos registrados.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </main>
 
