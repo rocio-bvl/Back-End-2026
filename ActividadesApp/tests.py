@@ -239,11 +239,19 @@ class EvidenciaYEncargadoTest(BaseActividades):
         ajena = self.crear(usuario=self.otro, territorio=self.territorio_rural)
         self.assertIsNone(self.asignar(ajena, self.otro))
 
-    def test_coordinador_no_asigna_y_admin_asigna_en_todas_las_delegaciones(self):
+    def test_coordinador_y_admin_asignan_en_todas_las_delegaciones(self):
         actividad = self.crear()
-        self.entrar('22222222-2')  # el Coordinador supervisa: no interviene en las actividades de los funcionarios
-        self.assertIsNone(self.asignar(actividad, self.otro))
+        self.entrar('22222222-2')  # el Coordinador asigna encargados en cualquier delegación...
+        self.assertIsNone(self.asignar(actividad, self.otro))  # ...pero solo Funcionarios de la delegación de la actividad
+        self.assertEqual(self.asignar(actividad, self.companero), self.companero)
+        ajena = self.crear(usuario=self.otro, territorio=self.territorio_rural)
+        self.assertIsNone(self.asignar(ajena, self.companero))  # Las Compañías no queda a cargo de una de Rural
         self.entrar('11111111-1')
+        self.assertIsNone(self.asignar(ajena, self.companero))
+        # Al modificar la actividad, el Admin también elige solo entre los de esa delegación
+        from ActividadesApp.forms import funcionarios_para
+        self.assertNotIn(self.companero, list(funcionarios_para(self.admin, ajena)))
+        self.assertIn(self.companero, list(funcionarios_para(self.admin, actividad)))
         self.assertEqual(self.asignar(actividad, self.companero), self.companero)
 
     def test_funcionario_no_asigna_encargado(self):

@@ -18,6 +18,7 @@ ESTADOS_PENDIENTES = ['PROGRAMADA', 'EN_TUBO']
 
 # Reglas de ingreso (requerimientos de la municipalidad)
 MAX_ACTIVIDADES_DIA = 7  # actividades que un usuario puede ingresar por día (el Administrador queda exento)
+MAX_GESTIONES_ATENCION = 3  # RF-015 / RN-012: gestiones (actividades vinculadas) por atención social
 
 # «enumeration» EstadoEvidencia
 estados_evidencia = (

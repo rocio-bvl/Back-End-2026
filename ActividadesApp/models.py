@@ -3,7 +3,8 @@ from django.db import models
 from django.utils import timezone
 
 from ActividadesApp.choices import (estados_actividad, estados_evidencia, decisiones,
-                                    ESTADOS_PENDIENTES, cargos_representante, tipos_organizacion)
+                                    ESTADOS_PENDIENTES, cargos_representante, tipos_organizacion,
+                                    MAX_GESTIONES_ATENCION)
 from UsuarioApp.choices import estados_registro
 
 # Días antes de la fecha de realización en que un compromiso se marca "por vencer"
@@ -313,6 +314,17 @@ class AtencionSocial(models.Model):
 
     def delegacion(self):
         return self.usuario.delegacion if self.usuario else None
+
+    def cantidad_gestiones(self, excluir=None):
+        """Actividades vinculadas (gestiones). 'excluir' deja fuera la actividad que se está modificando."""
+        actividades = self.actividades.all()
+        if excluir is not None and excluir.pk is not None:
+            actividades = actividades.exclude(pk=excluir.pk)
+        return actividades.count()
+
+    def admite_gestion(self, excluir=None):
+        """RF-015 / RN-012: una atención social admite hasta MAX_GESTIONES_ATENCION gestiones (3)."""
+        return self.cantidad_gestiones(excluir) < MAX_GESTIONES_ATENCION
 
     class Meta:
         db_table = "atencion_social"

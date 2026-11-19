@@ -6,7 +6,7 @@ from django import forms
 from django.conf import settings
 from django.utils import timezone
 
-from ActividadesApp.choices import MAX_ACTIVIDADES_DIA, cargos_representante
+from ActividadesApp.choices import MAX_ACTIVIDADES_DIA, MAX_GESTIONES_ATENCION, cargos_representante
 from ActividadesApp.models import Actividad, Territorio, AtencionSocial, Organizacion, Solicitante, Representante
 from UsuarioApp.funciones import limpiar_rut, validar_rut, normalizar_telefono, MENSAJE_TELEFONO
 from UsuarioApp.models import Catalogo, Usuario
@@ -31,12 +31,12 @@ def territorios_para(usuario):
     return territorios
 
 
-def funcionarios_para(usuario):
-    """Funcionarios activos que se pueden elegir como encargado: los de la delegación de quien registra
-    (el Administrador, de todas). Quien registra no aparece: dejar el campo vacío significa que la realiza él."""
+def funcionarios_para(usuario, actividad=None):
+    """Funcionarios activos que se pueden elegir como encargado: al modificar, los de la delegación de la actividad;
+    al registrar, los de quien registra (el Administrador, de todas). Quien registra no aparece (vacío = él)."""
     funcionarios = Usuario.objects.filter(is_active=True, roles_asignados__rol__codigo='Funcionario').select_related('delegacion', 'territorio')
-    if not usuario.es_administrador():
-        funcionarios = funcionarios.filter(delegacion_id=usuario.delegacion_id)
+    if actividad is not None or not usuario.es_administrador():
+        funcionarios = funcionarios.filter(delegacion_id=(actividad.usuario if actividad is not None else usuario).delegacion_id)
     return funcionarios.exclude(pk=usuario.pk).distinct().order_by('first_name', 'last_name')
 
 
@@ -202,7 +202,7 @@ class ActividadForm(SolicitanteMixin, forms.Form):
         self.fields['item'].queryset = Catalogo.objects.filter(tipo='ITEM_GESTION', estado='ACTIVO').order_by('id')
         self.fields['territorio'].queryset = territorios_para(usuario) if usuario else Territorio.objects.none()
         if usuario is not None:
-            self.fields['encargado'].queryset = funcionarios_para(usuario)
+            self.fields['encargado'].queryset = funcionarios_para(usuario, actividad)
             self.fields['solicitud'].queryset = solicitudes_para(usuario)
         if not self.is_bound:
             self.initial.setdefault('fecha_realizacion', timezone.localdate())
@@ -217,11 +217,15 @@ class ActividadForm(SolicitanteMixin, forms.Form):
             if self.solicitante is None or solicitud.solicitante_id != self.solicitante.pk:
                 self.add_error('solicitud', f"La solicitud {solicitud.codigo()} es de {solicitud.solicitante}, "
                                             f"no de la persona atendida.")
+            elif not solicitud.admite_gestion(excluir=self.actividad):
+                # RF-015: hasta 3 gestiones por atención (al modificar, la actividad misma no se cuenta)
+                self.add_error('solicitud', f"La solicitud {solicitud.codigo()} ya tiene {MAX_GESTIONES_ATENCION} "
+                                            f"gestiones, el máximo permitido.")
             return
         if self.solicitante is None:  # persona nueva: todavía no tiene solicitudes
             return
         candidatas = [s for s in self.fields['solicitud'].queryset.filter(solicitante=self.solicitante)
-                      if s.estado() != 'ATENDIDA']
+                      if s.estado() != 'ATENDIDA' and s.admite_gestion()]
         if len(candidatas) == 1:
             self.solicitud_encontrada = candidatas[0]
             datos['solicitud'] = candidatas[0]

@@ -64,7 +64,7 @@ Cada rol del negocio queda unido a un grupo de Django con el nombre de perfil qu
 | Rol del SGR | Grupo de Django | Nivel |
 |---|---|---|
 | Admin | Administrador | Acceso total (superusuario) |
-| Coordinador | Supervisor | Solo visualiza todas las delegaciones |
+| Coordinador | Supervisor | Define metas y ponderaciones; supervisa todas las delegaciones |
 | Delegado | Delegado | Gestiona su delegación |
 | Funcionario | Administrativo | Solo lo propio |
 
@@ -83,8 +83,9 @@ Las vistas se protegen con `@login_required` o con `@permiso_requerido(permiso, 
 | Crear, editar y desactivar usuarios | Sí | No | Funcionarios de su delegación | No |
 | Eliminar usuarios (con confirmación) | Sí, si no tienen registros | No | No | No |
 | Agregar, modificar y eliminar delegaciones y territorios | Sí | No | No | No |
-| Metas generales de la municipalidad | Agrega y edita | Visualiza | Visualiza | No |
-| Metas propias de una delegación | Todas | Visualiza | Las de su delegación | No |
+| Ponderación de cada ítem por cargo (una para toda la municipalidad) | Agrega y edita | Agrega y edita | Visualiza | No |
+| Metas generales de la municipalidad | Agrega y edita | Agrega y edita | Visualiza | No |
+| Metas propias de una delegación (cambian el valor objetivo de un ítem) | Agrega y edita | Agrega y edita | Visualiza | No |
 | Auditoría (solo lectura) | Sí | Sí | No | No |
 | Entrar a Django Admin | Sí (superusuario) | No | No | No |
 
@@ -92,7 +93,7 @@ Las vistas se protegen con `@login_required` o con `@permiso_requerido(permiso, 
 
 - **Tablero por perfil:** cada grupo tiene su panel de inicio (`dashboard_admin`, `dashboard_coordinador`, `dashboard_delegado` y `dashboard_administrativo`).
 - **Mantenedores con crear, buscar, listar, modificar y eliminar:** Usuarios (búsqueda por nombre, RUT o correo), Delegaciones con sus territorios (búsqueda por nombre, ámbito o territorio), Metas (búsqueda por cargo o ítem) y Registro de Atenciones (búsqueda por nombre o RUT). Eliminar siempre pide confirmación.
-- **Selector de delegación** en la barra superior: filtra la información por delegación. En Metas, General muestra las metas de toda la municipalidad y una delegación muestra las suyas; el Delegado elige entre General y la suya.
+- **Selector de delegación** en la barra superior: filtra la información por delegación. En Metas, General muestra las metas de toda la municipalidad y una delegación muestra las suyas; el Delegado elige entre General y la suya. Un cargo cuya ponderación no suma 100% no se mide hasta completarla.
 - **Transacciones:** registrar una actividad (con su ejecución, si corresponde) y validar o rechazar la ejecución.
 - **Auditoría de solo lectura**, con filtros por usuario, evento y fechas.
 - **Perfil propio:** cada usuario edita su foto, teléfono y correo desde Editar perfil.

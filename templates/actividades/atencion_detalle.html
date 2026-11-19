@@ -39,7 +39,7 @@ y Delegado pueden vincular una actividad ya registrada.
             </div>
 
             <div class="card shadow-sm border-0">
-                <div class="card-header bg-gris-0 fw-bold py-3"><i class="bi bi-list-check me-2 text-danger"></i>Actividades con que se atiende ({{ actividades|length }})</div>
+                <div class="card-header bg-gris-0 fw-bold py-3"><i class="bi bi-list-check me-2 text-danger"></i>Gestiones con que se atiende ({{ actividades|length }} de {{ max_gestiones }})</div>
                 <div class="card-body p-0">
                     {% for actividad in actividades %}
                     <div class="d-flex flex-wrap align-items-center gap-2 border-bottom p-3">
@@ -86,11 +86,14 @@ y Delegado pueden vincular una actividad ya registrada.
                 </div>
             </div>
             {% endif %}
+            {% if not admite_gestion %}
+            <div class="alert alert-light border small"><i class="bi bi-info-circle me-1"></i>La atención ya tiene {{ max_gestiones }} gestiones, el máximo permitido: no se pueden vincular ni crear más.</div>
+            {% endif %}
             {% if request.user.puede_registrar or editable or eliminable %}
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-gris-90 text-white fw-bold py-3">Acciones</div>
                 <div class="card-body d-grid gap-2">
-                    {% if request.user.puede_registrar %}
+                    {% if request.user.puede_registrar and admite_gestion %}
                     <a href="{% url 'actividades:actividad_crear' %}?solicitud={{ atencion.pk }}" class="btn btn-muni-v2"><i class="bi bi-plus-circle me-1"></i>Crear actividad vinculada</a>
                     {% endif %}
                     {% if editable %}
@@ -104,7 +107,7 @@ y Delegado pueden vincular una actividad ya registrada.
                     {% endif %}
                 </div>
             </div>
-            {% elif not puede_vincular %}
+            {% elif not puede_vincular and admite_gestion %}
             <div class="alert alert-light border small"><i class="bi bi-eye me-1"></i>Solo lectura: puede revisar la solicitud y sus actividades.</div>
             {% endif %}
         </div>

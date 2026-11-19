@@ -58,6 +58,14 @@
                     <option value="ACCESO_DENEGADO" {% if evento_actual == "ACCESO_DENEGADO" %}selected{% endif %}>
                         Acceso denegado
                     </option>
+
+                    <option value="LOGIN_FALLIDO" {% if evento_actual == "LOGIN_FALLIDO" %}selected{% endif %}>
+                        Inicio de sesión fallido
+                    </option>
+
+                    <option value="LOGIN_BLOQUEADO" {% if evento_actual == "LOGIN_BLOQUEADO" %}selected{% endif %}>
+                        Inicio de sesión bloqueado
+                    </option>
                 </select>
             </div>
 
@@ -117,4 +125,4 @@
     </nav>
     {% endif %}
 </main>
-{% endblock %}
+{% endblock %}

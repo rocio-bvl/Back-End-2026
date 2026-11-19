@@ -467,3 +467,90 @@ class FelicitacionesYReclamosTest(BaseActividades):
         reclamo.refresh_from_db()
         self.assertEqual((reclamo.estado, reclamo.respondido_por), ('RESUELTO', self.delegado))
         self.assertEqual(self.total(self.func), antes)  # el reclamo no afecta el puntaje
+
+
+@override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
+class RequerimientosPendientesTest(BaseActividades):
+    """RF-005 (validación del periodo), RF-015 (hasta 3 gestiones por atención) y RF-033 (exportar el Semáforo)."""
+
+    # ----- RF-005 -----
+    def test_periodo_rechaza_termino_anterior_al_inicio(self):
+        from django.core.exceptions import ValidationError
+        from IndicadoresApp.models import Periodo
+        periodo = Periodo(nombre='Prueba', fecha_inicio=self.hoy, fecha_termino=self.hoy - timedelta(days=1))
+        with self.assertRaises(ValidationError) as error:
+            periodo.full_clean()
+        self.assertIn('fecha_termino', error.exception.message_dict)
+
+    def test_periodo_calcula_sus_dias_y_no_acepta_mas_dias_que_los_del_periodo(self):
+        from datetime import date
+        from django.core.exceptions import ValidationError
+        from IndicadoresApp.models import Periodo
+        periodo = Periodo(nombre='T3 prueba', fecha_inicio=date(2026, 7, 1), fecha_termino=date(2026, 9, 30))
+        periodo.full_clean()
+        self.assertEqual(periodo.dias_computables, 92)  # 1 de julio al 30 de septiembre, ambos incluidos
+        periodo.dias_computables = 100
+        with self.assertRaises(ValidationError):
+            periodo.full_clean()
+
+    # ----- RF-015 -----
+    def atencion_con_gestiones(self, cantidad):
+        tipo = Catalogo.objects.get_or_create(tipo='TIPO_ATENCION', nombre='Ayuda social')[0]
+        persona = Solicitante.objects.create(rut='11222333-9', nombre='Juan Pérez', telefono='912345678')
+        atencion = AtencionSocial.objects.create(usuario=self.func, solicitante=persona, tipo_atencion=tipo)
+        for _ in range(cantidad):
+            actividad = self.crear()
+            actividad.solicitud = atencion
+            actividad.save()
+        return atencion
+
+    def test_atencion_admite_hasta_tres_gestiones(self):
+        atencion = self.atencion_con_gestiones(3)
+        self.assertFalse(atencion.admite_gestion())
+        cuarta = self.crear()
+        self.entrar('33333333-3')
+        self.client.post(reverse('actividades:atencion_vincular', args=[atencion.pk]), {'actividad': cuarta.pk})
+        cuarta.refresh_from_db()
+        self.assertIsNone(cuarta.solicitud)
+        self.assertEqual(atencion.cantidad_gestiones(), 3)
+
+    def test_con_dos_gestiones_todavia_se_puede_vincular_una_tercera(self):
+        atencion = self.atencion_con_gestiones(2)
+        tercera = self.crear()
+        self.entrar('33333333-3')
+        self.client.post(reverse('actividades:atencion_vincular', args=[atencion.pk]), {'actividad': tercera.pk})
+        tercera.refresh_from_db()
+        self.assertEqual(tercera.solicitud, atencion)
+
+    def test_formulario_no_vincula_una_cuarta_gestion(self):
+        atencion = self.atencion_con_gestiones(3)
+        self.entrar('55555555-5')
+        respuesta = self.registrar(solicitud=atencion.pk, rut_solicitante='11.222.333-9', nombre_solicitante='',
+                                   telefono_solicitante='')
+        self.assertIn('solicitud', respuesta.context['form'].errors)
+        self.assertEqual(atencion.cantidad_gestiones(), 3)
+
+    # ----- RF-033 -----
+    def test_exportar_semaforo_en_csv_con_filtros_y_fecha(self):
+        self.entrar('33333333-3')
+        respuesta = self.client.get(reverse('indicadores:semaforo_exportar'), {'q': 'zzz-sin-coincidencias'})
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertTrue(respuesta['Content-Type'].startswith('text/csv'))
+        self.assertIn('attachment', respuesta['Content-Disposition'])
+        texto = respuesta.content.decode('utf-8-sig')
+        self.assertIn('Búsqueda;zzz-sin-coincidencias', texto)
+        self.assertIn('Fecha de generación', texto)
+        self.assertIn('Área;Responsable;Delegación', texto)
+        self.assertTrue(Auditoria.objects.filter(entidad='Exportación', id_entidad='Semáforo').exists())
+
+    def test_exportar_trae_las_mismas_filas_que_la_pantalla(self):
+        self.entrar('11111111-1')
+        pantalla = self.client.get(reverse('indicadores:semaforo')).context['seguimiento']
+        texto = self.client.get(reverse('indicadores:semaforo_exportar')).content.decode('utf-8-sig')
+        for fila in pantalla:
+            self.assertIn(fila['responsable'], texto)
+
+    def test_funcionario_no_puede_exportar(self):
+        self.entrar('55555555-5')
+        respuesta = self.client.get(reverse('indicadores:semaforo_exportar'))
+        self.assertEqual(respuesta.status_code, 302)

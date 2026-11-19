@@ -17,3 +17,5 @@ db.sqlite3
 .idea/
 
 staticfiles/
+# Respaldos de la base de datos (python manage.py respaldar_bd)
+respaldos/

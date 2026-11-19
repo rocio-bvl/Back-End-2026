@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from UsuarioApp.admin_sgr import AdminSGR
 from IndicadoresApp.models import (Periodo, MetaDesempeno, IndicadorDesempeno, AjusteDesempeno, Ausencia, Felicitacion,
-                                   Reclamo)
+                                   Reclamo, Ponderacion)
 
 
 class PeriodoAdmin(AdminSGR):
@@ -14,6 +14,13 @@ class PeriodoAdmin(AdminSGR):
 
 class MetaDesempenoAdmin(AdminSGR):
     list_display = ("periodo", "delegacion", "cargo", "item", "valor_objetivo", "unidad", "ponderador")
+    search_fields = ("cargo__nombre", "item__nombre", "periodo__nombre")
+    list_filter = ("periodo", "cargo")
+    ordering = ("periodo", "cargo", "item")
+
+
+class PonderacionAdmin(AdminSGR):
+    list_display = ("periodo", "cargo", "item", "ponderador")
     search_fields = ("cargo__nombre", "item__nombre", "periodo__nombre")
     list_filter = ("periodo", "cargo")
     ordering = ("periodo", "cargo", "item")
@@ -52,6 +59,7 @@ class ReclamoAdmin(AdminSGR):
 
 admin.site.register(Periodo, PeriodoAdmin)
 admin.site.register(MetaDesempeno, MetaDesempenoAdmin)
+admin.site.register(Ponderacion, PonderacionAdmin)
 admin.site.register(IndicadorDesempeno, IndicadorDesempenoAdmin)
 admin.site.register(AjusteDesempeno, AjusteDesempenoAdmin)
 admin.site.register(Ausencia, AusenciaAdmin)

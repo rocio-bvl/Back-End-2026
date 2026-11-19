@@ -6,7 +6,7 @@
 --
 -- Usuarios de prueba (todos con la contraseña: Serena2026!)
 --   11111111-1  Administrador
---   22222222-2  Coordinador (solo visualiza)
+--   22222222-2  Coordinador (define metas y ponderaciones; lo demás solo lo visualiza)
 --   33333333-3  Delegada de Las Compañías (Patricia Vega)
 --   44444444-4  Delegado de Rural (Rodrigo Araya)
 --   14141414-3  Delegada de La Pampa (Carolina Navarro)
@@ -23,8 +23,8 @@ START TRANSACTION;
 -- ---------------------------------------------------------------------------
 INSERT INTO `rol` (`id`, `codigo`, `nombre`, `descripcion`) VALUES
 (1, 'Admin',       'Administrador',    'Acceso total: usuarios, delegaciones, metas y corrección de fechas'),
-(2, 'Coordinador', 'Coordinador',      'Visualiza actividades, usuarios, delegaciones y metas de todas las delegaciones; asigna encargados'),
-(3, 'Delegado',    'Delegado',         'Gestiona los Funcionarios y las metas de su delegación, valida actividades y asigna encargados'),
+(2, 'Coordinador', 'Coordinador',      'Define metas y ponderaciones; visualiza actividades, usuarios y delegaciones de todas las delegaciones; asigna encargados'),
+(3, 'Delegado',    'Delegado',         'Gestiona los Funcionarios de su delegación, valida actividades y asigna encargados (las metas solo las ve)'),
 (5, 'Funcionario', 'Funcionario',      'Registra actividades y atenciones sociales');
 
 -- ---------------------------------------------------------------------------
@@ -88,30 +88,53 @@ INSERT INTO `periodo` (`id`, `nombre`, `fecha_inicio`, `fecha_termino`, `dias_co
 (2, 'T4 - 2026', '2026-10-01', '2026-12-31', 92, 'ACTIVO', 100.00, 60.00, 80.00, 120.00, 1.00);
 
 -- ---------------------------------------------------------------------------
--- Metas por cargo (los ponderadores de cada cargo suman 100).
--- delegacion_id NULL = meta general de la municipalidad (solo el Administrador).
--- Las metas 17 a 19 son propias de Las Compañías: para el cargo 1 reemplazan a las generales en esa delegación.
+-- Ponderación por cargo (una sola para toda la municipalidad; las de cada cargo suman 100).
+-- La definen el Coordinador y el Administrador. Un cargo cuya ponderación no suma 100 no se mide.
 -- ---------------------------------------------------------------------------
-INSERT INTO `meta_desempeno` (`id`, `valor_objetivo`, `unidad`, `ponderador`, `cargo_id`, `item_id`, `periodo_id`, `delegacion_id`) VALUES
-(1,  60, 'actividades', 40.00, 1, 1, 1, NULL),
-(2,  24, 'actividades', 35.00, 1, 2, 1, NULL),
-(3,  12, 'actividades', 25.00, 1, 3, 1, NULL),
-(4,  30, 'actividades', 30.00, 2, 1, 1, NULL),
-(5,  30, 'actividades', 50.00, 2, 2, 1, NULL),
-(6,   6, 'actividades', 20.00, 2, 3, 1, NULL),
-(7,  45, 'actividades', 60.00, 3, 1, 1, NULL),
-(8,  20, 'actividades', 40.00, 3, 2, 1, NULL),
-(9,  60, 'actividades', 40.00, 1, 1, 2, NULL),
-(10, 24, 'actividades', 35.00, 1, 2, 2, NULL),
-(11, 12, 'actividades', 25.00, 1, 3, 2, NULL),
-(12, 30, 'actividades', 30.00, 2, 1, 2, NULL),
-(13, 30, 'actividades', 50.00, 2, 2, 2, NULL),
-(14,  6, 'actividades', 20.00, 2, 3, 2, NULL),
-(15, 45, 'actividades', 60.00, 3, 1, 2, NULL),
-(16, 20, 'actividades', 40.00, 3, 2, 2, NULL),
-(17, 50, 'actividades', 30.00, 1, 1, 2, 2),
-(18, 30, 'actividades', 50.00, 1, 2, 2, 2),
-(19, 10, 'actividades', 20.00, 1, 3, 2, 2);
+INSERT INTO `ponderacion` (`id`, `ponderador`, `cargo_id`, `item_id`, `periodo_id`) VALUES
+(1, 40.00, 1, 1, 1),
+(2, 35.00, 1, 2, 1),
+(3, 25.00, 1, 3, 1),
+(4, 30.00, 2, 1, 1),
+(5, 50.00, 2, 2, 1),
+(6, 20.00, 2, 3, 1),
+(7, 60.00, 3, 1, 1),
+(8, 40.00, 3, 2, 1),
+(9, 40.00, 1, 1, 2),
+(10, 35.00, 1, 2, 2),
+(11, 25.00, 1, 3, 2),
+(12, 30.00, 2, 1, 2),
+(13, 50.00, 2, 2, 2),
+(14, 20.00, 2, 3, 2),
+(15, 60.00, 3, 1, 2),
+(16, 40.00, 3, 2, 2);
+
+-- ---------------------------------------------------------------------------
+-- Metas por cargo (valor objetivo del trimestre). Las definen el Coordinador y el Administrador.
+-- delegacion_id NULL = meta general de la municipalidad.
+-- Las metas 17 a 19 son propias de Las Compañías: cambian el valor objetivo del cargo 1 solo en esa delegación
+-- (el ponderador es el mismo de la tabla ponderacion).
+-- ---------------------------------------------------------------------------
+INSERT INTO `meta_desempeno` (`id`, `valor_objetivo`, `unidad`, `cargo_id`, `item_id`, `periodo_id`, `delegacion_id`) VALUES
+(1,   60, 'actividades', 1, 1, 1, NULL),
+(2,   24, 'actividades', 1, 2, 1, NULL),
+(3,   12, 'actividades', 1, 3, 1, NULL),
+(4,   30, 'actividades', 2, 1, 1, NULL),
+(5,   30, 'actividades', 2, 2, 1, NULL),
+(6,    6, 'actividades', 2, 3, 1, NULL),
+(7,   45, 'actividades', 3, 1, 1, NULL),
+(8,   20, 'actividades', 3, 2, 1, NULL),
+(9,   60, 'actividades', 1, 1, 2, NULL),
+(10,  24, 'actividades', 1, 2, 2, NULL),
+(11,  12, 'actividades', 1, 3, 2, NULL),
+(12,  30, 'actividades', 2, 1, 2, NULL),
+(13,  30, 'actividades', 2, 2, 2, NULL),
+(14,   6, 'actividades', 2, 3, 2, NULL),
+(15,  45, 'actividades', 3, 1, 2, NULL),
+(16,  20, 'actividades', 3, 2, 2, NULL),
+(17,  50, 'actividades', 1, 1, 2, 2),
+(18,  30, 'actividades', 1, 2, 2, 2),
+(19,  10, 'actividades', 1, 3, 2, 2);
 
 -- ---------------------------------------------------------------------------
 -- Usuarios de prueba (contraseña: Serena2026!). Solo los Funcionarios tienen territorio.
