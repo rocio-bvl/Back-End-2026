@@ -16,6 +16,10 @@ class MensajeChat(models.Model):
     emisor = models.CharField(max_length=10, choices=emisores, verbose_name="Emisor")
     contenido = models.TextField(verbose_name="Contenido")
     fecha = models.DateTimeField(auto_now_add=True, verbose_name="Fecha")
+    # Procedencia del mensaje: un payload bloqueado por el guardrail nunca debe volver al proveedor
+    # como historial (WB-01/WB-03). Las filas anteriores a esta marca se revalidan en la vista.
+    bloqueado = models.BooleanField(default=False, verbose_name="Bloqueado por guardrail")
+    motivo = models.CharField(max_length=30, blank=True, default="", verbose_name="Motivo del bloqueo")
 
     def __str__(self):
         return f"{self.usuario} - {self.get_emisor_display()}: {self.contenido[:40]}"
@@ -28,6 +32,9 @@ class MensajeChat(models.Model):
         verbose_name = "Mensaje de chat"
         verbose_name_plural = "Mensajes de chat"
         ordering = ["fecha", "id"]
+        indexes = [
+            models.Index(fields=['usuario', '-fecha'], name='mensajechat_usuario_fecha_idx'),
+        ]
 
 
 class DocumentoConocimiento(models.Model):
@@ -90,6 +97,9 @@ class EventoChatbot(models.Model):
     # Códigos: INYECCION, SANEO_SALIDA, RATE_LIMIT, PERMISO (vacío = sin bloqueo)
     guardrail = models.CharField(max_length=30, blank=True, default="", verbose_name="Guardrail")
     error = models.TextField(blank=True, default="", verbose_name="Error")
+    # Campo de esquema para el tope del prompt total (T-C-01). T-B-01 solo lo agrega a la base:
+    # su cálculo y poblamiento pertenecen a T-C-01 y no se implementan aquí.
+    prompt_caracteres = models.IntegerField(null=True, blank=True, verbose_name="Caracteres del prompt")
 
     def __str__(self):
         return f"{self.fecha:%d/%m/%Y %H:%M} - {self.usuario or 'anónimo'} - {self.origen or 'sin origen'}"

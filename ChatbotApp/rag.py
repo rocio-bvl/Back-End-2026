@@ -239,7 +239,7 @@ def construir_contexto(pregunta, usuario):
     datos, errores = contexto_datos(usuario)
 
     partes = [
-        f"ALCANCE DECLARADO: {alcance}. No entregues información fuera de este alcance.",
+        f"ALCANCE DECLARADO: {alcance}.",
         "DOCUMENTACIÓN INTERNA RELEVANTE:",
     ]
     if documentos:

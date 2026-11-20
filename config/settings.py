@@ -192,15 +192,21 @@ CHATBOT_LOCAL_REASONING_EFFORT = os.getenv('CHATBOT_LOCAL_REASONING_EFFORT', 'no
 CHATBOT_ACTIVO = bool((CHATBOT_API_KEY and CHATBOT_MODEL) or CHATBOT_LOCAL_MODEL)
 CHATBOT_MAX_MENSAJE = 2000    # caracteres máximos por pregunta del usuario
 CHATBOT_MAX_HISTORIAL = 12    # mensajes (6 turnos) que se envían al proveedor como contexto
+CHATBOT_MAX_HISTORIAL_MENSAJE = int(os.getenv('CHATBOT_MAX_HISTORIAL_MENSAJE') or '1000')   # tope por mensaje del historial
+CHATBOT_MAX_HISTORIAL_CARACTERES = int(os.getenv('CHATBOT_MAX_HISTORIAL_CARACTERES') or '4000')  # presupuesto total del historial
 
 # ----- Fase 2: RAG, caché por usuario y observabilidad -----
 # Versión del prompt de sistema: se incrementa al cambiarlo y queda en cada EventoChatbot y en la clave de caché.
-CHATBOT_PROMPT_VERSION = os.getenv('CHATBOT_PROMPT_VERSION', '2.0')
+CHATBOT_PROMPT_VERSION = os.getenv('CHATBOT_PROMPT_VERSION', '2.1')
+# Guardrail de entrada: 'completo' (multicapa) o 'basico' (los 9 patrones históricos, rollback).
+CHATBOT_GUARDRAIL_MODO = os.getenv('CHATBOT_GUARDRAIL_MODO', 'completo').strip().lower()
 CHATBOT_CACHE_TTL = int(os.getenv('CHATBOT_CACHE_TTL') or '600')          # segundos de vida de una respuesta cacheada
 CHATBOT_RATE_LIMIT = int(os.getenv('CHATBOT_RATE_LIMIT') or '30')         # consultas permitidas por ventana
 CHATBOT_RATE_VENTANA = int(os.getenv('CHATBOT_RATE_VENTANA') or '3600')   # segundos de la ventana del rate limit
 CHATBOT_RAG_MAX_CARACTERES = int(os.getenv('CHATBOT_RAG_MAX_CARACTERES') or '4000')  # presupuesto del contexto RAG
 CHATBOT_MAX_RESPUESTA = int(os.getenv('CHATBOT_MAX_RESPUESTA') or '4000')            # tope de la respuesta saneada
+# Canarios sintéticos (CSV) que el saneo de salida debe redactar siempre. Vacío por defecto.
+CHATBOT_CANARIOS = os.getenv('CHATBOT_CANARIOS', '')
 
 # Caché en memoria del proceso (sin dependencias). LocMemCache es por proceso: con varios workers
 # la caché y el rate limit no se comparten entre ellos (trade-off documentado en docs/chatbot.md).
