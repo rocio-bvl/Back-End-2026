@@ -203,16 +203,16 @@ class IndicadorDesempeno(models.Model):
         return porcentaje
 
     def calcular_ajuste(self):
-        total = Decimal('0')
-        for ajuste in self.usuario.ajustes_recibidos.filter(periodo=self.meta.periodo):
-            total = total + ajuste.valor
+        total = getattr(self, '_ajustes', None)  # ya cargado por DatosMedicion (calculos.py)
+        if total is None:
+            total = sum((a.valor for a in self.usuario.ajustes_recibidos.filter(periodo=self.meta.periodo)), Decimal('0'))
         return round(total * self.meta.ponderador / 100, 2)
 
     def calcular_cumplimiento_ponderado(self):
         return round(self.cumplimiento * self.meta.ponderador / 100 + self.ajuste, 2)
 
     def calcular(self):
-        self.avance_actual = self.calcular_avance()
+        self.avance_actual = self._avance if hasattr(self, '_avance') else self.calcular_avance()
         self.meta_esperada = self.calcular_meta_esperada()
         self.cumplimiento = self.calcular_cumplimiento()
         self.ajuste = self.calcular_ajuste()
@@ -222,7 +222,7 @@ class IndicadorDesempeno(models.Model):
         else:
             logrado = Decimal('100')
         self.semaforo = self.meta.periodo.calcular_semaforo(logrado)
-        self.save()
+        # No se guarda: se calcula al vuelo en cada pantalla (guardar eran ~76 UPDATE por cada visita al Semáforo)
 
     class Meta:
         db_table = "indicador_desempeno"

@@ -205,10 +205,10 @@ INSERT INTO `solicitante` (`id`, `rut`, `nombre`, `telefono`) VALUES
 (7, '17890123-0', 'Carmen Ejemplo', '977778888');
 
 INSERT INTO `atencion_social` (`id`, `fecha`, `solicitante_id`, `requiere_visita`, `tipo_atencion_id`, `subtipo_atencion_id`,
-                            `usuario_id`) VALUES
-(1, '2026-10-22 13:00:00', 1, 1, 7,  8,    5),
-(2, '2026-10-23 15:30:00', 2, 0, 10, 11,   6),
-(3, '2026-10-24 12:00:00', 3, 1, 7,  NULL, 9);
+                            `usuario_id`, `detalle_solicitud`, `accion_pendiente`) VALUES
+(1, '2026-10-22 13:00:00', 1, 1, 7,  8,    5, 'Solicita apoyo por emergencia en su vivienda.', 'Coordinar visita domiciliaria.'),
+(2, '2026-10-23 15:30:00', 2, 0, 10, 11,   6, 'Consulta por beneficio social.', ''),
+(3, '2026-10-24 12:00:00', 3, 1, 7,  NULL, 9, 'Pide evaluación de su situación habitacional.', 'Agendar visita.');
 
 -- ---------------------------------------------------------------------------
 -- Actividades de ejemplo:
@@ -230,16 +230,18 @@ INSERT INTO `actividad` (`id`, `fecha`, `solicitud_problema`, `accion`, `territo
 (6, '2026-10-25 11:00:00', 'Visita domiciliaria para evaluar la ayuda social solicitada.', 'Visita domiciliaria', 4, 0, '2026-11-04', 'PROGRAMADA', 2, 2, NULL, 5, 6, 1, 0, 1);
 
 INSERT INTO `evidencia` (`id`, `version`, `imagen`, `comentario`, `fecha`, `estado_revision`, `actividad_id`, `reemplaza_a_id`) VALUES
-(1, 1, '', 'Se atendió a la vecina y se derivó al área social para evaluar la ayuda.', '2026-10-22 16:30:00', 'PENDIENTE', 3, NULL);
+(1, 1, '', '', '2026-10-22 16:30:00', 'PENDIENTE', 3, NULL);
 
 INSERT INTO `comentario_actividad` (`id`, `texto`, `fecha`, `actividad_id`, `usuario_id`) VALUES
 (1, 'Se envió el correo a la empresa eléctrica; se espera respuesta.', '2026-10-23 13:00:00', 2, 5),
 (2, 'La directiva confirmó asistencia para la fecha programada.', '2026-10-24 12:15:00', 1, 5);
 
-INSERT INTO `auditoria` (`id`, `evento`, `fecha`, `entidad`, `id_entidad`, `valor_anterior`, `valor_nuevo`, `usuario_id`) VALUES
-(1, 'CREACION', '2026-10-20 12:30:00', 'Actividad', '1', '', 'ACT1 - Reunión con organización [PROGRAMADA]', 5),
-(2, 'CREACION', '2026-10-21 14:00:00', 'Actividad', '2', '', 'ACT2 - Gestión con unidad de alumbrado [EN_TUBO]', 5),
-(3, 'CREACION', '2026-10-22 13:00:00', 'AtencionSocial', '1', '', 'SOC1 - María Ejemplo', 5),
-(4, 'CREACION', '2026-10-22 16:00:00', 'Actividad', '3', '', 'ACT3 - Atención presencial [EVIDENCIA_INGRESADA]', 5);
+-- Datos de ejemplo cargados por este script, no desde el sistema: canal EXTERNO y sin IP
+INSERT INTO `auditoria` (`id`, `evento`, `fecha`, `entidad`, `id_entidad`, `valor_anterior`, `valor_nuevo`, `usuario_id`,
+                         `usuario_texto`, `ip`, `canal`) VALUES
+(1, 'CREACION', '2026-10-20 12:30:00', 'Actividad', '1', '', 'ACT1 - Reunión con organización [PROGRAMADA]', 5, 'Camila Rojas Pizarro (55555555-5)', NULL, 'EXTERNO'),
+(2, 'CREACION', '2026-10-21 14:00:00', 'Actividad', '2', '', 'ACT2 - Gestión con unidad de alumbrado [EN_TUBO]', 5, 'Camila Rojas Pizarro (55555555-5)', NULL, 'EXTERNO'),
+(3, 'CREACION', '2026-10-22 13:00:00', 'AtencionSocial', '1', '', 'SOC1 - María Ejemplo', 5, 'Camila Rojas Pizarro (55555555-5)', NULL, 'EXTERNO'),
+(4, 'CREACION', '2026-10-22 16:00:00', 'Actividad', '3', '', 'ACT3 - Atención presencial [EVIDENCIA_INGRESADA]', 5, 'Camila Rojas Pizarro (55555555-5)', NULL, 'EXTERNO');
 
 COMMIT;

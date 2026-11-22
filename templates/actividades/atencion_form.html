@@ -11,10 +11,7 @@
                     <i class="bi bi-person-vcard me-2"></i>{% if object %}Modificar atención {{ object.codigo }}{% else %}Agregar atención social{% endif %}
                 </div>
                 <div class="card-body p-4">
-                    <p class="small text-muted">
-                        {% if object %}Ingresada el {{ object.fecha|date:"d/m/Y H:i" }} por {{ object.usuario.get_full_name|default:object.usuario.username }}.
-                        {% else %}La fecha de ingreso y su nombre como funcionario que la registra se guardan automáticamente.{% endif %}
-                    </p>
+                    {% if object %}<p class="small text-muted">Ingresada el {{ object.fecha|date:"d/m/Y H:i" }} por {{ object.usuario.get_full_name|default:object.usuario.username }}.</p>{% endif %}
                     {% if form.non_field_errors %}<div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>{% endif %}
 
                     <form method="post" novalidate>
@@ -50,7 +47,19 @@
                             </div>
                         </div>
 
-                        <p class="small text-muted mb-0"><i class="bi bi-info-circle me-1"></i>Las acciones para atender esta solicitud se registran como actividades vinculadas a ella (botón <i class="bi bi-plus-circle"></i> en el Registro de Atenciones, o "Vincular actividad a solicitud social" al registrar una actividad).</p>
+                        <h6 class="fw-bold mt-2">Atención</h6>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label fw-semibold" for="id_detalle_solicitud">{{ form.detalle_solicitud.label }} <span class="text-danger">*</span></label>
+                                <textarea name="detalle_solicitud" id="id_detalle_solicitud" rows="3" class="form-control {% if form.detalle_solicitud.errors %}is-invalid{% endif %}">{{ form.detalle_solicitud.value|default:'' }}</textarea>
+                                {% for error in form.detalle_solicitud.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label fw-semibold" for="id_accion_pendiente">{{ form.accion_pendiente.label }} <span class="text-muted fw-normal">(opcional)</span></label>
+                                <textarea name="accion_pendiente" id="id_accion_pendiente" rows="2" class="form-control {% if form.accion_pendiente.errors %}is-invalid{% endif %}">{{ form.accion_pendiente.value|default:'' }}</textarea>
+                                {% for error in form.accion_pendiente.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+                        </div>
 
                         <hr class="my-4">
                         <div class="d-flex justify-content-end gap-2">

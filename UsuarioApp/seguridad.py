@@ -23,10 +23,6 @@ from AuditoriaApp.registro import registrar_auditoria
 CLAVE_SESION = 'mfa_pendiente'
 
 
-def ip_cliente(request):
-    return request.META.get('REMOTE_ADDR', '')
-
-
 # ---------------------------------------------------------------------------
 # Límite de intentos
 # ---------------------------------------------------------------------------
@@ -54,12 +50,11 @@ def minutos_bloqueo_restantes(rut, usuario=None):
 
 
 def registrar_fallo(request, rut, motivo):
-    registrar_auditoria(None, 'LOGIN_FALLIDO', 'Inicio de sesión', rut, '', f"{motivo} | IP {ip_cliente(request)}")
+    registrar_auditoria(None, 'LOGIN_FALLIDO', 'Inicio de sesión', rut, '', motivo)  # la IP queda en su columna
 
 
 def registrar_bloqueo(request, rut):
-    registrar_auditoria(None, 'LOGIN_BLOQUEADO', 'Inicio de sesión', rut, '',
-                        f"Intento con el RUT bloqueado | IP {ip_cliente(request)}")
+    registrar_auditoria(None, 'LOGIN_BLOQUEADO', 'Inicio de sesión', rut, '', "Intento con el RUT bloqueado")
 
 
 # ---------------------------------------------------------------------------

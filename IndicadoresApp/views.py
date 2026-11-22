@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from ActividadesApp.models import Actividad
 from AuditoriaApp.registro import registrar_auditoria
-from IndicadoresApp.calculos import seguimiento_usuario
+from IndicadoresApp.calculos import seguimiento_usuario, DatosMedicion
 from IndicadoresApp.choices import TIPO_AJUSTE_FELICITACION
 from IndicadoresApp.forms import MetaForm, PonderacionForm, PeriodoForm, AusenciaForm, FelicitacionForm, ReclamoForm, RespuestaReclamoForm
 from IndicadoresApp.models import (MetaDesempeno, Ponderacion, Periodo, Ausencia, AjusteDesempeno, Felicitacion, Reclamo, periodo_vigente,
@@ -48,7 +48,7 @@ def tipo_tablero(usuario):
     return 'administrativo'
 
 
-def resumen_delegacion_tablero(delegacion, periodo, hoy):
+def resumen_delegacion_tablero(delegacion, periodo, hoy, filas=None, datos=None):
     """Tarjetas del tablero: pendientes, avance esperado a la fecha, semáforo y puntaje colectivo de la delegación elegida
     (delegacion=None: toda la municipalidad). semaforo_color guarda el código (VERDE, AMBAR, ROJO o vacío)."""
     # Actividades pendientes = compromisos programados y actividades del Tubo (todavía sin evidencia)
@@ -62,11 +62,11 @@ def resumen_delegacion_tablero(delegacion, periodo, hoy):
     meta_colectiva = Decimal('0')
     objetivo = Decimal('0')
     if periodo is not None:
-        filas = []
-        for usuario in usuarios_evaluados(delegacion):
-            fila = seguimiento_usuario(usuario, periodo, hoy)
-            if not fila['sin_medir']:  # los cargos con ponderación incompleta no cuentan en el promedio
-                filas.append(fila)
+        # Cada funcionario se calcula una sola vez: si el Semáforo ya trae las filas, se reutilizan
+        if filas is None:
+            datos = datos or DatosMedicion(periodo)
+            filas = [seguimiento_usuario(usuario, periodo, hoy, datos) for usuario in usuarios_evaluados(delegacion)]
+        filas = [fila for fila in filas if not fila['sin_medir']]  # sin ponderación completa no cuentan
         if filas:
             suma = Decimal('0')
             for fila in filas:
@@ -98,9 +98,9 @@ def resumen_delegacion_tablero(delegacion, periodo, hoy):
 def comparacion_delegaciones(periodo, hoy):
     """Tablero del Coordinador: una fila por delegación activa con su avance, semáforo y pendientes."""
     from UsuarioApp.models import Delegacion
-    filas = []
+    filas, datos = [], (DatosMedicion(periodo) if periodo else None)  # una carga para todas las delegaciones
     for delegacion in Delegacion.objects.filter(estado='ACTIVO').order_by('nombre_visible'):
-        fila = resumen_delegacion_tablero(delegacion, periodo, hoy)
+        fila = resumen_delegacion_tablero(delegacion, periodo, hoy, datos=datos)
         fila['delegacion'] = delegacion
         fila['responsables'] = usuarios_evaluados(delegacion).count()
         fila['por_validar'] = Actividad.objects.filter(estado='EVIDENCIA_INGRESADA', es_gestion=False, usuario__delegacion=delegacion).count()
@@ -199,7 +199,8 @@ def semaforo(request):
     periodo = periodo_vigente(hoy)
 
     q = request.GET.get('q', '').strip()
-    seguimiento = filas_semaforo(delegacion, periodo, hoy, q)
+    # Una sola pasada: las filas buscadas van a la tabla y todas a las tarjetas de resumen
+    seguimiento, todas = filas_semaforo(delegacion, periodo, hoy, q, con_todas=True)
     dias_transcurridos = 0
     porcentaje_esperado = 0
     if periodo is not None:
@@ -214,23 +215,28 @@ def semaforo(request):
         'dias_transcurridos': dias_transcurridos,
         'porcentaje_esperado': porcentaje_esperado,
         'periodo': periodo,
-        'resumen': resumen_delegacion_tablero(delegacion, periodo, hoy),
+        'resumen': resumen_delegacion_tablero(delegacion, periodo, hoy, filas=todas),
     }
     data.update(datos_ausencias(request.user, periodo))
     return render(request, 'indicadores/semaforo.html', data)
 
 
-def filas_semaforo(delegacion, periodo, hoy, q=''):
+def filas_semaforo(delegacion, periodo, hoy, q='', con_todas=False):
     """Filas del Semáforo (una por responsable evaluado). La usan la pantalla y su exportación, así ambas muestran
-    exactamente los mismos datos con los mismos filtros."""
-    filas = []
+    exactamente los mismos datos con los mismos filtros. con_todas=True devuelve además las de toda la delegación
+    (sin la búsqueda), para las tarjetas de resumen, sin calcular a nadie dos veces."""
     if periodo is None:
-        return filas
-    for usuario in filtrar_por_nombre(usuarios_evaluados(delegacion).select_related('delegacion'), q):
-        fila = seguimiento_usuario(usuario, periodo, hoy)
-        fila['delegacion'] = str(usuario.delegacion) if usuario.delegacion_id else 'Sin delegación'
-        filas.append(fila)
-    return filas
+        return ([], []) if con_todas else []
+    datos = DatosMedicion(periodo)  # pocas consultas para todos, en vez de unas 40 por funcionario
+    buscados = set(filtrar_por_nombre(usuarios_evaluados(delegacion), q).values_list('pk', flat=True))
+    filas = []
+    for usuario in usuarios_evaluados(delegacion).select_related('delegacion'):
+        if con_todas or usuario.pk in buscados:
+            fila = seguimiento_usuario(usuario, periodo, hoy, datos)
+            fila['delegacion'] = str(usuario.delegacion) if usuario.delegacion_id else 'Sin delegación'
+            filas.append(fila)
+    elegidas = [fila for fila in filas if fila['id'] in buscados]
+    return (elegidas, filas) if con_todas else elegidas
 
 
 def numero_cl(valor):

@@ -53,7 +53,7 @@
                             <p class="mb-1"><strong>Descripción:</strong> {{ evidencia_seleccionada.descripcion }}</p>
                             <p class="mb-1 small text-muted">Realizada el {{ evidencia_seleccionada.fecha_realizacion|date:"d/m/Y"|default:"-" }}{% if evidencia_seleccionada.depende_externos %} · venía del Tubo de Trabajo{% endif %}{% if evidencia_seleccionada.encargado %} · encargado: {{ evidencia_seleccionada.encargado.get_full_name }}{% endif %}</p>
                             <p class="mb-1"><strong>Persona atendida:</strong> {% if evidencia_seleccionada.solicitante %}{{ evidencia_seleccionada.solicitante.nombre }} · {{ evidencia_seleccionada.solicitante.rut }} · {{ evidencia_seleccionada.solicitante.telefono|default:"Sin teléfono" }}{% else %}Sin registrar{% endif %}</p>
-                            <p class="mb-0"><strong>Lo que se hizo:</strong> {{ evidencia_seleccionada.comentario|default:"-" }}</p>
+                            {% if evidencia_seleccionada.comentario %}<p class="mb-0"><strong>Descripción de la fotografía:</strong> {{ evidencia_seleccionada.comentario }}</p>{% endif %}
                         </div>
                     </div>
 
@@ -62,7 +62,7 @@
                         <img src="{{ evidencia_seleccionada.imagen.url }}" class="img-fluid rounded" alt="Evidencia">
                         {% else %}
                         <i class="bi bi-camera-video-off display-6 d-block mb-2"></i>
-                        <span>Esta evidencia se registró sin fotografía (es opcional).</span>
+                        <span>Sin fotografía.</span>
                         {% endif %}
                     </div>
 

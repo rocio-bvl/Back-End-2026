@@ -45,6 +45,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'AuditoriaApp.origen.OrigenAuditoriaMiddleware',  # IP y canal de cada evento de auditoría (RNF-008)
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -90,6 +91,8 @@ DATABASES = {
         # Cada petición es una transacción (OWASP A08 y A10): si algo falla a mitad de camino,
         # no queda guardada solo una parte (por ejemplo, la validación sin el cambio de estado)
         'ATOMIC_REQUESTS': True,
+        # Reutiliza la conexión a MySQL durante 60 segundos en vez de abrir una nueva en cada petición
+        'CONN_MAX_AGE': 60,
     }
 }
 
@@ -110,6 +113,10 @@ LOGIN_MINUTOS_BLOQUEO = 15      # ...lo bloquean durante estos minutos
 MFA_ACTIVO = os.getenv('MFA_ACTIVO', 'False') == 'True'
 MFA_MINUTOS_VIGENCIA = 10
 MFA_MAX_INTENTOS = 5
+
+# Auditoría: solo con un proxy propio delante (Nginx, balanceador de AWS) se toma la IP de X-Forwarded-For.
+# Sin proxy debe quedar en False: ese encabezado lo puede escribir cualquiera y falsearía la IP de origen.
+AUDITORIA_CONFIAR_PROXY = os.getenv('AUDITORIA_CONFIAR_PROXY', 'False') == 'True'
 
 # La sesión dura una jornada (8 horas) en vez de las 2 semanas que trae Django
 SESSION_COOKIE_AGE = 8 * 60 * 60

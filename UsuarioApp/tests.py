@@ -270,7 +270,7 @@ class RolesYPermisosTest(TestCase):
     # ----- Delegado: controla su delegación -----
     def datos_actividad(self, **extra):
         datos = {'solicitud_problema': 'x', 'accion': 'y', 'item': '1', 'territorio': self.datos['territorio'].pk,
-                 'fecha_realizacion': timezone.localdate().isoformat(), 'comentario': 'Hecho',
+                 'fecha_realizacion': timezone.localdate().isoformat(),
                  'rut_solicitante': '12312312-3', 'nombre_solicitante': 'Juan Pérez', 'telefono_solicitante': '912345678', 'agregar_solicitante': 'True'}
         datos.update(extra)
         return datos
@@ -284,7 +284,7 @@ class RolesYPermisosTest(TestCase):
         # Lo que ingresa el Delegado queda como gestión: no suma puntaje
         self.entrar('33333333-3')
         self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad())
-        self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad(depende_externos='on'))
+        self.client.post(reverse('actividades:actividad_crear_tubo'), self.datos_actividad(fecha_realizacion=''))
         gestiones = Actividad.objects.filter(usuario=self.delegado)
         self.assertEqual(gestiones.count(), 2)
         self.assertTrue(all(gestion.es_gestion for gestion in gestiones))
