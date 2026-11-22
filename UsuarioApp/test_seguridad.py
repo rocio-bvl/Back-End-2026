@@ -4,6 +4,7 @@ transacciones, páginas de error, aviso de rechazo y alerta semanal del Semáfor
 import os
 import time
 from io import StringIO
+from unittest import mock
 
 from django.conf import settings
 from django.core import mail
@@ -34,7 +35,7 @@ class LimiteIntentosTest(TestCase):
         self.intentar('mala')
         fallo = Auditoria.objects.get(evento='LOGIN_FALLIDO')
         self.assertEqual(fallo.id_entidad, '55555555-5')
-        self.assertIn('IP', fallo.valor_nuevo)
+        self.assertEqual((fallo.ip, fallo.canal), ('127.0.0.1', 'SGR'))
 
     def test_cinco_fallos_bloquean_aunque_luego_la_clave_sea_correcta(self):
         for _ in range(settings.LOGIN_MAX_INTENTOS):
@@ -53,9 +54,10 @@ class LimiteIntentosTest(TestCase):
     def test_el_bloqueo_vence(self):
         for _ in range(settings.LOGIN_MAX_INTENTOS):
             self.intentar('mala')
-        antes = Auditoria.objects.filter(evento='LOGIN_FALLIDO')
-        antes.update(fecha=antes.first().fecha - seguridad.timedelta(minutes=settings.LOGIN_MINUTOS_BLOQUEO + 1))
-        self.assertRedirects(self.intentar(CLAVE), reverse('users:verificar_codigo'))
+        # La auditoría no se puede modificar: en vez de retroceder las fechas, se adelanta el reloj
+        despues = seguridad.timezone.now() + seguridad.timedelta(minutes=settings.LOGIN_MINUTOS_BLOQUEO + 1)
+        with mock.patch('UsuarioApp.seguridad.timezone.now', return_value=despues):
+            self.assertRedirects(self.intentar(CLAVE), reverse('users:verificar_codigo'))
 
 
 @override_settings(MFA_ACTIVO=True)

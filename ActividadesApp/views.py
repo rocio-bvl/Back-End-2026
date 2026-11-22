@@ -248,6 +248,16 @@ def guardar_evidencia(actividad, usuario, comentario, imagen):
 
 @permiso_requerido('ActividadesApp.add_actividad', 'Registrar Actividad')
 def actividad_crear(request):
+    return registrar_actividad(request, tubo=False)
+
+
+@permiso_requerido('ActividadesApp.add_actividad', 'Agregar al Tubo de Trabajo')
+def actividad_crear_tubo(request):
+    """Formulario propio del Tubo de Trabajo: la actividad depende de factores externos (sin evidencia)."""
+    return registrar_actividad(request, tubo=True)
+
+
+def registrar_actividad(request, tubo):
     if not request.user.is_authenticated:
         return redirect('users:login')
     # Registran actividades el Funcionario y el Admin; el Delegado ingresa sus gestiones (sin puntaje).
@@ -257,7 +267,7 @@ def actividad_crear(request):
 
     periodo = periodo_vigente()
     if request.method == 'POST':
-        form = ActividadForm(request.POST, request.FILES, usuario=request.user)
+        form = ActividadForm(request.POST, request.FILES, usuario=request.user, tubo=tubo)
         if form.is_valid():
             datos = form.cleaned_data
             if periodo is None or periodo.periodo_cerrado():
@@ -272,7 +282,7 @@ def actividad_crear(request):
                 solicitud_problema=datos['solicitud_problema'].strip(),
                 accion=datos['accion'].strip(),
                 territorio=datos['territorio'],
-                depende_externos=datos['depende_externos'],
+                depende_externos=tubo,
                 fecha_realizacion=datos['fecha_realizacion'],
                 estado=estado,
                 item=datos['item'],
@@ -290,36 +300,30 @@ def actividad_crear(request):
             avisar_tope(request, actividad)
 
             if estado == 'EVIDENCIA_INGRESADA':
+                # Realizada: pasa a validación con la foto o sin ella
                 guardar_evidencia(actividad, request.user, datos['comentario'].strip(), datos['imagen'])
                 actividad.sincronizar_estado()
                 if actividad.es_gestion:
                     messages.success(request, f"Gestión {actividad.folio()} registrada. Las gestiones del Delegado no "
                                               "suman puntaje.")
                 else:
-                    messages.success(request, f"Actividad {actividad.folio()} registrada con su evidencia. "
-                                              "Queda a la espera de la validación del Delegado.")
+                    messages.success(request, f"Actividad {actividad.folio()} registrada. Queda a la espera de "
+                                              "su validación.")
                 return redirect('actividades:mi_gestion')
-            if actividad.depende_externos:
-                if actividad.fecha_realizacion:
-                    messages.success(request, f"Actividad {actividad.folio()} ingresada al Tubo de Trabajo con fecha de "
-                                            f"realización {actividad.fecha_realizacion:%d/%m/%Y}.")
-                else:
-                    messages.success(request, f"Actividad {actividad.folio()} ingresada al Tubo de Trabajo. "
-                                            "La fecha de realización se puede agregar después.")
+            if tubo:
+                messages.success(request, f"Actividad {actividad.folio()} agregada al Tubo de Trabajo.")
                 return redirect('actividades:tubo_trabajo')
             messages.success(request, f"Actividad {actividad.folio()} programada para el "
                                     f"{actividad.fecha_realizacion:%d/%m/%Y}. Queda pendiente hasta que se realice.")
             return redirect('actividades:mi_gestion')
     else:
-        inicial = {'depende_externos': request.GET.get('tubo') == '1'}
-        if inicial['depende_externos']:
-            inicial['fecha_realizacion'] = None  # en el Tubo la fecha de realización parte vacía
+        inicial = {}
         if request.GET.get('solicitud', '').isdigit():
             inicial['solicitud'] = request.GET['solicitud']  # "Crear actividad" desde el Registro de Atenciones
-        form = ActividadForm(usuario=request.user, initial=inicial)
+        form = ActividadForm(usuario=request.user, initial=inicial, tubo=tubo)
 
     return render(request, 'actividades/actividad_form.html', {
-        'form': form, 'hoy': timezone.localdate(), 'es_delegado': request.user.es_delegado()})
+        'form': form, 'hoy': timezone.localdate(), 'es_delegado': request.user.es_delegado(), 'tubo': tubo})
 
 
 def avisar_tope(request, actividad):
@@ -361,7 +365,8 @@ def actividad_editar(request, pk):
             request.POST,
             request.FILES,
             usuario=request.user,
-            actividad=actividad
+            actividad=actividad,
+            tubo=actividad.depende_externos
         )
 
         if form.is_valid():
@@ -372,16 +377,16 @@ def actividad_editar(request, pk):
             actividad.accion = datos['accion'].strip()
             actividad.item = datos['item']
             actividad.territorio = datos['territorio']
-            actividad.depende_externos = datos['depende_externos']
             actividad.fecha_realizacion = datos['fecha_realizacion']
             actividad.encargado = datos['encargado']
             actividad.solicitud = datos['solicitud']
             actividad.solicitante = registrar_solicitante(form, request)
             actividad.save()
-            # Si queda con fecha de hoy o anterior y aún no tenía evidencia, se agrega como en actividad_crear            
-            if datos['comentario'] and actividad.evidencia_vigente() is None:                
-                guardar_evidencia(actividad, request.user, datos['comentario'].strip(), datos['imagen'])            
-            # El estado se recalcula según la fecha, el Tubo y la evidencia (EN_TUBO, PROGRAMADA, EVIDENCIA_INGRESADA...)            
+            # Fuera del Tubo, si queda con fecha de hoy o anterior y aún no se informaba realizada, pasa a validación
+            if (not actividad.depende_externos and actividad.evidencia_vigente() is None
+                    and actividad.fecha_realizacion <= timezone.localdate()):
+                guardar_evidencia(actividad, request.user, datos['comentario'].strip(), datos['imagen'])
+            # El estado se recalcula según el Tubo, la fecha y la evidencia (EN_TUBO, PROGRAMADA, EVIDENCIA_INGRESADA...)
             actividad.sincronizar_estado()
 
             registrar_auditoria(
@@ -399,12 +404,12 @@ def actividad_editar(request, pk):
     else:
         form = ActividadForm(
             usuario=request.user,
+            tubo=actividad.depende_externos,
             initial={
                 'solicitud_problema': actividad.solicitud_problema,
                 'accion': actividad.accion,
                 'item': actividad.item,
                 'territorio': actividad.territorio,
-                'depende_externos': actividad.depende_externos,
                 'fecha_realizacion': actividad.fecha_realizacion,
                 'encargado': actividad.encargado,
                 'solicitud': actividad.solicitud,
@@ -515,7 +520,7 @@ def mostrar_errores(request, form):
 
 @permiso_requerido('ActividadesApp.add_actividad', 'Agregar Evidencia')
 def registrar_evidencia(request, pk):
-    """Quien registró la actividad o su encargado deja constancia de que se hizo (comentario + foto opcional).
+    """Quien registró la actividad o su encargado informa que se realizó (foto opcional, con su descripción).
     Sirve para un compromiso, una actividad del Tubo o una evidencia rechazada."""
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -552,7 +557,7 @@ def registrar_evidencia(request, pk):
 
 @permiso_requerido('ActividadesApp.view_actividad', 'Asignar Fecha')
 def asignar_fecha(request, pk):
-    """Asigna la fecha a una actividad del Tubo (pasa a PROGRAMADA) o cambia la de un compromiso."""
+    """Asigna la fecha a una actividad del Tubo (sigue en el Tubo) o cambia la de un compromiso."""
     if not request.user.is_authenticated:
         return redirect('users:login')
     actividad = get_object_or_404(Actividad, pk=pk)
@@ -569,11 +574,11 @@ def asignar_fecha(request, pk):
 
     antes = f"{actividad.estado} {actividad.fecha_realizacion or 'sin fecha'}"
     actividad.fecha_realizacion = form.cleaned_data['fecha_realizacion']
-    actividad.estado = 'PROGRAMADA'
+    actividad.estado = 'EN_TUBO' if actividad.depende_externos else 'PROGRAMADA'
     actividad.save()
     registrar_auditoria(request.user, 'MODIFICACION', 'Actividad', actividad.pk, antes,
                         f"{actividad.estado} {actividad.fecha_realizacion}")
-    messages.success(request, f"Actividad {actividad.folio()} programada para el {actividad.fecha_realizacion:%d/%m/%Y}.")
+    messages.success(request, f"Fecha de realización de {actividad.folio()}: {actividad.fecha_realizacion:%d/%m/%Y}.")
     return redirect('actividades:actividad_detalle', pk=actividad.pk)
 
 
@@ -686,11 +691,11 @@ def tubo_trabajo(request):
             Q(usuario__username__icontains=texto) | Q(encargado__first_name__icontains=texto) |
             Q(encargado__last_name__icontains=texto) | Q(encargado__username__icontains=texto)).distinct()
     if filtros['estado'] == 'SIN_FECHA':
-        actividades = actividades.filter(estado='EN_TUBO')
+        actividades = actividades.filter(estado='EN_TUBO', fecha_realizacion__isnull=True)
     elif filtros['estado'] == 'CON_FECHA':
-        actividades = actividades.filter(estado='PROGRAMADA')
+        actividades = actividades.filter(estado='EN_TUBO', fecha_realizacion__isnull=False)
     elif filtros['estado'] == 'VENCIDOS':
-        actividades = actividades.filter(estado='PROGRAMADA', fecha_realizacion__lt=hoy)
+        actividades = actividades.filter(estado='EN_TUBO', fecha_realizacion__lt=hoy)
     elif filtros['estado'] == 'CON_EVIDENCIA':
         actividades = actividades.filter(estado__in=['EVIDENCIA_INGRESADA', 'RECHAZADA'])
     elif filtros['estado'] == 'COMPLETADAS':

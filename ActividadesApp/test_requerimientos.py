@@ -304,7 +304,7 @@ class SolicitantesTest(BaseActividades):
 
     def atencion(self, **extra):
         datos = {'rut_solicitante': '11.222.333-9', 'nombre_solicitante': 'Juan Ficticio', 'telefono_solicitante': '987654321',
-                 'tipo_atencion': self.tipo.pk, 'subtipo_atencion': ''}
+                 'tipo_atencion': self.tipo.pk, 'subtipo_atencion': '', 'detalle_solicitud': 'Consulta por beneficio'}
         datos.update(extra)
         return self.client.post(reverse('actividades:atencion_crear'), datos)
 

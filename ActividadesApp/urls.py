@@ -15,6 +15,7 @@ urlpatterns = [
     path('<int:pk>/puntaje/', vactividades.cambiar_puntaje, name="cambiar_puntaje"),
     path('<int:pk>/comentar/', vactividades.comentar_actividad, name="comentar_actividad"),
     path('tubo/', vactividades.tubo_trabajo, name="tubo_trabajo"),
+    path('tubo/nueva/', vactividades.actividad_crear_tubo, name="actividad_crear_tubo"),
     path('gestion-social/', vactividades.gestion_social, name="gestion_social"),
     path('solicitantes/buscar/', vactividades.buscar_solicitante, name="buscar_solicitante"),
     path('solicitantes/sugerir/', vactividades.sugerir_solicitantes, name="sugerir_solicitantes"),

@@ -24,8 +24,10 @@
 
 /* 1. ENTRADA DE LA PÁGINA ------------------------------------------------------------------------------------
    Cada pantalla tiene un <main>: al cargar, su contenido aparece subiendo 12 px en medio segundo.
-   "both" mantiene el estado final (transform: none) al terminar, para no afectar a los elementos fijos. */
-main { animation: sgr-entrar .5s var(--sgr-curva) both; }
+   "backwards": al terminar, la animación deja de aplicarse. Con "both" el <main> quedaba con la animación
+   aplicada y eso crea un contexto de apilamiento: los modales (que están dentro del <main>) quedaban bajo
+   el fondo oscuro de Bootstrap (que se agrega al <body>) y no se podían usar. */
+main { animation: sgr-entrar .5s var(--sgr-curva) backwards; }
 
 @keyframes sgr-entrar {
     from { opacity: 0; transform: translateY(12px); }

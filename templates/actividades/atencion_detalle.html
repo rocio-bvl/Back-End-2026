@@ -32,6 +32,8 @@ y Delegado pueden vincular una actividad ya registrada.
                         <div class="col-md-6"><small class="text-muted d-block">¿Requiere visita?</small><span class="fw-bold">{% if atencion.requiere_visita %}Sí{% else %}No{% endif %}</span></div>
                         <div class="col-md-6"><small class="text-muted d-block">Tipo de atención:</small><span class="badge bg-gris-10 text-dark border">{{ atencion.tipo_atencion.nombre }}</span></div>
                         <div class="col-md-6"><small class="text-muted d-block">Subtipo:</small><span>{{ atencion.subtipo_atencion.nombre|default:"-" }}</span></div>
+                        <div class="col-12"><small class="text-muted d-block">Solicitud:</small><span>{{ atencion.detalle_solicitud|default:"-"|linebreaksbr }}</span></div>
+                        <div class="col-12"><small class="text-muted d-block">Acción pendiente:</small><span>{{ atencion.accion_pendiente|default:"-"|linebreaksbr }}</span></div>
                         <div class="col-md-6"><small class="text-muted d-block">Registrada por:</small><span class="fw-bold">{{ atencion.usuario.get_full_name|default:atencion.usuario.username|default:"-" }}</span> <small class="text-muted">· ingresada el {{ atencion.fecha|date:"d/m/Y H:i" }}</small></div>
                         <div class="col-md-6"><small class="text-muted d-block">Delegación:</small><span>{{ atencion.delegacion|default:"-" }}</span></div>
                     </div>

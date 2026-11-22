@@ -166,10 +166,10 @@ class SolicitanteMixin:
 
 class ActividadForm(SolicitanteMixin, forms.Form):
     """Registrar una actividad. La fecha de ingreso se guarda sola; la fecha de realización la elige quien registra:
-    - hoy o antes: se agrega la evidencia (comentario obligatorio, foto opcional);
-    - después de hoy: queda como compromiso pendiente (PROGRAMADA);
-    - si depende de factores externos, va al Tubo de Trabajo. Ahí la fecha de realización es opcional:
-    sin fecha queda EN_TUBO (se agrega después); con fecha queda PROGRAMADA, sin salir del Tubo."""
+    - hoy o antes: queda realizada y pasa a validación. La foto es opcional; su descripción, solo si hay foto;
+    - después de hoy: queda como compromiso pendiente (PROGRAMADA).
+    tubo=True es el formulario del Tubo de Trabajo (depende de factores externos): la fecha es opcional, no se
+    agrega evidencia y la actividad queda EN_TUBO hasta que se realice."""
     solicitud_problema = forms.CharField(label="Descripción de la actividad / solicitud / problema",
                                         widget=forms.Textarea(attrs={'rows': 3}))
     accion = forms.CharField(max_length=255, label="Acción")
@@ -177,11 +177,9 @@ class ActividadForm(SolicitanteMixin, forms.Form):
                                 empty_label="Seleccione una opción...")
     territorio = forms.ModelChoiceField(queryset=Territorio.objects.none(), label="Territorio / sector",
                                         empty_label="Seleccione un territorio...")
-    depende_externos = forms.BooleanField(required=False,
-                                        label="Depende de factores externos: pasa al Tubo de Trabajo")
     fecha_realizacion = forms.DateField(required=False, label="Fecha de realización",
                                         widget=forms.DateInput(attrs={'type': 'date'}))
-    comentario = forms.CharField(required=False, label="Comentario de lo que se hizo",
+    comentario = forms.CharField(required=False, label="Descripción de la fotografía",
                                 widget=forms.Textarea(attrs={'rows': 2}))
     imagen = forms.ImageField(required=False, label="Fotografía (opcional)")
     encargado = forms.ModelChoiceField(queryset=Usuario.objects.none(), required=False, label="Encargado de la actividad",
@@ -190,12 +188,13 @@ class ActividadForm(SolicitanteMixin, forms.Form):
                                     label="Vincular a una solicitud social")
     # Persona atendida: los campos del solicitante (RUT obligatorio) los agrega SolicitanteMixin
 
-    def __init__(self, *args, usuario=None, actividad=None, **kwargs):
+    def __init__(self, *args, usuario=None, actividad=None, tubo=False, **kwargs):
         """actividad: la que se modifica (modo edición). En edición no se aplica el máximo diario, y el cierre de
-        semana solo se revisa si cambia la fecha de realización."""
+        semana solo se revisa si cambia la fecha de realización. Una actividad del Tubo se edita con tubo=True."""
         super().__init__(*args, **kwargs)
         self.usuario = usuario
         self.actividad = actividad
+        self.tubo = tubo
         self.solicitud_encontrada = None  # solicitud social que el sistema vinculó sola, por el solicitante
         self.agregar_campos_solicitante()
         self.datos_iniciales_solicitante(actividad.solicitante if actividad is not None else None)
@@ -204,7 +203,7 @@ class ActividadForm(SolicitanteMixin, forms.Form):
         if usuario is not None:
             self.fields['encargado'].queryset = funcionarios_para(usuario, actividad)
             self.fields['solicitud'].queryset = solicitudes_para(usuario)
-        if not self.is_bound:
+        if not self.is_bound and not tubo:
             self.initial.setdefault('fecha_realizacion', timezone.localdate())
 
     def vincular_solicitud(self, datos):
@@ -265,27 +264,26 @@ class ActividadForm(SolicitanteMixin, forms.Form):
         self.revisar_reglas_de_ingreso(datos, hoy)
         if self.es_gestion():
             datos['encargado'] = None  # la gestión es del propio Delegado
-        if datos.get('depende_externos'):
-            # En el Tubo todavía no hay evidencia. La fecha es opcional: si se elige, no puede ser pasada
-            fecha = datos.get('fecha_realizacion')
-            if fecha is not None and fecha < hoy:
+        fecha = datos.get('fecha_realizacion')
+        if self.tubo:
+            # En el Tubo todavía no se realiza: sin evidencia, y la fecha es opcional (si se elige, no puede ser pasada)
+            cambio_fecha = self.actividad is None or fecha != self.actividad.fecha_realizacion
+            if fecha is not None and fecha < hoy and cambio_fecha:
                 self.add_error('fecha_realizacion', "La fecha de realización no puede ser anterior a hoy.")
             datos['comentario'] = ''
             datos['imagen'] = None
             return datos
 
-        fecha = datos.get('fecha_realizacion')
         if fecha is None:
             if 'fecha_realizacion' not in self.errors:
-                self.add_error('fecha_realizacion', "Indique la fecha de realización de la actividad, "
-                                                    "o márquela como dependiente de factores externos.")
+                self.add_error('fecha_realizacion', "Indique la fecha de realización.")
             return datos
         if fecha <= hoy:
-            # Se agrega la evidencia: el comentario es obligatorio, la foto no
-            if not (datos.get('comentario') or '').strip():
-                self.add_error('comentario', "Escriba un comentario de lo que se hizo en la actividad.")
+            # Realizada: la foto es opcional y la descripción solo acompaña a la foto
+            if (datos.get('comentario') or '').strip() and not datos.get('imagen'):
+                self.add_error('imagen', "Para agregar una descripción, suba la fotografía.")
         else:
-            # Es un compromiso: la evidencia (comentario y foto) se agrega cuando llegue la fecha
+            # Es un compromiso: la evidencia se agrega cuando se realice
             datos['comentario'] = ''
             datos['imagen'] = None
         return datos
@@ -293,23 +291,21 @@ class ActividadForm(SolicitanteMixin, forms.Form):
     def estado_inicial(self):
         """Estado con el que nace la actividad según lo que se llenó."""
         datos = self.cleaned_data
-        if datos['depende_externos']:
-            return 'PROGRAMADA' if datos['fecha_realizacion'] else 'EN_TUBO'
+        if self.tubo:
+            return 'EN_TUBO'
         if datos['fecha_realizacion'] > timezone.localdate():
             return 'PROGRAMADA'
         return 'EVIDENCIA_INGRESADA'
 
 
 class EvidenciaForm(forms.Form):
-    """Registrar que la actividad se hizo: comentario obligatorio y foto opcional."""
-    comentario = forms.CharField(label="Comentario de lo que se hizo", widget=forms.Textarea(attrs={'rows': 3}))
-    imagen = forms.ImageField(required=False, label="Fotografía (opcional, JPG o PNG, máx. 5 MB)")
+    """Informar que la actividad se realizó. La foto es opcional; la descripción, solo si se sube la foto."""
+    comentario = forms.CharField(required=False, label="Descripción de la fotografía",
+                                 widget=forms.Textarea(attrs={'rows': 2}))
+    imagen = forms.ImageField(required=False, label="Fotografía (opcional)")
 
     def clean_comentario(self):
-        comentario = self.cleaned_data['comentario'].strip()
-        if not comentario:
-            raise forms.ValidationError("Escriba un comentario de lo que se hizo en la actividad.")
-        return comentario
+        return self.cleaned_data['comentario'].strip()
 
     def clean_imagen(self):
         imagen = self.cleaned_data.get('imagen')
@@ -318,6 +314,12 @@ class EvidenciaForm(forms.Form):
             if errores:
                 raise forms.ValidationError(errores)
         return imagen
+
+    def clean(self):
+        datos = super().clean()
+        if datos.get('comentario') and not datos.get('imagen') and 'imagen' not in self.errors:
+            self.add_error('imagen', "Para agregar una descripción, suba la fotografía.")
+        return datos
 
 
 class FechaRealizacionForm(forms.Form):
@@ -356,8 +358,10 @@ class AtencionForm(SolicitanteMixin, forms.ModelForm):
     El solicitante (RUT, nombre y teléfono) se busca o se registra con SolicitanteMixin."""
     class Meta:
         model = AtencionSocial
-        fields = ['tipo_atencion', 'subtipo_atencion', 'requiere_visita']
+        fields = ['detalle_solicitud', 'accion_pendiente', 'tipo_atencion', 'subtipo_atencion', 'requiere_visita']
         labels = {'requiere_visita': "Requiere visita domiciliaria"}
+        widgets = {'detalle_solicitud': forms.Textarea(attrs={'rows': 3}),
+                   'accion_pendiente': forms.Textarea(attrs={'rows': 2})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -365,6 +369,7 @@ class AtencionForm(SolicitanteMixin, forms.ModelForm):
         self.fields['subtipo_atencion'].queryset = Catalogo.objects.filter(tipo='SUBTIPO_ATENCION', estado='ACTIVO')
         self.fields['tipo_atencion'].empty_label = "Seleccione el tipo..."
         self.fields['subtipo_atencion'].empty_label = "Sin subtipo"
+        self.fields['detalle_solicitud'].required = True  # sin esto la atención no dice qué se pidió
         self.agregar_campos_solicitante()
         self.datos_iniciales_solicitante(self.instance.solicitante if self.instance.solicitante_id else None)
 
