@@ -194,6 +194,18 @@ CHATBOT_MAX_MENSAJE = 2000    # caracteres máximos por pregunta del usuario
 CHATBOT_MAX_HISTORIAL = 12    # mensajes (6 turnos) que se envían al proveedor como contexto
 CHATBOT_MAX_HISTORIAL_MENSAJE = int(os.getenv('CHATBOT_MAX_HISTORIAL_MENSAJE') or '1000')   # tope por mensaje del historial
 CHATBOT_MAX_HISTORIAL_CARACTERES = int(os.getenv('CHATBOT_MAX_HISTORIAL_CARACTERES') or '4000')  # presupuesto total del historial
+# Techo duro del prompt completo (prompt de sistema + contexto + historial + pregunta). Al superarlo
+# se descarta primero el historial más antiguo y luego se recorta el contexto; la pregunta nunca se
+# recorta (ya está acotada por CHATBOT_MAX_MENSAJE). Rollback: subirlo por `.env`.
+CHATBOT_MAX_PROMPT_CARACTERES = int(os.getenv('CHATBOT_MAX_PROMPT_CARACTERES') or '20000')
+
+# ----- Retención y tope de historial (T-C-04) -----
+# La purga se ejecuta con `manage.py purgar_chatbot`; programarla (cron/systemd timer) es una
+# decisión de Operaciones y no se activa desde el código. Los mensajes se borran por antigüedad y
+# cada usuario conserva como máximo los N más recientes.
+CHATBOT_RETENCION_MENSAJES_DIAS = int(os.getenv('CHATBOT_RETENCION_MENSAJES_DIAS') or '90')
+CHATBOT_RETENCION_EVENTOS_DIAS = int(os.getenv('CHATBOT_RETENCION_EVENTOS_DIAS') or '365')
+CHATBOT_MAX_MENSAJES_POR_USUARIO = int(os.getenv('CHATBOT_MAX_MENSAJES_POR_USUARIO') or '200')
 
 # ----- Fase 2: RAG, caché por usuario y observabilidad -----
 # Versión del prompt de sistema: se incrementa al cambiarlo y queda en cada EventoChatbot y en la clave de caché.
@@ -201,15 +213,23 @@ CHATBOT_PROMPT_VERSION = os.getenv('CHATBOT_PROMPT_VERSION', '2.1')
 # Guardrail de entrada: 'completo' (multicapa) o 'basico' (los 9 patrones históricos, rollback).
 CHATBOT_GUARDRAIL_MODO = os.getenv('CHATBOT_GUARDRAIL_MODO', 'completo').strip().lower()
 CHATBOT_CACHE_TTL = int(os.getenv('CHATBOT_CACHE_TTL') or '600')          # segundos de vida de una respuesta cacheada
+# Mensajes recientes del historial que entran en la huella de la clave de caché (0 = sin historial).
+# Incluirlos evita servir respuestas de otra conversación, pero baja la tasa de acierto: cada turno
+# cambia la huella. Valor configurable (4 = dos turnos completos).
+CHATBOT_CACHE_HISTORIAL_MENSAJES = int(os.getenv('CHATBOT_CACHE_HISTORIAL_MENSAJES') or '4')
 CHATBOT_RATE_LIMIT = int(os.getenv('CHATBOT_RATE_LIMIT') or '30')         # consultas permitidas por ventana
 CHATBOT_RATE_VENTANA = int(os.getenv('CHATBOT_RATE_VENTANA') or '3600')   # segundos de la ventana del rate limit
+# Backend del rate limit: 'db' (contador compartido por todos los procesos, recomendado) o 'cache'
+# (LocMemCache por proceso, solo para desarrollo/rollback).
+CHATBOT_RATE_BACKEND = os.getenv('CHATBOT_RATE_BACKEND', 'db').strip().lower()
 CHATBOT_RAG_MAX_CARACTERES = int(os.getenv('CHATBOT_RAG_MAX_CARACTERES') or '4000')  # presupuesto del contexto RAG
 CHATBOT_MAX_RESPUESTA = int(os.getenv('CHATBOT_MAX_RESPUESTA') or '4000')            # tope de la respuesta saneada
 # Canarios sintéticos (CSV) que el saneo de salida debe redactar siempre. Vacío por defecto.
 CHATBOT_CANARIOS = os.getenv('CHATBOT_CANARIOS', '')
 
 # Caché en memoria del proceso (sin dependencias). LocMemCache es por proceso: con varios workers
-# la caché y el rate limit no se comparten entre ellos (trade-off documentado en docs/chatbot.md).
+# la caché de respuestas no se comparte entre ellos (solo afecta rendimiento, no el rate limit, que
+# por defecto vive en la BD). Trade-off documentado en docs/chatbot.md.
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',

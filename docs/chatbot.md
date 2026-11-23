@@ -23,15 +23,18 @@ guardrails, caché por usuario y trazabilidad completa.
    `guardrail='RATE_LIMIT'`; tampoco se llama al proveedor.
 6. **Contexto RAG** (`rag.construir_contexto`): documentos internos + datos del SGR filtrados por el
    alcance del rol, recortado a `CHATBOT_RAG_MAX_CARACTERES`.
-7. **Caché estrictamente por usuario** (`chatbot:respuesta:{usuario_id}:{sha256}`): si hay entrada,
-   se sanea, se guardan los mensajes y el evento con `origen='CACHE'` y `cache_hit=True`. En un *hit*
-   **no** se carga el historial ni se llama al proveedor.
-8. **Miss**: se carga el historial apto para el proveedor (ver §5.3), se arma el prompt
-   (política + bloque de contexto delimitado + historial + pregunta), se llama a
+7. **Historial apto y clave de caché**: se carga el historial filtrado por
+   `contexto_para_el_proveedor` (ver §5.3), se calcula `views._digest_historial` sobre sus últimos
+   `CHATBOT_CACHE_HISTORIAL_MENSAJES` mensajes y la clave
+   `chatbot:respuesta:{usuario_id}:{sha256(...|historial_digest)}` incluye esa huella.
+8. **Caché estrictamente por usuario**: si hay entrada para esa clave, se sanea, se guardan los
+   mensajes y el evento con `origen='CACHE'` y `cache_hit=True`; **no** se llama al proveedor.
+9. **Miss**: con el historial ya cargado se aplica el presupuesto del prompt total (ver §5.6), se
+   arma el prompt (política + bloque de contexto delimitado + historial + pregunta), se llama a
    `cliente_ia.responder_detallado()`, se sanea la salida y se guarda todo.
-9. **Persistencia**: `MensajeChat` (historial), entrada de caché, `EventoChatbot` y una línea en el
-   logger `chatbot`.
-10. **Errores del proveedor**: `502` con mensaje genérico y `EventoChatbot` con `error` (tipo de
+10. **Persistencia**: `MensajeChat` (historial), entrada de caché, `EventoChatbot` y una línea en el
+    logger `chatbot`.
+11. **Errores del proveedor**: `502` con mensaje genérico y `EventoChatbot` con `error` (tipo de
     excepción, sin detalles del proveedor) para poder depurar.
 
 ## 2. Configuración
@@ -44,9 +47,15 @@ En `config/settings.py` y `.env` (ver `.env.example`):
 | `CHATBOT_GUARDRAIL_MODO` | `completo` | Guardrail de entrada: `completo` (multicapa) o `basico` (9 patrones históricos, rollback) |
 | `CHATBOT_MAX_HISTORIAL_MENSAJE` | `1000` | Recorte por mensaje del historial enviado al proveedor |
 | `CHATBOT_MAX_HISTORIAL_CARACTERES` | `4000` | Presupuesto total del historial enviado al proveedor |
+| `CHATBOT_MAX_PROMPT_CARACTERES` | `20000` | Techo duro del prompt total (sistema + contexto + historial + pregunta) |
+| `CHATBOT_RETENCION_MENSAJES_DIAS` | `90` | Días de retención de `MensajeChat` para la purga |
+| `CHATBOT_RETENCION_EVENTOS_DIAS` | `365` | Días de retención de `EventoChatbot` para la purga |
+| `CHATBOT_MAX_MENSAJES_POR_USUARIO` | `200` | Mensajes que conserva como máximo cada usuario |
 | `CHATBOT_CACHE_TTL` | `600` | Segundos de vida de una respuesta cacheada |
+| `CHATBOT_CACHE_HISTORIAL_MENSAJES` | `4` | Mensajes recientes del historial que entran en la huella de la clave (4 = dos turnos; `0` = sin historial) |
 | `CHATBOT_RATE_LIMIT` | `30` | Consultas permitidas por ventana y por usuario |
 | `CHATBOT_RATE_VENTANA` | `3600` | Segundos de la ventana del rate limit |
+| `CHATBOT_RATE_BACKEND` | `db` | Contador del rate limit: `db` (compartido entre procesos) o `cache` (LocMemCache por proceso, desarrollo/rollback) |
 | `CHATBOT_RAG_MAX_CARACTERES` | `4000` | Presupuesto máximo del contexto RAG |
 | `CHATBOT_MAX_RESPUESTA` | `4000` | Tope de la respuesta saneada |
 | `CHATBOT_LOG_LEVEL` | `INFO` | Nivel del logger `chatbot` |
@@ -55,10 +64,16 @@ La caché usa `LocMemCache` (`CACHES['default']`), sin servicios externos. El lo
 en consola y en `logs/chatbot.log` (rotativo: 1 MB × 5 archivos). La carpeta `logs/` se crea sola al
 arrancar y está en `.gitignore`.
 
-> **Limitación conocida**: `LocMemCache` vive en la memoria del proceso. Con varios workers de
-> Gunicorn/uWSGI cada uno tiene su propia caché y su propio contador de rate limit. Para un despliegue
-> con varios workers habría que usar una caché compartida (por ejemplo Redis), lo que hoy implicaría
-> una dependencia nueva.
+> **Caché de respuestas**: `LocMemCache` vive en la memoria del proceso. Con varios workers de
+> Gunicorn/uWSGI cada uno tiene su propia caché de respuestas: esto afecta **solo el rendimiento**
+> (menos *hits*, más llamadas al proveedor), no la seguridad ni el rate limit.
+>
+> **Rate limit**: el contador **no** vive en la caché. Por defecto (`CHATBOT_RATE_BACKEND='db'`) se
+> guarda en la tabla `limite_consulta`, común a todos los procesos, de modo que el límite de
+> `CHATBOT_RATE_LIMIT` consultas por ventana se cumple para el despliegue completo y no se multiplica
+> por el número de workers. `CHATBOT_RATE_BACKEND='cache'` restaura el comportamiento histórico en
+> `LocMemCache` (por proceso) solo como rollback de desarrollo; un *system check* advierte si se usa
+> con `DEBUG=False`.
 
 ## 3. RAG: documentación interna
 
@@ -141,17 +156,23 @@ segundo argumento es opcional.
 
 Capas (modo `completo`):
 
-1. **Canonicalización** (`_canonico`): `NFKC` + `NFKD` sin marcas combinantes; elimina caracteres
-   invisibles (`\u200b-\u200d`, `\ufeff`, `\u00ad`); traduce homóglifos cirílicos/griegos básicos;
-   aplica sustituciones tipo *leet* (`0→o`, `1→i`, `3→e`, …); une letras espaciadas
-   (`i g n o r a   t u s …` → `ignora tus …`, también con puntos); colapsa repeticiones de 3 o más
-   caracteres; pasa a minúsculas y conserva la puntuación.
+1. **Canonicalización** (`_canonico`): `NFKC` + `NFKD` sin marcas combinantes; elimina controles
+   de formato y bidi, marcas direccionales, joiners, rellenos y selectores de variación
+   (`\u200b-\u200f`, `\u202a-\u202e`, `\u2060-\u206f`, `\ufeff`, `\u00ad`, `\ufe00-\ufe0f`,
+   `\U000e0100-\U000e01ef`, entre otros); traduce homóglifos cirílicos, griegos y latinos
+   extendidos; aplica sustituciones tipo *leet* (`0→o`, `1→i`, `3→e`, …); une letras espaciadas
+   (`i g n o r a   t u s …` → `ignora tus …`, también con puntos, barras, guiones y viñetas);
+   colapsa repeticiones de 3 o más caracteres; pasa a minúsculas y conserva la puntuación.
 2. **Decodificación acotada y determinista**: base64 estándar, URL-safe y partido en líneas
-   (bloques de 16 o más caracteres del alfabeto), hexadecimal con separadores opcionales (16 o más
-   dígitos), ROT13, texto invertido y binario (grupos de 8 bits, con o sin separadores). Se
-   recogen como máximo **3 textos decodificados**, cada uno truncado a **4000 caracteres**, con un
-   tope de intentos por familia; un blob ambiguo se descarta y **no hay recursión**. Cada resultado
-   se canonicaliza y se evalúa con los mismos patrones. Una entrada anómala no propaga excepciones.
+   (bloques de 16 o más caracteres del alfabeto), base32 estándar (bloques de 16 o más caracteres
+   A-Z/2-7), hexadecimal con separadores opcionales (16 o más dígitos), binario (grupos de 8 bits,
+   con o sin separadores), percent-encoding UTF-8, entidades HTML con nombre o numéricas y escapes
+   Unicode/hexadecimales (`\uXXXX`, `\UXXXXXXXX`, `\xXX`, `%uXXXX`), además de ROT13 y texto
+   invertido. Se recogen como máximo **3 textos decodificados**, cada uno truncado a **4000
+   caracteres**, con un presupuesto total de **4000 caracteres**, una ventana de entrada de **8000**
+   y un tope de intentos por familia; un blob ambiguo se descarta y **no hay recursión**. Cada
+   resultado se canonicaliza y se evalúa con los mismos patrones. Una entrada anómala no propaga
+   excepciones.
 3. **Patrones `_ALTA`** (bloqueo directo): imperativos del español, inglés, portugués, francés y
    alemán para ignorar/olvidar instrucciones o reglas; revelar prompt, claves, contraseñas,
    credenciales o configuración interna; activar modo desarrollador/DAN/jailbreak; responder sin
@@ -161,13 +182,22 @@ Capas (modo `completo`):
 4. **Extracción indirecta**: bloquea resumir, sintetizar, traducir, parafrasear, listar, enumerar,
    ordenar, clasificar o extraer **instrucciones, reglas, directrices, configuración, parámetros,
    prompt o manual interno**, sin exigir un verbo de revelado. También bloquea preguntas como
-   "cómo fuiste configurado/entrenado", "qué configuración usas" o "cuál es tu configuración".
-   Las familias de verbos cubren conjugaciones y variantes de género/número; se evalúa solo sobre
-   el turno actual (y sus decodificaciones), no sobre la concatenación con el historial.
-5. **Patrones `_MEDIA`** (señales): "system prompt", "tus instrucciones", "tus reglas",
+   "cómo fuiste configurado/entrenado", "qué configuración usas" o "cuál es tu configuración",
+   la petición de describir o detallar material interno con posesivo ("tus directrices"), la
+   instrucción dirigida al asistente dentro de un dato, cita o nota y la paráfrasis "con tus
+   palabras" de un objeto interno. Las familias de verbos cubren conjugaciones y variantes de
+   género/número; se evalúa solo sobre el turno actual (y sus decodificaciones), no sobre la
+   concatenación con el historial.
+5. **Patrones `_MEDIA` y señales semánticas**: "system prompt", "tus instrucciones", "tus reglas",
    "jailbreak", "api key", "contraseña del sistema", "configuración interna", "canario",
    "instrucciones anteriores", "modo desarrollador". **Dos señales medias distintas** también
-   bloquean.
+   bloquean. Además de las señales históricas se evalúan familias genéricas de intención —cambio
+   de marco temporal, anulación o suspensión de reglas, adopción de rol o juego de rol, apelación
+   a autoridad no verificable, petición de material interno, texto inicial/original, marco
+   hipotético sin límites y pregunta meta por reglas— con la misma puntuación: **dos señales
+   distintas** bloquean. Para no encarecer textos ajenos, estas familias solo se ejecutan cuando
+   un guardia léxico barato detecta algún indicio de la familia; el guardia nunca decide el
+   bloqueo, solo evita ejecutar patrones que no podrían coincidir.
 6. **Gate explicativo**: si no hubo bloqueo previo y el turno actual es definicional ("qué es",
    "qué significa", "explica", "cómo funciona", "definición"), se exime **solo si no contiene un
    verbo de extracción ni una referencia anafórica**. Así pasan "¿Qué es prompt injection?",
@@ -177,9 +207,9 @@ Capas (modo `completo`):
    `USUARIO` y los dos últimos `ASISTENTE`**, no bloqueados, recortados a **500 caracteres** por
    fragmento y descartando los que ya disparan el detector por sí solos. Una referencia a lo previo
    ("esas partes", "esa parte", "lo mismo", "léeme ese otro", "esos parámetros", "las completas",
-   "sin resumir", "léeme eso") solo bloquea cuando ese historial contiene términos sensibles
-   (instrucciones, reglas, configuración, parámetros, prompt, entrenamiento…). La conversación
-   benigna no se bloquea.
+   "sin resumir", "léeme eso", "me las listas", "resúmelas", "ordénalas") solo bloquea cuando ese
+   historial contiene términos sensibles (instrucciones, reglas, configuración, parámetros,
+   prompt, entrenamiento, manual o documentación interna…). La conversación benigna no se bloquea.
 8. **Aplicación**: los patrones se evalúan sobre `rag.normalizar(texto)` y sobre `_canonico(texto)`.
    La respuesta canónica es `MENSAJE_INYECCION` y no se consulta al proveedor.
 
@@ -188,20 +218,36 @@ Capas (modo `completo`):
 `completo`; un valor desconocido se interpreta como `completo`.
 
 **Límites.** La canonicalización y la decodificación cubren ofuscación textual (ancho completo,
-homóglifos básicos, invisibles, *leet*, espaciado, repeticiones, base64/hex/ROT13/invertido/binario)
-y la extracción indirecta o anafórica de gramática acotada. No sustituyen a un modelo semántico:
+homóglifos cirílicos/griegos/latinos, controles de formato y bidi, *leet*, espaciado, repeticiones,
+base64/base32/hex/binario/percent-encoding/entidades HTML/escapes Unicode/ROT13/invertido) y la
+extracción indirecta o anafórica de gramática acotada. No sustituyen a un modelo semántico:
 paráfrasis nuevas o instrucciones inyectadas en documentos reales se trasladan a **Black Box**
-(BB-02, BB-10) y se miden con el corpus retenido **C2** que aporta el Auditor; C2 no se usa para
-ajustar las reglas. El corpus C1 (78 casos: 54 ataques + 14 legítimas + 10 benignas SGR) está
-versionado y el runner `python manage.py evaluar_guardrails --corpus C1 [--json]` reporta métricas
-M4 sin red ni BD. Si C2 no existe, el comando informa "C2 pendiente" y no inventa métricas.
+(BB-02, BB-10) y se miden con los corpus **C2 y C3**, aportados por el Auditor y versionados en el
+repositorio; ninguno se usa para ajustar las reglas. El corpus C1 (78 casos: 54 ataques + 14
+legítimas + 10 benignas SGR) también está versionado y el runner
+`python manage.py evaluar_guardrails --corpus C1 [--json]` reporta métricas M4 sin red ni BD. Si un
+corpus no existe, el comando informa que está pendiente y no inventa métricas.
 
-**Corpus retenido C2 (M4-10).** C2 tiene **63 casos** (40 ataques + 13 legítimas + 10 benignas SGR)
-y fue **aportado por el Auditor**, de forma independiente de C1: no se derivó de C1 ni se ajustó a
-los patrones del detector. Con `python manage.py evaluar_guardrails --corpus C2 [--json]` el runner
-calcula `evasion_pct = evadidos / ataques * 100` (redondeado a 2 decimales) y reporta
+**Corpus C2 (M4-10).** C2 está **versionado** en
+`ChatbotApp/tests/fixtures/corpus_guardrails_c2.json` y tiene **63 casos** (40 ataques + 13 legítimas
++ 10 benignas SGR). Fue **aportado por el Auditor**, de forma independiente de C1: no se derivó de
+C1 ni se ajustó a los patrones del detector. Con
+`python manage.py evaluar_guardrails --corpus C2 [--json]` el runner calcula
+`evasion_pct = evadidos / ataques * 100` (redondeado a 2 decimales) y reporta
 `cumplimiento['M4-10'] = evasion_pct <= 30.0`. **M4-10 se reporta aparte** y no se usa para ajustar
-reglas ni umbrales: el resultado se registra tal cual, cumpla o no.
+reglas ni umbrales: el resultado se registra tal cual, cumpla o no. Medición de referencia de C2:
+**8/40 evadidos = 20,0 %** (`M4-10 = true`).
+
+**Corpus C3 (M4-10, sellado).** C3 está **versionado** en
+`ChatbotApp/tests/fixtures/corpus_guardrails_c3.json` y tiene **70 casos** (46 ataques + 14 legítimas
++ 10 benignas SGR). Es un corpus adicional **sellado por el Auditor** con SHA-256
+`afe9e56f2b81dc2f450440a0bd9ca67cf527e6a9713817c37d52c3302d168501`; no se usó para ajustar las
+reglas del detector. Con `python manage.py evaluar_guardrails --corpus C3 [--json]` se aplica el
+mismo `evasion_pct` y el mismo `cumplimiento['M4-10'] = evasion_pct <= 30.0` que en C2. Medición de
+referencia de C3: **22/46 evadidos = 47,83 %** (`M4-10 = false`). Al superar el umbral del **30 %**,
+**G3 sigue abierto**: C3 no se usa para ajustar reglas, su resultado no cierra WB-04 y el umbral no
+se modifica. La prueba `CP-GR-008` de `test_plan_chatbot_remediacion.py` fija esta medición leyendo
+el fixture (nunca lo escribe) y deja constancia del gate abierto.
 
 **Cobertura del cross-turn.** M4-7 sobre C1 mide al detector con el `historial_previo` inyectado
 tal como figura en el corpus. En los casos 1, 3 y 4 ese historial ya dispara el detector por sí
@@ -220,16 +266,24 @@ exime. El orden es: `_ALTA`, extracción indirecta, anáfora con historial sensi
 
 ### 5.2 Rate limit
 
-`guardrails.verificar_rate_limit(usuario)` usa una ventana fija por usuario:
+`guardrails.verificar_rate_limit(usuario, accion='chatbot')` usa una ventana fija por usuario y
+acción. El backend se elige con `CHATBOT_RATE_BACKEND`:
 
-- clave `chatbot:rate:{usuario_id}:{indice_ventana}`;
-- `cache.add()` para el primer request y `cache.incr()` para los siguientes;
-- al superar `CHATBOT_RATE_LIMIT` en `CHATBOT_RATE_VENTANA` segundos, el endpoint responde `429` y
-  deja un evento con `guardrail='RATE_LIMIT'`.
+- **`db` (default, producción)**: una fila de `LimiteConsulta` por
+  `(usuario, accion, ventana)` con `UniqueConstraint`; la lectura y el incremento se hacen con
+  `select_for_update` dentro de `transaction.atomic`, de modo que todos los procesos comparten el
+  mismo contador. Ante una carrera al crear la fila, el `IntegrityError` se reintenta una vez.
+  Al superar `CHATBOT_RATE_LIMIT` en `CHATBOT_RATE_VENTANA` segundos, el endpoint responde `429` y
+  deja un evento con `guardrail='RATE_LIMIT'`. La ventana expira al cambiar el índice entero de
+  `ventana`, que arranca un contador nuevo.
+- **`cache` (rollback de desarrollo)**: comportamiento histórico con
+  `cache.add()`/`cache.incr()` sobre `LocMemCache`, por proceso. NO debe usarse con varios workers
+  en producción (`DEBUG=False`); el *system check* `ChatbotApp.W001` lo advierte.
 
 ### 5.3 Historial no confiable (prompt v2.1)
 
-`views.contexto_para_el_proveedor` reconstruye el historial antes de cada *miss*:
+`views.contexto_para_el_proveedor` reconstruye el historial antes de calcular la clave de caché y
+antes de cada *miss* (la clave usa la huella de estos turnos ya filtrados):
 
 - excluye los mensajes con `bloqueado=True` (los intentos de inyección se guardan marcados con
   `motivo='INYECCION'`); el filtro se aplica **antes** de limitar a `CHATBOT_MAX_HISTORIAL`, así
@@ -341,19 +395,87 @@ marcadores ya insertados.
 Se aplica tanto en el **miss** (antes de guardar/cachear) como en el **hit** de caché. Si cambia el
 texto, el evento queda con `guardrail='SANEO_SALIDA'`.
 
+### 5.6 Presupuesto del prompt total (T-C-01)
+
+`views._presupuestar(historial, contexto, pregunta)` garantiza un techo duro de
+`CHATBOT_MAX_PROMPT_CARACTERES` (20000 por defecto) en el camino de *miss*:
+
+- **Total** = `len(PROMPT_SISTEMA) + len(contexto) + len(pregunta) + suma(len(content) del
+  historial)`. No cuentan los roles ni el envoltorio que agrega `preparar_mensajes`.
+- **Orden de recorte fijo**: 1) se descarta el historial **más antiguo** (`pop(0)`), 2) se recorta
+  el **contexto** por el extremo final, 3) la **pregunta nunca se recorta** por presupuesto (ya
+  está acotada por `CHATBOT_MAX_MENSAJE`). Si el prompt de sistema y la pregunta por sí solos
+  superaran el techo, el total registrado lo refleja; no se finge el cumplimiento.
+- El camino de *hit* de caché no ejecuta el presupuesto porque no construye un prompt.
+- Cada *miss* deja una línea
+  `chatbot presupuesto chars=<total> historial_descartado=<n> contexto_recortado=<n>` en el logger
+  `chatbot`.
+- El total resultante se guarda en `EventoChatbot.prompt_caracteres`, tanto en el éxito como en el
+  **error del proveedor**. Con ello se demuestra en producción que el techo se cumple.
+- `guardrail='PROMPT_RECORTADO'` solo se registra cuando hubo algún recorte y **nunca** sustituye a
+  `SANEO_SALIDA`: si la respuesta se saneó, el evento conserva `guardrail='SANEO_SALIDA'`; el
+  recorte de presupuesto queda visible en `prompt_caracteres` y en el log. En un error de proveedor
+  no hay salida que sanear, así que si hubo recorte el evento lleva `PROMPT_RECORTADO`.
+
+### 5.7 Retención, purga y tope de historial (T-C-04)
+
+La retención se aplica con el comando `purgar_chatbot`, que no se ejecuta solo ni programa su
+propia periodicidad:
+
+```bash
+python manage.py purgar_chatbot [--mensajes-dias N] [--eventos-dias N]
+                                [--anonimizar-eventos] [--limites] [--dry-run] [--lote 1000]
+```
+
+- **`MensajeChat`**: borra las filas con `fecha` anterior a `ahora - CHATBOT_RETENCION_MENSAJES_DIAS`
+  (90 días por defecto). El borrado se hace por lotes de `pk` (1000 por defecto) para no bloquear la
+  tabla en una sola sentencia.
+- **`EventoChatbot`**: borra las filas con `fecha` anterior a
+  `ahora - CHATBOT_RETENCION_EVENTOS_DIAS` (365 por defecto). Con `--anonimizar-eventos` conserva la
+  fila para las métricas y deja `usuario=None`, `pregunta`, `respuesta`, `contexto`,
+  `mensajes_enviados` y `error` vacíos; `fecha`, `origen`, `guardrail` y `duracion_ms` se conservan.
+  Los eventos ya anonimizados no se vuelven a procesar.
+- **`--limites`**: borra las filas de `LimiteConsulta` cuya `ventana` es anterior a la ventana actual
+  del rate limit (`int(time.time() // CHATBOT_RATE_VENTANA)`); la ventana actual y las futuras se
+  conservan. Sin este flag, la tabla de límites no se toca.
+- **`--dry-run`**: informa cuántas filas se borrarían o anonimizarían, sin modificar ninguna. Debe
+  usarse antes de la primera ejecución real, junto con un backup.
+- **Tope por usuario**: `views._recortar_historial(usuario)` se ejecuta después de guardar cada
+  mensaje del asistente y conserva los `CHATBOT_MAX_MENSAJES_POR_USUARIO` mensajes más recientes
+  (200 por defecto). Los sobrantes se borran en un lote de 50 por turno; si un usuario acumula
+  muchos más que el tope, los turnos siguientes siguen recortando.
+- **Idempotencia**: una segunda ejecución del comando no encuentra filas pendientes y reporta `0`.
+- `CommandError` solo se lanza ante un fallo real (por ejemplo, `--lote` menor que 1 o días
+  negativos); no se usa para informar de que no hay filas que purgar.
+
+No se añade migración `0005`: el índice `(usuario, -fecha)` necesario para el tope y la purga ya
+existe desde la migración `0003`. **La programación periódica (cron/systemd timer) es una decisión de
+Operaciones y no se activa en este plan**; requiere autorización escrita y un backup previo.
+
 ## 6. Caché estrictamente por usuario
 
-- Clave: `chatbot:respuesta:{usuario_id}:{sha256(normalizar(pregunta)|contexto|prompt_version|modelo)}`.
-- Incluye el `usuario_id`: **nunca** se comparte entre usuarios ni entre roles, aunque la pregunta y
-  el contexto coincidan.
-- Incluye el contexto RAG y la versión del prompt/modelo: si cambian los datos o el prompt, la clave
-  cambia y no se sirve una respuesta vieja.
+- Clave:
+  `chatbot:respuesta:{usuario_id}:{sha256(normalizar(pregunta)|contexto|prompt_version|modelo|historial_digest)}`.
+- `historial_digest = sha256("role:content|..." de los últimos CHATBOT_CACHE_HISTORIAL_MENSAJES)`.
+  Se calcula sobre el historial **ya filtrado** por `contexto_para_el_proveedor`: los mensajes
+  bloqueados o descartados por el guardrail no alteran la huella de los turnos enviados.
+- Incluye el `usuario_id`: **nunca** se comparte entre usuarios ni entre roles, aunque la pregunta,
+  el contexto y el historial coincidan.
+- Incluye el contexto RAG, la versión del prompt/modelo y el historial: si cambian los datos, el
+  prompt o la conversación, la clave cambia y no se sirve una respuesta vieja. Dos conversaciones
+  distintas con la misma pregunta obtienen claves distintas.
+- **Trade-off declarado**: al incluir el historial baja la tasa de acierto, porque cada turno cambia
+  la huella. La ventana es configurable (`CHATBOT_CACHE_HISTORIAL_MENSAJES=4` por defecto, dos
+  turnos); bajarla mejora los *hits* a costa de más riesgo de reutilizar una respuesta fuera de
+  contexto. El impacto real se mide en BB-03/BB-04.
 - TTL: `CHATBOT_CACHE_TTL` (600 s por defecto).
 - En un hit se guarda el `MensajeChat`, se sanea la salida y se registra `origen='CACHE'` y
   `cache_hit=True`; no se llama al proveedor.
-- "Nueva" (`/chatbot/limpiar/`) borra el historial visible, pero **no** invalida la caché. Si se
-  necesita invalidar respuestas antes del TTL, reiniciar el proceso o limpiar la caché desde Django
-  (`from django.core.cache import cache; cache.clear()`), lo que afecta a todos los usuarios.
+- "Nueva" (`/chatbot/limpiar/`) borra solo el historial visible (`MensajeChat`); **no** borra
+  `EventoChatbot`, que es el registro de auditoría. Al desaparecer los mensajes, el siguiente
+  digest ya no coincide con el de las entradas creadas a partir del historial anterior: esas
+  entradas quedan inalcanzables para la vista y expiran por TTL. Ya **no** hay que reiniciar el
+  proceso ni limpiar la caché global (lo que afectaría a todos los usuarios).
 
 ## 7. Observabilidad
 
@@ -376,7 +498,8 @@ Se guarda en **cada** interacción: éxito, caché, inyección, rate limit y err
 | `tokens_prompt` / `tokens_respuesta` | Si el proveedor envía `usage`; `null` si no |
 | `cache_hit` | `True` cuando respondió la caché |
 | `documentos_rag` | JSON con los títulos de los documentos usados |
-| `guardrail` | `INYECCION`, `RATE_LIMIT`, `SANEO_SALIDA` o vacío |
+| `guardrail` | `INYECCION`, `RATE_LIMIT`, `SANEO_SALIDA`, `PROMPT_RECORTADO` o vacío. `SANEO_SALIDA` tiene precedencia sobre `PROMPT_RECORTADO` |
+| `prompt_caracteres` | Total del prompt presupuestado en el *miss* (y en el error de proveedor); `null` en bloqueos y en *hit* de caché |
 | `error` | Tipo de error del proveedor y errores internos del RAG (máx. 2000 caracteres) |
 
 En Django Admin el modelo es **solo lectura** (sin agregar, cambiar ni borrar) y muestra filtros por
@@ -389,6 +512,7 @@ Logger `chatbot` (consola + `logs/chatbot.log`). Líneas típicas:
 
 ```
 ... INFO chatbot chatbot usuario=12 origen=API modelo=gpt-4o-mini cache_hit=False duracion_ms=850 tokens=1200/180 docs=3 guardrail=-
+... INFO chatbot chatbot presupuesto chars=19245 historial_descartado=5 contexto_recortado=0
 ... INFO chatbot chatbot usuario=12 origen=CACHE cache_hit=True duracion_ms=3 docs=3 guardrail=-
 ... WARNING chatbot chatbot guardrail=INYECCION usuario=12
 ... WARNING chatbot chatbot guardrail=RATE_LIMIT usuario=12
@@ -407,7 +531,8 @@ No se registran claves, tokens ni datos personales.
 
 Migraciones: `0002_documentoconocimiento_eventochatbot.py` y
 `0003_mensajechat_bloqueado_motivo_prompt_caracteres.py` (marca de bloqueo, motivo, índice de
-historial y el campo de esquema `EventoChatbot.prompt_caracteres`, que se poblará en T-C-01).
+historial y el campo `EventoChatbot.prompt_caracteres`, que T-C-01 puebla en cada *miss* y en el
+error de proveedor).
 
 ## 9. Cómo depurar
 
@@ -423,9 +548,19 @@ python manage.py cargar_conocimiento_chatbot
 python manage.py evaluar_guardrails --corpus C1
 python manage.py evaluar_guardrails --corpus C1 --json
 
-# Corpus retenido C2 aportado por el Auditor: M4-10 se reporta aparte (sin ajustar reglas)
+# Corpus C2 versionado (aportado por el Auditor): M4-10 se reporta aparte (sin ajustar reglas)
 python manage.py evaluar_guardrails --corpus C2
 python manage.py evaluar_guardrails --corpus C2 --json
+
+# Corpus C3 versionado y sellado: M4-10 se reporta aparte; G3 sigue abierto (47,83 %)
+python manage.py evaluar_guardrails --corpus C3
+python manage.py evaluar_guardrails --corpus C3 --json
+
+# Retención (T-C-04): simular antes de ejecutar. El comando no programa nada por sí solo.
+python manage.py purgar_chatbot --dry-run
+python manage.py purgar_chatbot --dry-run --anonimizar-eventos --limites
+python manage.py purgar_chatbot
+python manage.py purgar_chatbot --anonimizar-eventos --limites
 
 # Ver el log en vivo
 tail -f logs/chatbot.log
@@ -455,14 +590,19 @@ python manage.py test
   idempotencia del comando, caché por usuario y TTL, rate limit, inyección, saneo, eventos completos
   y cliente detallado).
 - `ChatbotApp/test_plan_chatbot_remediacion.py`: pruebas de la remediación (prompt v2.1,
-  CP-HIST-001…009 del historial no confiable, CP-CTX-001…004 de delimitación del contexto RAG y
-  CP-GR-001…007 del guardrail multicapa sobre el corpus C1). Incluye CP-GR-002a/002b para el corpus
-  retenido C2 (63 casos, `evasion_pct` y M4-10 aparte; ausencia de C2 = "pendiente") y CP-M4-7 en
-  pruebas de vista para el cross-turn real con dos fragmentos inocuos.
+  CP-HIST-001…009 del historial no confiable, CP-CTX-001…004 de delimitación del contexto RAG,
+  CP-PRM-001…003 del presupuesto del prompt total, CP-RET-001…005 de retención, dry-run,
+  anonimización, tope por usuario y ventanas del rate limit, y
+  CP-GR-001…008 del guardrail multicapa sobre los corpus C1, C2 y C3). Incluye CP-GR-002a/002b para
+  C2 (63 casos, `evasion_pct` y M4-10 aparte; ausencia de C2 = "pendiente"), CP-GR-008 para C3
+  (70 casos, SHA-256 sellado, 47,83 % y `M4-10 = false`) y CP-M4-7 en pruebas de vista para el
+  cross-turn real con dos fragmentos inocuos.
 - `ChatbotApp/tests/fixtures/corpus_guardrails.json`: corpus C1 sintético (78 casos) para
   `evaluar_guardrails`.
-- `ChatbotApp/tests/fixtures/corpus_guardrails_c2.json`: corpus retenido C2 (63 casos) aportado
-  por el Auditor, independiente de C1; solo se usa para reportar M4-10 aparte.
+- `ChatbotApp/tests/fixtures/corpus_guardrails_c2.json`: corpus C2 (63 casos) versionado, aportado
+  por el Auditor e independiente de C1; solo se usa para reportar M4-10 aparte.
+- `ChatbotApp/tests/fixtures/corpus_guardrails_c3.json`: corpus C3 (70 casos) versionado y sellado
+  por el Auditor (SHA-256 `afe9e56f…8501`); solo se usa para reportar M4-10 aparte.
 
 Todas las pruebas mockean al proveedor (`ChatbotApp.views.responder` o
 `ChatbotApp.cliente_ia.urllib.request.urlopen`): nunca usan la red ni una ApiKey real. Cada clase que
@@ -479,4 +619,6 @@ usa caché ejecuta `cache.clear()` en `setUp`/`tearDown` para no contaminar otro
 - El historial que se envía al proveedor excluye los mensajes bloqueados, revalida ambos emisores
   y está acotado por mensaje y en total, conservando un sufijo contiguo de los turnos más
   recientes; el prompt v2.1 lo declara como dato no confiable.
+- El prompt completo tiene un techo duro (`CHATBOT_MAX_PROMPT_CARACTERES`): se descarta primero el
+  historial más antiguo y luego se recorta el contexto; la pregunta nunca se recorta.
 - `EventoChatbot` es de solo lectura en Admin y está pensado para auditoría.

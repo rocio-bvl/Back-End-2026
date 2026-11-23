@@ -22,10 +22,11 @@ RUTAS_CORPUS = {
     'C1': 'ChatbotApp/tests/fixtures/corpus_guardrails.json',
     'C2': 'ChatbotApp/tests/fixtures/corpus_guardrails_c2.json',
     'C3': 'ChatbotApp/tests/fixtures/corpus_guardrails_c3.json',
+    'C4': 'ChatbotApp/tests/fixtures/corpus_guardrails_c4.json',
 }
 
 # Corpus retenidos: solo se evalúan con M4-10 (evasión total), sin mezclar métricas de C1.
-CORPUS_RETENIDOS = frozenset({'C2', 'C3'})
+CORPUS_RETENIDOS = frozenset({'C2', 'C3', 'C4'})
 
 # Umbrales de aceptación de §5.1 del plan (M4-1…M4-9 y M4-11) sobre C1.
 UMBRALES_C1 = {

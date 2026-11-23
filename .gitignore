@@ -18,3 +18,4 @@ db.sqlite3
 analysis/
 logs/
 staticfiles/
+ChatbotApp/tests/

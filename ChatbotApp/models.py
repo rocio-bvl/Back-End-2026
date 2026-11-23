@@ -109,3 +109,26 @@ class EventoChatbot(models.Model):
         verbose_name = "Evento de chatbot"
         verbose_name_plural = "Eventos de chatbot"
         ordering = ["-fecha", "-id"]
+
+
+class LimiteConsulta(models.Model):
+    """Contador de ventana fija por usuario y acción, compartido por todos los procesos.
+
+    A diferencia de ``LocMemCache`` (por proceso), esta fila es común al despliegue completo, de
+    modo que el rate limit no se multiplica por el número de workers. ``ventana`` guarda el índice
+    entero de la ventana como texto; al cambiar de ventana se empieza un contador nuevo.
+    """
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name='+', verbose_name="Usuario")
+    accion = models.CharField(max_length=30, verbose_name="Acción")        # 'chatbot'
+    ventana = models.CharField(max_length=20, verbose_name="Ventana")      # índice entero de la ventana
+    contador = models.PositiveIntegerField(default=0, verbose_name="Contador")
+
+    class Meta:
+        db_table = 'limite_consulta'
+        verbose_name = "Límite de consulta"
+        verbose_name_plural = "Límites de consulta"
+        constraints = [
+            models.UniqueConstraint(fields=['usuario', 'accion', 'ventana'],
+                                    name='un_contador_por_ventana'),
+        ]
