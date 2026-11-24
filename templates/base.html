@@ -15,7 +15,7 @@
     <!-- Definición de Clases de Paleta Municipal (Proyecto/static/css/styles.css). ?v= cambia cuando se modifica la hoja: obliga al navegador a descargar la versión nueva -->
     <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=2026-11-17c">
     <!-- Capa visual moderna (animaciones, sombras, tablas y formularios). Va después de styles.css para que sus reglas manden. Quitar esta línea vuelve al diseño anterior -->
-    <link rel="stylesheet" href="{% static 'css/sgr-moderno.css' %}?v=2026-11-24">
+    <link rel="stylesheet" href="{% static 'css/sgr-moderno.css' %}?v=2026-11-24c">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -281,7 +281,7 @@
     });
 </script>
 <!-- Animaciones: aparición al desplazar y conteo de números (static/js/animaciones.js) -->
-<script src="{% static 'js/animaciones.js' %}?v=2026-11-17"></script>
+<script src="{% static 'js/animaciones.js' %}?v=2026-11-24"></script>
 <script>
     document.addEventListener('submit', function (evento) {
         var form = evento.target;

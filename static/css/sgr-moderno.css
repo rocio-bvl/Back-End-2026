@@ -402,3 +402,81 @@ main hr {
     .table-responsive { height: auto !important; overflow-y: visible !important; }
 }
 .perfil-pestanas { overflow: visible; }
+
+/* 15. TABLAS CON EL ESTILO DE LAS TARJETAS -----------------------------------------------------------------
+   El framework municipal agrega bordes verticales y un encabezado gris con líneas entre columnas: se veía como
+   una planilla antigua. Ahora las tablas siguen a las tarjetas de Mi Gestión: fondo blanco, sin líneas
+   verticales, separadores horizontales muy suaves, encabezado cálido y liviano, y esquinas redondeadas. */
+.tabla-sgr {
+    --bs-table-border-color: #f1ecea;
+    --bs-table-hover-bg: #fbf5f4;
+    --bs-table-striped-bg: #fcfaf9;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #1F1A1A;
+}
+.tabla-sgr > :not(caption) > * > * { border-top: 0 !important; border-left: 0 !important; border-right: 0 !important; }
+.tabla-sgr thead th,
+.tabla-sgr thead th[class*="bg-muni"] {
+    background: #faf7f6 !important;
+    color: #8a8181 !important;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    padding: .85rem .75rem;
+    border-bottom: 1px solid #f1ecea !important;
+}
+.tabla-sgr tbody td { padding: .9rem .75rem; border-bottom: 1px solid #f4f0ef !important; }
+.tabla-sgr tbody tr:last-child td { border-bottom: 0 !important; }
+.tabla-sgr tbody tr:hover > td { background-color: #fbf5f4; }
+.tabla-sgr tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 #C41230; }
+.tabla-sgr tbody tr.table-warning > td { background-color: #fff8e6; }
+
+/* Contenedor: sin marco gris; dentro de una tarjeta no repite la sombra */
+.tarjeta-tabla { border: 0 !important; background: #ffffff; }
+.card .tarjeta-tabla { box-shadow: none; }
+
+/* Encabezado rojo de las tarjetas que contienen una tabla: igual que los títulos de las tarjetas de Mi Gestión */
+.card > .card-header.bg-muni:has(~ .tarjeta-tabla),
+.card > .card-header.bg-muni:has(~ .table-responsive) {
+    background: #ffffff !important;
+    color: #1F1A1A !important;
+    font-size: 1rem;
+    padding: 1.1rem 1.5rem .9rem;
+    border-bottom: 1px solid #f1ecea;
+}
+
+/* Botones de acción dentro de las tablas: mismos radios suaves que el resto del sistema */
+.tabla-sgr .btn-sm { border-radius: .6rem; }
+
+/* Celular (el framework convierte cada fila en un bloque bajo 768 px): cada fila es una tarjeta como las del
+   resto del sistema, sin el marco gris, y cada dato lleva arriba el nombre de su columna (atributo data-cell) */
+@media (max-width: 768px) {
+    .tabla-sgr tbody tr {
+        border: 0 !important;
+        border-radius: var(--sgr-radio);
+        box-shadow: var(--sgr-sombra);
+        background: #ffffff;
+        margin: 0 .25rem .9rem !important;
+        overflow: hidden;
+    }
+    .tabla-sgr tbody tr:hover td:first-child { box-shadow: none; }
+    .tabla-sgr tbody td { padding: .7rem 1rem; }
+    .tabla-sgr tbody td[data-cell]:not([data-cell=""])::before {
+        content: attr(data-cell);
+        display: block;
+        float: none;
+        width: auto;
+        height: auto;
+        padding: 0;
+        background: none;
+        white-space: normal;
+        margin-bottom: .2rem;
+        color: #8a8181;
+        font-size: .68rem;
+        font-weight: 700;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+    }
+    .tarjeta-tabla:has(.tabla-sgr) { background: transparent; box-shadow: none; }
+}
