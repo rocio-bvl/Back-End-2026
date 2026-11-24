@@ -274,20 +274,33 @@ def administracion(request):
         'roles_asignables': usuario.roles_asignables(),
         'opciones_delegacion': opciones_delegacion(),
         'pestana': request.GET.get('pestana', ''),
+        'seccion': seccion_administracion(request.GET.get('pestana', ''), usuario),
     }
     return render(request, 'users/administracion.html', data)
+
+
+def seccion_administracion(pestana, usuario):
+    """Sección de Administración que se muestra (?pestana=): panel de inicio, delegaciones, usuarios o
+    "metas y periodos" (metas, ponderación y periodos juntos). Las demás se envían ocultas en la misma página."""
+    if pestana in ('metas', 'periodos'):
+        return 'metas'
+    if pestana == 'delegaciones' and usuario.es_delegado():
+        return 'usuarios'  # el Delegado no administra delegaciones: ve los Funcionarios de la suya
+    if pestana in ('delegaciones', 'usuarios'):
+        return pestana
+    return 'inicio'
 
 @permiso_requerido('UsuarioApp.add_usuario', 'Crear Usuario')
 def usuario_crear(request):
     if request.method != 'POST':
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
     form = UsuarioCrearForm(request.POST, roles_permitidos=request.user.roles_asignables())
     if not form.is_valid():
         for campo, errores in form.errors.items():
             for error in errores:
                 messages.error(request, f"{form.fields[campo].label if campo in form.fields else 'Error'}: {error}")
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
     datos = form.cleaned_data
     cargo = None
@@ -320,7 +333,7 @@ def usuario_crear(request):
 
     registrar_auditoria(request.user, 'CREACION', 'Usuario', usuario.pk, '', resumen_usuario(usuario))
     messages.success(request, f"Usuario {usuario.get_full_name()} creado correctamente.")
-    return redirect('users:administracion')
+    return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
 @permiso_requerido('UsuarioApp.change_usuario', 'Editar Usuario')
 def usuario_editar(request, pk):
@@ -328,7 +341,7 @@ def usuario_editar(request, pk):
     usuario = get_object_or_404(Usuario, pk=pk)
     if not request.user.puede_editar_usuario(usuario):
         messages.error(request, "Un Delegado solo puede modificar a los Funcionarios de su delegación.")
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
     antes = resumen_usuario(usuario)  # se guarda antes de que el formulario modifique el objeto
     rol_actual = usuario.rol()
     if usuario.is_superuser and rol_actual == '':
@@ -359,7 +372,7 @@ def usuario_editar(request, pk):
 
             registrar_auditoria(request.user, 'MODIFICACION', 'Usuario', usuario.pk, antes, resumen_usuario(usuario))
             messages.success(request, f"Usuario {usuario.get_full_name()} actualizado.")
-            return redirect('users:administracion')
+            return redirect(reverse('users:administracion') + '?pestana=usuarios')
     else:
         delegacion = 'GENERAL'
         if usuario.delegacion:
@@ -392,7 +405,7 @@ def usuario_eliminar(request, pk):
     if not request.user.puede_eliminar_usuario(usuario):
         return acceso_denegado(request, 'Eliminar Usuario')
     if request.method != 'POST':
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
     antes = resumen_usuario(usuario)
     nombre = usuario.get_full_name() or usuario.username
     try:
@@ -442,7 +455,7 @@ def delegacion_editar(request, pk):
 def delegacion_eliminar(request, pk):
     delegacion = get_object_or_404(Delegacion, pk=pk)
     if request.method != 'POST':
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=delegaciones')
     nombre = str(delegacion)
     try:
         delegacion.delete()
@@ -459,10 +472,10 @@ def usuario_desactivar(request, pk):
     """Activa o desactiva un usuario (no se borra: conserva su historial de actividades y auditoría)."""
     usuario = get_object_or_404(Usuario, pk=pk)
     if request.method != 'POST':
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
     if usuario.pk == request.user.pk or not request.user.puede_editar_usuario(usuario):
         messages.error(request, "No puede cambiar el estado de ese usuario.")
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
     antes = resumen_usuario(usuario)
     usuario.is_active = not usuario.is_active
@@ -470,7 +483,7 @@ def usuario_desactivar(request, pk):
     registrar_auditoria(request.user, 'MODIFICACION', 'Usuario', usuario.pk, antes, resumen_usuario(usuario))
     estado = "activado" if usuario.is_active else "desactivado"
     messages.success(request, f"Usuario {usuario.get_full_name()} {estado}.")
-    return redirect('users:administracion')
+    return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
 @login_required
 def perfil_editar(request):

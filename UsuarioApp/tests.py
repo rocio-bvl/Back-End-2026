@@ -301,9 +301,9 @@ class RolesYPermisosTest(TestCase):
         lista = self.client.get(reverse('users:administracion')).context['lista_usuarios']
         self.assertEqual([u.pk for u in lista], [self.func.pk])
         self.assertRedirects(self.client.get(reverse('users:usuario_editar', args=[self.func_rural.pk])),
-                             reverse('users:administracion'))
+                             reverse('users:administracion') + '?pestana=usuarios')
         self.assertRedirects(self.client.get(reverse('users:usuario_editar', args=[self.delegado_rural.pk])),
-                             reverse('users:administracion'))
+                             reverse('users:administracion') + '?pestana=usuarios')
         self.assertEqual(self.client.get(reverse('users:usuario_editar', args=[self.func.pk])).status_code, 200)
         # Un POST directo sobre un Funcionario de otra delegación tampoco lo cambia
         self.client.post(reverse('users:usuario_editar', args=[self.func_rural.pk]), {

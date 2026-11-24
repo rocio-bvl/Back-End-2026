@@ -217,6 +217,25 @@ def semaforo(request):
         'periodo': periodo,
         'resumen': resumen_delegacion_tablero(delegacion, periodo, hoy, filas=todas),
     }
+    # Tarjetas y gráficos: cuántos responsables hay en cada color (de toda la delegación, sin la búsqueda)
+    colores = {'VERDE': 0, 'AMBAR': 0, 'ROJO': 0, 'SIN_MEDIR': 0}
+    for fila in todas:
+        colores['SIN_MEDIR' if fila['sin_medir'] else fila['color']] += 1
+    total = len(todas)
+    data['colores'] = {codigo: {'cantidad': cantidad, 'porcentaje': round(cantidad * 100 / total) if total else 0}
+                       for codigo, cantidad in colores.items()}
+    data['total_responsables'] = total
+    resumen = data['resumen']
+    data['graficos'] = {
+        'avance': {'valor': float(resumen['puntaje_colectivo']), 'objetivo': float(porcentaje_esperado),
+                   'color': resumen['semaforo_color']} if periodo else None,
+        'estados': [{'etiqueta': 'Verde', 'valor': colores['VERDE'], 'color': '#2E9E5B'},
+                    {'etiqueta': 'Ámbar', 'valor': colores['AMBAR'], 'color': '#F2A900'},
+                    {'etiqueta': 'Rojo', 'valor': colores['ROJO'], 'color': '#C41230'},
+                    {'etiqueta': 'Sin medir', 'valor': colores['SIN_MEDIR'], 'color': '#B8B0AE'}],
+        'total_estados': total,
+        'barras': None,
+    }
     data.update(datos_ausencias(request.user, periodo))
     return render(request, 'indicadores/semaforo.html', data)
 
@@ -427,7 +446,17 @@ def resumen_delegacion(request):
         'delegacion_nombre': f"Delegación {nombre}",
         'comisiones': comisiones,
         'equipo': integrantes,
+        'total_equipo': equipo.count(),
         'q': q,
+        'periodo': periodo,
+        'comisiones_cumplidas': sum(1 for c in comisiones if c['porcentaje_cumplimiento'] >= 100),
+        'cumplimiento_promedio': round(sum(c['porcentaje_cumplimiento'] for c in comisiones) / len(comisiones), 1)
+                                 if comisiones else Decimal('0'),
+        # Barras de cumplimiento por comisión (static/js/graficos.js), con la meta en 100%
+        'graficos': {'avance': None, 'estados': [], 'total_estados': 0, 'barras': {
+            'titulo': 'Cumplimiento por comisión', 'referencia': 100, 'texto_referencia': 'Meta',
+            'filas': [{'etiqueta': f"{c['nombre']} ({c['cargo']})", 'valor': float(c['porcentaje_cumplimiento'])}
+                      for c in comisiones]} if comisiones else None},
     }
     return render(request, 'indicadores/resumen_delegacion.html', data)
 

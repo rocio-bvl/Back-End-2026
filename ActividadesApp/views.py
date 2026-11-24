@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import date, timedelta
 
 from django.contrib import messages
@@ -209,8 +210,12 @@ def mi_gestion(request):
         # Tabla lateral: Avance Actual de quienes tienen el mismo cargo (cualquier perfil con cargo asignado)
         'ranking_cargo': ranking_cargo(usuario, periodo, hoy),
     }
-    # Pestaña abierta (?pestana=): solo una de las que tiene el perfil; si no, Resumen
-    disponibles = ['resumen']
+    # Tablero del perfil (lo que antes era Indicadores): tarjetas de avance y pestaña Resumen
+    from IndicadoresApp.views import datos_tablero, comparacion_delegaciones
+    data.update(datos_tablero(request))
+    # Pestaña abierta (?pestana=): solo una de las que tiene el perfil; si no, la primera. El Funcionario no
+    # tiene Resumen: sus accesos rápidos van sobre las pestañas y abre en Mis actividades
+    disponibles = [] if data['tipo_tablero'] == 'administrativo' else ['resumen']
     if data['muestra_mis_actividades']:
         disponibles += ['mias', 'pendientes']
     if not vista_global:
@@ -218,11 +223,59 @@ def mi_gestion(request):
     if ve_delegacion:
         disponibles.append('delegacion')
     pedida = request.GET.get('pestana', '')
-    data['pestana'] = pedida if pedida in disponibles else 'resumen'
-    # Tablero del perfil (lo que antes era Indicadores): tarjetas de avance y pestaña Resumen
-    from IndicadoresApp.views import datos_tablero
-    data.update(datos_tablero(request))
+    data['pestana'] = pedida if pedida in disponibles else (disponibles[0] if disponibles else '')
+    if data['tipo_tablero'] == 'admin':
+        data['delegaciones'] = comparacion_delegaciones(periodo, hoy)  # para el gráfico por delegación
+    data['graficos'] = datos_graficos(data)
     return render(request, 'actividades/mi_gestion.html', data)
+
+
+# Estados de las actividades en el gráfico de Mi Gestión: código, nombre y color
+ESTADOS_GRAFICO = [
+    ('PROGRAMADA', 'Programadas', '#3B7DDD'),
+    ('EN_TUBO', 'En el Tubo', '#8B1D19'),
+    ('EVIDENCIA_INGRESADA', 'Por validar', '#F2A900'),
+    ('RECHAZADA', 'Rechazadas', '#DB3334'),
+    ('VALIDADA', 'Completadas', '#2E9E5B'),
+]
+
+
+def datos_graficos(data):
+    """Datos de los gráficos de Mi Gestión. Se envían con json_script y static/js/graficos.js los dibuja con
+    Chart.js. Solo números ya calculados por la vista: los gráficos no hacen consultas propias.
+    - avance: medidor del avance (del funcionario, o de la delegación elegida) contra lo esperado a hoy;
+    - estados: cuántas actividades hay en cada estado;
+    - barras: cumplimiento por ítem (funcionario), puntaje por delegación (Admin y Coordinador) o los
+      responsables con menor avance (Delegado), con una línea de referencia."""
+    propias = data['tipo_tablero'] == 'administrativo'
+    filas = data['mis_actividades'] if propias else data['actividades_delegacion']
+    conteo = Counter(fila['estado_codigo'] for fila in filas)
+    estados = [{'etiqueta': nombre, 'valor': conteo.get(codigo, 0), 'color': color}
+               for codigo, nombre, color in ESTADOS_GRAFICO]
+    avance, barras = None, None
+    if propias:
+        mio = data.get('mi_avance')
+        if mio:
+            avance = {'valor': float(mio['avance_logrado']), 'objetivo': float(mio['objetivo_hoy']), 'color': mio['color']}
+        if data['metas']:
+            barras = {'titulo': 'Cumplimiento por ítem', 'referencia': 100, 'texto_referencia': 'Meta',
+                      'filas': [{'etiqueta': meta['item_nombre'], 'valor': float(meta['porcentaje_cumplimiento'])}
+                                for meta in data['metas']]}
+    else:
+        if data.get('periodo'):
+            avance = {'valor': float(data.get('avance') or 0), 'objetivo': float(data.get('avance_esperado') or 0),
+                      'color': data.get('semaforo_color', '')}
+        if data.get('delegaciones'):
+            barras = {'titulo': 'Puntaje colectivo por delegación', 'referencia': float(data.get('meta_colectiva') or 0),
+                      'texto_referencia': 'Meta colectiva hoy',
+                      'filas': [{'etiqueta': str(fila['delegacion']), 'valor': float(fila['puntaje_colectivo'])}
+                                for fila in data['delegaciones']]}
+        elif data.get('atrasados'):
+            barras = {'titulo': 'Responsables con menor avance', 'referencia': float(data.get('avance_esperado') or 0),
+                      'texto_referencia': 'Esperado hoy',
+                      'filas': [{'etiqueta': fila['responsable'], 'valor': float(fila['avance_logrado'])}
+                                for fila in data['atrasados']]}
+    return {'avance': avance, 'estados': estados, 'total_estados': sum(conteo.values()), 'barras': barras}
 
 
 # ---------------------------------------------------------------------------

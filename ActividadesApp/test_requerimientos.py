@@ -268,8 +268,10 @@ class MiGestionUnificadaTest(BaseActividades):
 
     def test_pestana_pedida_o_resumen(self):
         self.assertEqual(self.pagina('33333333-3', pestana='delegacion').context['pestana'], 'delegacion')
-        # El Funcionario no tiene la pestaña de su delegación: se abre Resumen
-        self.assertEqual(self.pagina('55555555-5', pestana='delegacion').context['pestana'], 'resumen')
+        # El Funcionario no tiene la pestaña de su delegación ni Resumen: se abre Mis actividades
+        self.assertEqual(self.pagina('55555555-5', pestana='delegacion').context['pestana'], 'mias')
+        self.assertEqual(self.pagina('55555555-5', pestana='resumen').context['pestana'], 'mias')
+        self.assertNotContains(self.pagina('55555555-5'), 'id="tab-resumen"')
         self.assertNotContains(self.pagina('55555555-5'), '>Indicadores<')
 
     def test_tabla_lateral_avance_del_mismo_cargo_de_mayor_a_menor(self):

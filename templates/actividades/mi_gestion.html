@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Mi Gestión | Ilustre Municipalidad de La Serena{% endblock %}
 
@@ -10,91 +11,157 @@ tarjetas de avance, accesos de gestión y pestañas). Lo que cambia según quié
 - esta plantilla decide QUÉ se muestra, con {% if %} sobre los permisos del usuario (request.user...).
 {% endcomment %}
 {% with usuario=request.user activa=pestana %}
-<main class="container-fluid p-4 perfil">
+<main class="container-fluid p-4 perfil sgr-fondo-figuras">
+    {# Figuras decorativas detrás de las tarjetas: íconos de gestión (Bootstrap Icons, vectoriales). Solo estética #}
+    <div class="sgr-figuras" aria-hidden="true">
+        <i class="bi bi-bar-chart-line-fill f1"></i><i class="bi bi-graph-up-arrow f2"></i><i class="bi bi-pie-chart-fill f3"></i>
+        <i class="bi bi-clipboard-data f4"></i><i class="bi bi-speedometer2 f5"></i><i class="bi bi-kanban f6"></i>
+        <i class="bi bi-calendar-check f7"></i><i class="bi bi-bullseye f8"></i><i class="bi bi-list-check f9"></i>
+        <i class="bi bi-graph-down-arrow f10"></i><i class="bi bi-bar-chart-steps f11"></i><i class="bi bi-diagram-3 f12"></i>
+    </div>
 
-    <!-- 1. Cabecera: "Gestión (perfil)" con los datos de quien inició sesión y, al lado, el avance de su mismo cargo -->
+    <h3 class="fw-bold mb-3">Gestión {% if usuario.is_superuser and not usuario.rol %}Admin{% else %}{{ usuario.rol|default:"" }}{% endif %}</h3>
+
+    <!-- 1. Tablero del perfil: tarjeta de la persona, avance con gráficos y, si tiene cargo, su posición en el ranking -->
     <div class="row g-4 mb-4">
-    <div class="{% if ranking_cargo %}col-xl-8{% else %}col-12{% endif %}">
-    <div class="card border-0 shadow-sm overflow-hidden h-100">
-        <div class="perfil-portada bg-muni-b1"></div>
-        <div class="card-body pt-0 px-4">
-            <div class="d-flex flex-wrap align-items-end gap-3 perfil-cabecera">
-                {% if usuario.foto %}
-                <img src="{{ usuario.foto.url }}" alt="Foto de perfil de {{ usuario.get_full_name }}" class="perfil-avatar">
-                {% else %}
-                <div class="perfil-avatar perfil-iniciales bg-muni-v2">{{ usuario.first_name|slice:":1" }}{{ usuario.last_name|slice:":1" }}</div>
-                {% endif %}
-                <div class="flex-grow-1 pb-1 perfil-datos">
-                    <h3 class="fw-bold mb-0">Gestión {% if usuario.is_superuser and not usuario.rol %}Admin{% else %}{{ usuario.rol|default:"" }}{% endif %}</h3>
-                    <div class="fw-semibold mb-1">{{ usuario.get_full_name|default:usuario.username }}</div>
-                    <div class="d-flex flex-wrap align-items-center gap-2 small">
-                        <span class="text-muted"><i class="bi bi-briefcase me-1"></i>{{ usuario.cargo|default:"Sin cargo asignado" }}</span>
-                        <span class="text-muted"><i class="bi bi-geo-alt me-1"></i>{{ usuario.delegacion|default:"Todas las delegaciones" }}</span>
-                        {% if periodo %}<span class="badge bg-muni">{{ periodo }}</span>{% endif %}
+
+        <!-- Tarjeta del perfil (como la ficha de un usuario: foto, rol y datos de contacto) -->
+        <div class="col-xl-3 col-lg-4">
+            <div class="card border-0 h-100 perfil-ficha">
+                <div class="card-body text-center p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="badge perfil-rol">{% if usuario.is_superuser and not usuario.rol %}ADMIN{% else %}{{ usuario.rol|default:"SIN ROL"|upper }}{% endif %}</span>
+                        {% if periodo %}<span class="badge bg-light text-dark border">{{ periodo }}</span>{% endif %}
                     </div>
+                    {% if usuario.foto %}
+                    <img src="{{ usuario.foto.url }}" alt="Foto de perfil de {{ usuario.get_full_name }}" class="perfil-avatar perfil-avatar-grande mx-auto">
+                    {% else %}
+                    <div class="perfil-avatar perfil-avatar-grande perfil-iniciales bg-muni-v2 mx-auto">{{ usuario.first_name|slice:":1" }}{{ usuario.last_name|slice:":1" }}</div>
+                    {% endif %}
+                    <h5 class="fw-bold mt-3 mb-0">{{ usuario.get_full_name|default:usuario.username }}</h5>
+                    <div class="text-muted small">{{ usuario.cargo|default:"Sin cargo asignado" }}</div>
+                    <div class="text-muted small mb-3"><i class="bi bi-geo-alt me-1"></i>{{ usuario.delegacion|default:"Todas las delegaciones" }}</div>
+                    <dl class="perfil-datos-lista text-start small mb-3">
+                        <dt>Correo</dt><dd>{{ usuario.email|default:"-" }}</dd>
+                        <dt>Teléfono</dt><dd>{{ usuario.telefono|default:"Sin teléfono" }}</dd>
+                        <dt>RUT</dt><dd>{{ usuario.username }}</dd>
+                        {% if tipo_tablero != 'administrativo' %}<dt>Mostrando</dt><dd>{{ delegacion_actual }}</dd>{% endif %}
+                    </dl>
+                    <a href="{% url 'users:perfil_editar' %}" class="btn btn-outline-dark btn-sm w-100"><i class="bi bi-pencil-square me-1"></i>Editar perfil</a>
                 </div>
-                <div class="d-flex flex-wrap gap-2 pb-1">
-                    <a href="{% url 'users:perfil_editar' %}" class="btn btn-outline-dark btn-sm"><i class="bi bi-pencil-square me-1"></i>Editar perfil</a>
-                </div>
-            </div>
-            <div class="row g-3 mt-2 small">
-                <div class="col-sm-6 col-lg-3"><span class="text-muted d-block">Correo</span><span class="fw-semibold">{{ usuario.email|default:"-" }}</span></div>
-                <div class="col-sm-6 col-lg-3"><span class="text-muted d-block">Teléfono</span><span class="fw-semibold">{{ usuario.telefono|default:"Sin teléfono" }}</span></div>
-                <div class="col-sm-6 col-lg-3"><span class="text-muted d-block">RUT</span><span class="fw-semibold">{{ usuario.username }}</span></div>
-                {% if tipo_tablero != 'administrativo' %}<div class="col-sm-6 col-lg-3"><span class="text-muted d-block">Mostrando</span><span class="fw-semibold">{{ delegacion_actual }}</span></div>{% endif %}
             </div>
         </div>
-    </div>
-    </div>
-    {% if ranking_cargo %}
-    <!-- Avance Actual de los funcionarios con el mismo cargo (todas las delegaciones), de mayor a menor -->
-    <div class="col-xl-4">
-        <div class="card border-0 shadow-sm h-100">
-            <div class="card-header bg-gris-90 text-white fw-bold py-3">
-                <i class="bi bi-bar-chart-line me-2"></i>Avance Actual: {{ usuario.cargo }}
+
+        <!-- Avance: medidor contra lo esperado a hoy y cuatro indicadores -->
+        <div class="{% if ranking_cargo %}col-xl-6{% else %}col-xl-9{% endif %} col-lg-8">
+            <div class="card border-0 h-100">
+                <div class="card-body p-4">
+                    <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2 mb-2">
+                        <h6 class="fw-bold m-0">{% if tipo_tablero == 'administrativo' %}Mi avance{% else %}Avance de {{ delegacion_actual }}{% endif %}</h6>
+                        {% if periodo %}<small class="text-muted">Al {% now "d/m/Y" %}</small>{% endif %}
+                    </div>
+                    <div class="row g-4 align-items-center">
+                        <div class="col-md-5 text-center">
+                            {% if graficos.avance %}
+                            <div class="medidor">
+                                <canvas id="grafico-avance" aria-label="Avance {{ graficos.avance.valor }}% de {{ graficos.avance.objetivo }}% esperado" role="img"></canvas>
+                                <div class="medidor-valor">
+                                    <span class="medidor-numero">{{ graficos.avance.valor|floatformat:1 }}%</span>
+                                    <span class="medidor-texto">Esperado hoy: {{ graficos.avance.objetivo|floatformat:1 }}%</span>
+                                </div>
+                            </div>
+                            {% with color=graficos.avance.color %}
+                            <span class="badge mt-2 {% if color == 'VERDE' %}bg-success{% elif color == 'AMBAR' %}bg-warning text-dark{% elif color == 'ROJO' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                {% if color == 'VERDE' %}Al día{% elif color == 'AMBAR' %}Atrasado{% elif color == 'ROJO' %}Muy atrasado{% else %}Sin medir{% endif %}
+                            </span>
+                            {% endwith %}
+                            {% else %}
+                            <div class="text-muted py-4"><i class="bi bi-speedometer2 fs-1 d-block mb-2"></i>{% if tipo_tablero == 'administrativo' %}Sin cargo o sin periodo vigente{% else %}Sin periodo vigente{% endif %}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-7">
+                            <div class="row g-3">
+                                {% if tipo_tablero == 'administrativo' %}
+                                <div class="col-6"><div class="indicador"><i class="bi bi-hourglass-split indicador-icono text-primary"></i><span class="indicador-numero">{{ mis_pendientes_count }}</span><span class="indicador-texto">Mis pendientes</span></div></div>
+                                <div class="col-6"><div class="indicador"><i class="bi bi-clipboard-check indicador-icono text-warning"></i><span class="indicador-numero">{{ en_revision_count }}</span><span class="indicador-texto">Por validar</span></div></div>
+                                <div class="col-6"><div class="indicador"><i class="bi bi-arrow-counterclockwise indicador-icono text-danger"></i><span class="indicador-numero">{{ rechazadas_count }}</span><span class="indicador-texto">Rechazadas (por corregir)</span></div></div>
+                                <div class="col-6"><div class="indicador"><i class="bi bi-check2-all indicador-icono text-success"></i><span class="indicador-numero">{{ validadas_count }}</span><span class="indicador-texto">Completadas en el periodo</span></div></div>
+                                {% else %}
+                                <div class="col-6"><div class="indicador"><i class="bi bi-hourglass-split indicador-icono text-primary"></i><span class="indicador-numero">{{ compromisos_pendientes_count|default:0 }}</span><span class="indicador-texto">Actividades pendientes</span></div></div>
+                                <div class="col-6"><div class="indicador"><i class="bi bi-clipboard-check indicador-icono text-warning"></i><span class="indicador-numero">{{ por_validar|default:0 }}</span><span class="indicador-texto">Por validar</span></div></div>
+                                <div class="col-6"><div class="indicador"><i class="bi bi-people indicador-icono text-danger"></i><span class="indicador-numero">{{ puntaje_colectivo|default:0 }}%</span><span class="indicador-texto">Puntaje colectivo</span></div></div>
+                                <div class="col-6"><div class="indicador"><i class="bi bi-flag indicador-icono text-success"></i><span class="indicador-numero">{{ meta_colectiva|default:0 }}%</span><span class="indicador-texto">Meta colectiva hoy</span></div></div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% if tipo_tablero == 'administrativo' and umbral_colectivo %}
+                    <div class="colectivo mt-4">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="fw-semibold">Puntaje colectivo de mi delegación</span>
+                            <span><strong>{{ puntaje_colectivo }}%</strong> <span class="text-muted">· meta hoy {{ meta_colectiva }}%</span></span>
+                        </div>
+                        <div class="progress" role="progressbar" aria-label="Puntaje colectivo" aria-valuenow="{{ puntaje_colectivo }}" aria-valuemin="0" aria-valuemax="100">
+                            <div class="progress-bar {% if cumple_colectivo %}bg-success{% else %}bg-muni{% endif %}" style="width: {{ puntaje_colectivo|floatformat:0 }}%"></div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
-            <div class="tarjeta-tabla ranking-cargo">
-                <table class="table tabla-sgr tabla-compacta mb-0">
-                    <thead><tr><th class="text-center">N°</th><th class="text-start">FUNCIONARIO</th><th class="text-start">DELEGACIÓN</th><th class="text-end">AVANCE</th></tr></thead>
-                    <tbody>
+        </div>
+
+        {% if ranking_cargo %}
+        <!-- Avance Actual del mismo cargo: los 5 primeros y la posición propia -->
+        <div class="col-xl-3 col-lg-12">
+            <div class="card border-0 h-100">
+                <div class="card-body p-4">
+                    <h6 class="fw-bold mb-3"><i class="bi bi-trophy me-1 text-warning"></i>Avance Actual: {{ usuario.cargo }}</h6>
+                    <ol class="ranking-lista list-unstyled mb-0">
                         {% for fila in ranking_cargo %}
-                        <tr class="{% if fila.es_yo %}ranking-yo{% endif %}">
-                            <td class="text-center fw-bold">{{ fila.lugar }}°</td>
-                            <td class="text-start">{{ fila.nombre }}{% if fila.es_yo %} <span class="badge bg-muni ms-1">Tú</span>{% endif %}</td>
-                            <td class="text-start text-muted">{{ fila.delegacion }}</td>
-                            <td class="text-end fw-bold">{{ fila.avance }}%</td>
-                        </tr>
+                        {% if forloop.counter <= 5 or fila.es_yo %}
+                        <li class="{% if fila.es_yo %}ranking-yo{% endif %}">
+                            <span class="ranking-lugar">{{ fila.lugar }}°</span>
+                            <span class="ranking-nombre">{{ fila.nombre }}{% if fila.es_yo %} <span class="badge bg-muni ms-1">Tú</span>{% endif %}<small class="d-block text-muted">{{ fila.delegacion }}</small></span>
+                            <span class="ranking-avance">{{ fila.avance }}%</span>
+                        </li>
+                        {% endif %}
                         {% endfor %}
-                    </tbody>
-                </table>
+                    </ol>
+                    {% if ranking_cargo|length > 5 %}<small class="text-muted d-block mt-2">{{ ranking_cargo|length }} funcionarios con este cargo.</small>{% endif %}
+                </div>
             </div>
         </div>
-    </div>
-    {% endif %}
+        {% endif %}
     </div>
 
-    <!-- 2. Avance: el Funcionario ve el suyo; Admin, Coordinador y Delegado, el de la delegación elegida -->
-    {% if tipo_tablero == 'administrativo' %}
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-3">
-            <div class="card border-0 shadow-sm border-start border-4 border-{% if mi_avance.color == 'VERDE' %}success{% elif mi_avance.color == 'AMBAR' %}warning{% elif mi_avance.color == 'ROJO' %}danger{% else %}secondary{% endif %} p-3 h-100">
-                <span class="text-muted small">Avance Actual</span>
-                {% if mi_avance %}
-                <h3 class="fw-bold mb-0">{{ mi_avance.avance_logrado }}%</h3>
-                <small class="text-muted">Objetivo hoy: {{ mi_avance.objetivo_hoy }}%</small>
-                {% else %}
-                <h3 class="fw-bold mb-0 text-secondary">-</h3>
-                <small class="text-muted">Sin cargo o sin periodo vigente</small>
-                {% endif %}
+    <!-- 2. Gráficos: actividades por estado y barras (por ítem, por delegación o por responsable) -->
+    <div class="row g-4 mb-4">
+        <div class="col-lg-5">
+            <div class="card border-0 h-100">
+                <div class="card-body p-4">
+                    <h6 class="fw-bold mb-3">{% if tipo_tablero == 'administrativo' %}Estado de mis actividades{% else %}Actividades por estado{% endif %}</h6>
+                    {% if graficos.total_estados %}
+                    <div class="grafico-anillo"><canvas id="grafico-estados" role="img" aria-label="Actividades por estado"></canvas></div>
+                    {% else %}
+                    <p class="text-muted text-center my-5">Todavía no hay actividades registradas.</p>
+                    {% endif %}
+                </div>
             </div>
         </div>
-        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-danger p-3 h-100"><span class="text-muted small">Mis pendientes</span><h3 class="fw-bold mb-0 text-danger">{{ mis_pendientes_count }}</h3></div></div>
-        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-primary p-3 h-100"><span class="text-muted small">Evidencia ingresada</span><h3 class="fw-bold mb-0 text-primary">{{ en_revision_count }}</h3></div></div>
-        <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm border-start border-4 border-warning p-3 h-100"><span class="text-muted small">Rechazadas (por corregir)</span><h3 class="fw-bold mb-0 text-warning">{{ rechazadas_count }}</h3></div></div>
+        <div class="col-lg-7">
+            <div class="card border-0 h-100">
+                <div class="card-body p-4">
+                    <h6 class="fw-bold mb-3">{{ graficos.barras.titulo|default:"Cumplimiento" }}</h6>
+                    {% if graficos.barras %}
+                    <div class="grafico-barras"><canvas id="grafico-barras" role="img" aria-label="{{ graficos.barras.titulo }}"></canvas></div>
+                    {% else %}
+                    <p class="text-muted text-center my-5">{% if tipo_tablero == 'administrativo' %}No hay metas para su cargo en el periodo vigente.{% else %}Sin datos para comparar en el periodo vigente.{% endif %}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
     </div>
-    {% else %}
-    {% include 'indicadores/components/tarjetas_resumen.html' %}
-    {% endif %}
+    {{ graficos|json_script:"datos-graficos" }}
 
     {% if metas_en_tope %}
     <div class="alert alert-warning d-flex gap-2 align-items-start" role="alert">
@@ -103,15 +170,16 @@ tarjetas de avance, accesos de gestión y pestañas). Lo que cambia según quié
     </div>
     {% endif %}
 
-    <!-- 3. Accesos de gestión: lo que administra cada perfil (Admin: todo; Coordinador: delegaciones y su equipo;
-         Delegado: su delegación). El Funcionario no tiene -->
+    <!-- 3. Accesos: lo que gestiona cada perfil y sus pantallas de seguimiento; el Funcionario, sus accesos rápidos -->
     {% include 'actividades/components/mantenedores.html' %}
 
     <!-- 4. Pestañas: cada perfil ve las que le corresponden. Resumen es el tablero del perfil -->
-    <ul class="nav nav-tabs perfil-pestanas flex-nowrap overflow-x-auto" role="tablist" id="pestanasGestion">
+    <ul class="nav nav-tabs perfil-pestanas" role="tablist" id="pestanasGestion">
+        {% if tipo_tablero != 'administrativo' %}
         <li class="nav-item" role="presentation">
             <button class="nav-link text-nowrap {% if activa == 'resumen' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-resumen" data-pestana="resumen" type="button" role="tab"><i class="bi bi-speedometer2 me-1"></i>Resumen</button>
         </li>
+        {% endif %}
         {% if muestra_mis_actividades %}
         <li class="nav-item" role="presentation">
             <button class="nav-link text-nowrap {% if activa == 'mias' %}active{% endif %}" data-bs-toggle="tab" data-bs-target="#tab-mias" data-pestana="mias" type="button" role="tab">{% if usuario.es_delegado %}Mis gestiones{% else %}Mis actividades{% endif %}</button>
@@ -136,10 +204,13 @@ tarjetas de avance, accesos de gestión y pestañas). Lo que cambia según quié
 
     <div class="tab-content card border-0 shadow-sm border-top-0 rounded-0 rounded-bottom">
 
-        <!-- Resumen: el tablero de cada perfil (indicadores/dashboard_<perfil>.html) -->
+        <!-- Resumen: el tablero de Admin, Coordinador y Delegado (indicadores/dashboard_<perfil>.html). El Funcionario
+             no tiene: sus accesos rápidos (dashboard_administrativo.html) van sobre las pestañas -->
+        {% if tipo_tablero != 'administrativo' %}
         <div class="tab-pane fade {% if activa == 'resumen' %}show active{% endif %}" id="tab-resumen" role="tabpanel">
             {% include plantilla_tablero %}
         </div>
+        {% endif %}
 
         {% if muestra_mis_actividades %}
         <!-- Mis actividades: las que registré y las que tengo a cargo -->
@@ -295,4 +366,9 @@ tarjetas de avance, accesos de gestión y pestañas). Lo que cambia según quié
     })();
 </script>
 {% endwith %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha512-CQBWl4fJHWbryGE+Pc7UAxWMUMNMWzWxF4SQo9CgkJIN1kx6djDQZjh3Y8SZ1d+6I+1zze6Z7kHXO7q3UyZAWw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="{% static 'js/graficos.js' %}?v=2026-11-24"></script>
 {% endblock %}
