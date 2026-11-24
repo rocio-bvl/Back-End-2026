@@ -71,19 +71,43 @@ a.card:hover {
 }
 
 
-/* 4. BARRA DE PESTAÑAS (base.html, #sgrTabs) -----------------------------------------------------------------
-   La barra roja superior ya es fija (sticky-top de Bootstrap). La de pestañas queda fija justo debajo:
-   --sgr-alto-navbar lo calcula animaciones.js con el alto real de la barra roja (cambia en celular cuando se
-   abre el menú). Mantiene su gris (bg-gris-10) y suma una sombra corta que la separa del contenido de abajo.
-   No se usa backdrop-filter (desenfoque): crea un nuevo contenedor para los elementos position: fixed y
-   recortaría los menús Seguimiento y Administración. z-index 1010: bajo la barra roja (1020).
-   Solo desde 768 px: en celular las dos barras fijas ocuparían demasiada pantalla. */
+/* 4. BARRAS SUPERIORES (base.html) ----------------------------------------------------------------------------
+   Barra roja: degradado con los colores institucionales (rojo oscuro #8B1D19 y rojo heráldico #C41230, normas
+   gráficas de laserena.cl). Barra de pestañas: vidrio esmerilado que se funde con la roja (difuminado).
+   - El desenfoque (backdrop-filter) va en un ::before detrás de las pestañas y no en la barra misma: en la
+     barra crearía un nuevo contenedor para los elementos position: fixed y recortaría los menús Seguimiento y
+     Administración. isolation: isolate deja ese ::before (z-index -1) dentro de la barra.
+   - Sin overflow en escritorio: el overflow-x anterior obligaba al navegador a mostrar una barra de
+     desplazamiento vertical al lado de las pestañas. En celular sí se desplaza a lo ancho, sin barra visible.
+   - Fija bajo la roja desde 768 px (--sgr-alto-navbar lo calcula animaciones.js). z-index 1010: bajo la roja. */
+.navbar.bg-muni {
+    background: linear-gradient(100deg, #8B1D19 0%, #C41230 55%, #B3122C 100%) !important;
+    box-shadow: none !important;
+}
+.sgr-barra-pestanas {
+    position: relative;
+    isolation: isolate;
+    border-bottom: 1px solid rgba(16, 24, 40, .06);
+}
+.sgr-barra-pestanas::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(180deg, rgba(196, 18, 48, .14) 0%, rgba(255, 255, 255, .78) 70%, rgba(255, 255, 255, .86) 100%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
+}
+@media (max-width: 991.98px) {
+    .sgr-barra-pestanas { overflow-x: auto; scrollbar-width: none; }
+    .sgr-barra-pestanas::-webkit-scrollbar { display: none; }
+}
 @media (min-width: 768px) {
     .sgr-barra-pestanas {
         position: sticky;
         top: var(--sgr-alto-navbar, 66px);
         z-index: 1010;
-        box-shadow: 0 6px 16px -12px rgba(16, 24, 40, .35);
+        box-shadow: 0 8px 20px -14px rgba(16, 24, 40, .35);
     }
 }
 
@@ -211,4 +235,248 @@ main hr {
         transition: none !important;
     }
     .sgr-revelar { opacity: 1; transform: none; }
+}
+
+
+/* 9. MI GESTIÓN: TABLERO DEL PERFIL (templates/actividades/mi_gestion.html) ----------------------------------
+   Ficha de la persona a la izquierda, avance con medidor e indicadores al centro y ranking del cargo a la
+   derecha. Los gráficos los dibuja static/js/graficos.js con Chart.js. */
+.perfil-ficha { background: linear-gradient(180deg, #fff 0%, #fff 60%, #fbf7f6 100%); }
+.perfil-rol { background: #C41230; color: #fff; font-size: .7rem; letter-spacing: .06em; }
+.perfil-avatar-grande { width: 132px; height: 132px; font-size: 2.6rem; border-color: #f4e7e7; }
+.perfil-datos-lista { display: grid; grid-template-columns: auto 1fr; gap: .35rem .9rem; border-top: 1px solid #f0eceb; padding-top: .9rem; }
+.perfil-datos-lista dt { color: #8a8181; font-weight: 500; }
+.perfil-datos-lista dd { margin: 0; font-weight: 600; text-align: right; word-break: break-word; }
+
+.medidor { position: relative; max-width: 260px; margin: 0 auto; }
+.medidor-valor { position: absolute; left: 0; right: 0; bottom: 6%; display: flex; flex-direction: column; align-items: center; }
+.medidor-numero { font-size: 2rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.medidor-texto { font-size: .78rem; color: #8a8181; margin-top: .25rem; }
+
+.indicador { display: flex; flex-direction: column; gap: .15rem; padding: 1rem; border-radius: .9rem; background: #faf7f6; height: 100%; }
+.indicador-icono { font-size: 1.15rem; }
+.indicador-numero { font-size: 1.6rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.indicador-texto { font-size: .78rem; color: #6b6262; }
+.colectivo .progress { height: .55rem; border-radius: 999px; background: #f1ecea; }
+
+.ranking-lista li { display: flex; align-items: center; gap: .75rem; padding: .55rem .6rem; border-radius: .7rem; }
+.ranking-lista li + li { margin-top: .2rem; }
+.ranking-lista li.ranking-yo { background: #fbe6e9; }
+.ranking-lugar { width: 2rem; height: 2rem; border-radius: 50%; display: grid; place-items: center; background: #f4efed; font-weight: 700; font-size: .8rem; flex-shrink: 0; }
+.ranking-lista li:first-child .ranking-lugar { background: #F2A900; color: #fff; }
+.ranking-nombre { flex-grow: 1; font-size: .85rem; font-weight: 600; line-height: 1.2; }
+.ranking-avance { font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.grafico-anillo { position: relative; height: 230px; }
+.grafico-barras { position: relative; min-height: 160px; }
+
+/* Pestañas de Mi Gestión como una tarjeta propia (en vez de pegadas al contenido) */
+.perfil-pestanas { background: #fff; border-radius: var(--sgr-radio) var(--sgr-radio) 0 0; padding: .25rem .5rem 0; box-shadow: var(--sgr-sombra); }
+.perfil-pestanas .nav-link { border: 0 !important; border-bottom: 3px solid transparent !important; }
+.perfil-pestanas .nav-link.active { color: #C41230; border-top: 0 !important; border-bottom-color: #C41230 !important; background: transparent; }
+
+
+/* 10. SEGUIMIENTO (semaforo.html y resumen_delegacion.html) --------------------------------------------------
+   Barra de avance dentro de la tabla: el relleno es el avance (escala hasta el 120%) y la línea negra marca lo
+   esperado a hoy, así se ve de un vistazo quién está sobre o bajo lo esperado. */
+.card .progress { height: .45rem; border-radius: 999px; background: #f1ecea; }
+.col-avance { min-width: 210px; }
+.avance-celda { display: flex; align-items: center; gap: .6rem; justify-content: center; }
+.avance-barra { position: relative; flex: 0 0 120px; height: .5rem; border-radius: 999px; background: #f1ecea; overflow: visible; }
+.avance-relleno { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; max-width: 100%; }
+.avance-marca { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #1F1A1A; border-radius: 2px; }
+.equipo-lista li { display: flex; align-items: center; gap: .75rem; padding: .6rem .25rem; border-bottom: 1px solid #f3efee; }
+.equipo-lista li:last-child { border-bottom: 0; }
+.equipo-avatar { width: 2.2rem; height: 2.2rem; border-radius: 50%; display: grid; place-items: center; background: #fbe6e9; color: #C41230; font-weight: 700; font-size: .8rem; flex-shrink: 0; text-transform: uppercase; }
+
+
+/* 11. ADMINISTRACIÓN (users/components/barra_admin.html) -----------------------------------------------------
+   En las pantallas de Administración la barra de pestañas del SGR se reemplaza por esta, en rojo oscuro con
+   letras blancas: se nota que se está en otra parte del sistema. Mismo comportamiento fijo que la barra gris. */
+.sgr-barra-admin {
+    background: linear-gradient(90deg, #8B1D19 0%, #A0161F 100%);
+    color: #fff;
+    border-top: 1px solid rgba(255, 255, 255, .15);
+    box-shadow: 0 8px 20px -14px rgba(16, 24, 40, .45);
+}
+.sgr-barra-admin .container-fluid { min-height: 44px; }
+.sgr-barra-admin-titulo { font-weight: 800; font-size: .82rem; letter-spacing: .06em; text-transform: uppercase; padding-right: .9rem; margin-right: .3rem; border-right: 1px solid rgba(255, 255, 255, .3); }
+#adminTabs { font-size: .82rem; }
+#adminTabs .nav-link {
+    color: rgba(255, 255, 255, .82);
+    padding: .7rem .9rem;
+    background: linear-gradient(#fff, #fff) center bottom / 0 3px no-repeat;
+    transition: color .2s, background-size .3s var(--sgr-curva);
+}
+#adminTabs .nav-link:hover, #adminTabs .nav-link.active { color: #fff; background-size: calc(100% - 1.2rem) 3px; }
+@media (max-width: 991.98px) {
+    .sgr-barra-admin .container-fluid { overflow-x: auto; scrollbar-width: none; }
+    .sgr-barra-admin .container-fluid::-webkit-scrollbar { display: none; }
+}
+@media (min-width: 768px) {
+    .sgr-barra-admin { position: sticky; top: var(--sgr-alto-navbar, 66px); z-index: 1010; }
+}
+
+/* Panel de Administración: una tarjeta por sección */
+.tarjeta-seccion-icono { width: 3rem; height: 3rem; border-radius: .9rem; display: inline-grid; place-items: center; background: #fbe6e9; color: #C41230; font-size: 1.4rem; }
+.tarjeta-seccion-dato { display: inline-block; font-size: .78rem; font-weight: 600; color: #8B1D19; background: #f8efed; border-radius: 999px; padding: .25rem .7rem; }
+.nav-pills .nav-link { color: #8B1D19; }
+.nav-pills .nav-link.active { background-color: #C41230; color: #fff; }
+
+/* 12. Banner del título de Administración: degradado institucional, manchas de luz difuminadas y símbolos */
+.sgr-banner-admin {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border-radius: 1.25rem;
+    padding: 2.75rem 2.25rem;
+    color: #fff;
+    background: linear-gradient(120deg, #8B1D19 0%, #C41230 55%, #DB3334 100%);
+    box-shadow: 0 12px 30px rgba(139, 29, 25, .25);
+}
+.sgr-banner-admin::before,
+.sgr-banner-admin::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    border-radius: 50%;
+    filter: blur(48px);
+    pointer-events: none;
+}
+.sgr-banner-admin::before { width: 340px; height: 340px; top: -160px; right: 8%; background: rgba(255, 255, 255, .28); }
+.sgr-banner-admin::after { width: 300px; height: 300px; bottom: -190px; left: -60px; background: rgba(90, 10, 10, .55); }
+.sgr-banner-admin-titulo {
+    position: relative;
+    margin: 0;
+    font-size: clamp(1.9rem, 1.2rem + 2.4vw, 3rem);
+    font-weight: 800;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, .18);
+    max-width: 70%;
+}
+.sgr-banner-admin-simbolos { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.sgr-banner-admin-simbolos i { position: absolute; color: #fff; line-height: 1; }
+.sgr-banner-admin-simbolos .s1 { font-size: 7.5rem; right: 3%; top: -1.2rem; opacity: .16; transform: rotate(-12deg); }
+.sgr-banner-admin-simbolos .s2 { font-size: 3.4rem; right: 22%; bottom: .6rem; opacity: .22; filter: blur(1px); }
+.sgr-banner-admin-simbolos .s3 { font-size: 4.2rem; right: 15%; top: .8rem; opacity: .14; filter: blur(2px); }
+.sgr-banner-admin-simbolos .s4 { font-size: 2.6rem; right: 33%; top: 1.1rem; opacity: .18; filter: blur(1.5px); transform: rotate(8deg); }
+.sgr-banner-admin-simbolos .s5 { font-size: 2.2rem; right: 8%; bottom: .7rem; opacity: .25; }
+.sgr-banner-admin-simbolos .s6 { font-size: 5.5rem; right: 41%; bottom: -1.8rem; opacity: .09; filter: blur(3px); }
+.sgr-banner-admin-simbolos .s7 { font-size: 2.4rem; right: 28%; top: 50%; opacity: .12; filter: blur(2.5px); transform: rotate(-6deg); }
+.sgr-banner-admin-simbolos .s8 { font-size: 1.9rem; right: 47%; top: .9rem; opacity: .13; filter: blur(2px); }
+@media (max-width: 767.98px) {
+    .sgr-banner-admin { padding: 2rem 1.25rem; }
+    .sgr-banner-admin-titulo { max-width: 100%; }
+    .sgr-banner-admin-simbolos .s4, .sgr-banner-admin-simbolos .s6,
+    .sgr-banner-admin-simbolos .s7, .sgr-banner-admin-simbolos .s8 { display: none; }
+}
+
+/* 13. Fondo de Mi Gestión: íconos de gestión (gráficos, tableros, metas) detrás de las tarjetas.
+   Son de Bootstrap Icons (vectoriales): se ven nítidos a cualquier tamaño, sin desenfoque. Asoman en los
+   espacios entre tarjetas y junto al título. */
+.sgr-fondo-figuras { position: relative; isolation: isolate; overflow: hidden;
+    background: linear-gradient(180deg, rgba(196, 18, 48, .05) 0%, rgba(196, 18, 48, 0) 45%, rgba(139, 29, 25, .04) 100%); }
+.sgr-figuras { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.sgr-figuras i { position: absolute; line-height: 1; color: #C41230; opacity: .13; }
+.sgr-figuras .f1  { font-size: 3.2rem; top: .7rem;  right: 6%;  transform: rotate(-8deg); }
+.sgr-figuras .f2  { font-size: 2.8rem; top: .8rem;  right: 22%; opacity: .16; }
+.sgr-figuras .f3  { font-size: 2.6rem; top: .8rem;  left: 38%;  color: #8B1D19; }
+.sgr-figuras .f4  { font-size: 2.4rem; top: .9rem;  left: 58%;  transform: rotate(10deg); }
+.sgr-figuras .f5  { font-size: 3.6rem; top: 31%;    left: -.6rem; color: #8B1D19; }
+.sgr-figuras .f6  { font-size: 3rem;   top: 42%;    right: -.5rem; transform: rotate(-12deg); }
+.sgr-figuras .f7  { font-size: 2.4rem; top: 46%;    left: 40%; }
+.sgr-figuras .f8  { font-size: 3rem;   top: 33%;    left: 26%; color: #DB3334; }
+.sgr-figuras .f9  { font-size: 2.6rem; top: 34%;    right: 24%; }
+.sgr-figuras .f10 { font-size: 3.4rem; bottom: 2.5rem; left: 3%; color: #8B1D19; transform: rotate(6deg); }
+.sgr-figuras .f11 { font-size: 3rem;   bottom: .4rem; left: 46%; color: #DB3334; }
+.sgr-figuras .f12 { font-size: 3.4rem; bottom: 2rem;  right: 4%; }
+@media (max-width: 767.98px) {
+    .sgr-figuras .f3, .sgr-figuras .f4, .sgr-figuras .f7, .sgr-figuras .f8, .sgr-figuras .f9, .sgr-figuras .f11 { display: none; }
+}
+
+/* 14. Sin barras de desplazamiento donde no corresponden. El framework municipal deja las tablas responsivas
+   con alto fijo y overflow-y: scroll en pantallas angostas (una barra dentro de la página); aquí crecen con su
+   contenido. Las barras de pestañas se deslizan con el dedo, sin barra visible. */
+@media (max-width: 991.98px) {
+    .table-responsive { height: auto !important; overflow-y: visible !important; }
+}
+.perfil-pestanas { overflow: visible; }
+
+/* 15. TABLAS CON EL ESTILO DE LAS TARJETAS -----------------------------------------------------------------
+   El framework municipal agrega bordes verticales y un encabezado gris con líneas entre columnas: se veía como
+   una planilla antigua. Ahora las tablas siguen a las tarjetas de Mi Gestión: fondo blanco, sin líneas
+   verticales, separadores horizontales muy suaves, encabezado cálido y liviano, y esquinas redondeadas. */
+.tabla-sgr {
+    --bs-table-border-color: #f1ecea;
+    --bs-table-hover-bg: #fbf5f4;
+    --bs-table-striped-bg: #fcfaf9;
+    border-collapse: separate;
+    border-spacing: 0;
+    color: #1F1A1A;
+}
+.tabla-sgr > :not(caption) > * > * { border-top: 0 !important; border-left: 0 !important; border-right: 0 !important; }
+.tabla-sgr thead th,
+.tabla-sgr thead th[class*="bg-muni"] {
+    background: #faf7f6 !important;
+    color: #8a8181 !important;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    padding: .85rem .75rem;
+    border-bottom: 1px solid #f1ecea !important;
+}
+.tabla-sgr tbody td { padding: .9rem .75rem; border-bottom: 1px solid #f4f0ef !important; }
+.tabla-sgr tbody tr:last-child td { border-bottom: 0 !important; }
+.tabla-sgr tbody tr:hover > td { background-color: #fbf5f4; }
+.tabla-sgr tbody tr:hover td:first-child { box-shadow: inset 3px 0 0 #C41230; }
+.tabla-sgr tbody tr.table-warning > td { background-color: #fff8e6; }
+
+/* Contenedor: sin marco gris; dentro de una tarjeta no repite la sombra */
+.tarjeta-tabla { border: 0 !important; background: #ffffff; }
+.card .tarjeta-tabla { box-shadow: none; }
+
+/* Encabezado rojo de las tarjetas que contienen una tabla: igual que los títulos de las tarjetas de Mi Gestión */
+.card > .card-header.bg-muni:has(~ .tarjeta-tabla),
+.card > .card-header.bg-muni:has(~ .table-responsive) {
+    background: #ffffff !important;
+    color: #1F1A1A !important;
+    font-size: 1rem;
+    padding: 1.1rem 1.5rem .9rem;
+    border-bottom: 1px solid #f1ecea;
+}
+
+/* Botones de acción dentro de las tablas: mismos radios suaves que el resto del sistema */
+.tabla-sgr .btn-sm { border-radius: .6rem; }
+
+/* Celular (el framework convierte cada fila en un bloque bajo 768 px): cada fila es una tarjeta como las del
+   resto del sistema, sin el marco gris, y cada dato lleva arriba el nombre de su columna (atributo data-cell) */
+@media (max-width: 768px) {
+    .tabla-sgr tbody tr {
+        border: 0 !important;
+        border-radius: var(--sgr-radio);
+        box-shadow: var(--sgr-sombra);
+        background: #ffffff;
+        margin: 0 .25rem .9rem !important;
+        overflow: hidden;
+    }
+    .tabla-sgr tbody tr:hover td:first-child { box-shadow: none; }
+    .tabla-sgr tbody td { padding: .7rem 1rem; }
+    .tabla-sgr tbody td[data-cell]:not([data-cell=""])::before {
+        content: attr(data-cell);
+        display: block;
+        float: none;
+        width: auto;
+        height: auto;
+        padding: 0;
+        background: none;
+        white-space: normal;
+        margin-bottom: .2rem;
+        color: #8a8181;
+        font-size: .68rem;
+        font-weight: 700;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+    }
+    .tarjeta-tabla:has(.tabla-sgr) { background: transparent; box-shadow: none; }
 }

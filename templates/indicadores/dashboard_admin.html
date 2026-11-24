@@ -1,24 +1,16 @@
 {% comment %}
-Resumen del Administrador (pestaña Resumen de Mi Gestión): totales de todo el sistema y atrasos de validación.
+Resumen del Administrador (pestaña Resumen de Mi Gestión): totales de todo el sistema. Los accesos a
+Semáforo, Resumen por delegación y Atrasos de validación van sobre las pestañas (mantenedores.html).
 Las tarjetas de avance de la delegación elegida van arriba, en la cabecera de Mi Gestión.
 {% endcomment %}
 <div class="p-3 p-md-4">
     <h6 class="fw-bold mb-3">Totales del sistema</h6>
-    <div class="row g-3 mb-4">
+    <div class="row g-3">
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Usuarios activos</span><h4 class="fw-bold mb-0">{{ total_usuarios }}</h4></div></div>
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Delegaciones</span><h4 class="fw-bold mb-0">{{ total_delegaciones }}</h4></div></div>
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Actividades del periodo</span><h4 class="fw-bold mb-0">{{ total_actividades }}</h4></div></div>
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Por validar</span><h4 class="fw-bold mb-0 text-primary">{{ por_validar }}</h4></div></div>
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Atenciones sociales</span><h4 class="fw-bold mb-0">{{ total_atenciones }}</h4></div></div>
         <div class="col-6 col-lg-2"><div class="card border-0 shadow-sm p-3 h-100"><span class="text-muted small">Metas del periodo</span><h4 class="fw-bold mb-0">{{ total_metas }}</h4></div></div>
-    </div>
-    <h6 class="fw-bold mb-3">Seguimiento</h6>
-    <div class="row g-3">
-        {% url 'indicadores:semaforo' as url_semaforo %}
-        {% include 'indicadores/components/acceso.html' with url=url_semaforo icono='bi-stoplights' titulo='Semáforo' texto='Avance al día de cada responsable y ausencias.' %}
-        {% url 'indicadores:resumen_delegacion' as url_resumen %}
-        {% include 'indicadores/components/acceso.html' with url=url_resumen icono='bi-building-gear' titulo='Resumen por delegación' texto='Metas, cumplimiento y equipo.' %}
-        {% url 'indicadores:atrasos_validacion' as url_atrasos %}
-        {% include 'indicadores/components/acceso.html' with url=url_atrasos icono='bi-hourglass-bottom' titulo='Atrasos de validación' texto='Reporte por delegado: evidencias sin validar y tiempo de respuesta.' %}
     </div>
 </div>

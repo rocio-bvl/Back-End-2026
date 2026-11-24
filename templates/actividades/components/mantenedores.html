@@ -1,15 +1,21 @@
 {% comment %}
-Accesos de gestión de Mi Gestión (bajo las tarjetas de avance, sin título): lo que gestiona cada perfil.
-- Administrador: todo el sistema.
-- Coordinador: delegaciones con sus territorios, delegados y funcionarios; ausencias; consulta metas y auditoría.
-- Delegado: su delegación (funcionarios, metas, ausencias de su equipo y verificación).
-El Funcionario no tiene mantenedores.
+Accesos de Mi Gestión (bajo las tarjetas de avance, sobre las pestañas, sin título): una sola fila de tarjetas.
+- Funcionario: sus accesos rápidos (indicadores/dashboard_administrativo.html); no tiene pestaña Resumen.
+- Administrador: todo el sistema. Coordinador: delegaciones con sus territorios, delegados y funcionarios;
+  ausencias; consulta metas y auditoría. Delegado: su delegación (funcionarios, metas, ausencias y verificación).
+- Al final, las pantallas de seguimiento de cada perfil (Semáforo, Resumen y Atrasos de validación).
 {% endcomment %}
 {% with usuario=request.user %}
-{% if usuario.puede_ver_usuarios %}
 {% url 'users:administracion' as url_gestion %}
+{% url 'indicadores:semaforo' as url_semaforo %}
+{% url 'indicadores:resumen_delegacion' as url_resumen %}
+{% url 'indicadores:atrasos_validacion' as url_atrasos %}
 <div class="mb-4">
     <div class="row g-3">
+        {% if tipo_tablero == 'administrativo' %}
+        {% include 'indicadores/dashboard_administrativo.html' %}
+        {% endif %}
+        {% if usuario.puede_ver_usuarios %}
         {% if usuario.puede_gestionar_delegaciones %}
         {% include 'indicadores/components/acceso.html' with url=url_gestion|add:'?pestana=delegaciones' icono='bi-geo-alt' titulo='Delegaciones' texto='Delegaciones, territorios y su equipo.' %}
         {% endif %}
@@ -24,7 +30,6 @@ El Funcionario no tiene mantenedores.
         {% include 'indicadores/components/acceso.html' with url=url_gestion|add:'?pestana=metas' icono='bi-bullseye' titulo='Metas' texto=usuario.puede_gestionar_metas|yesno:'Metas generales y por delegación.,Consulta de metas por delegación.' %}
         {% endif %}
         {% if usuario.puede_registrar_ausencias %}
-        {% url 'indicadores:semaforo' as url_semaforo %}
         {% include 'indicadores/components/acceso.html' with url=url_semaforo|add:'#ausencias' icono='bi-calendar-x' titulo='Ausencias' texto='Vacaciones, días administrativos y licencias: ajustan las metas.' %}
         {% endif %}
         {% if usuario.puede_verificar %}
@@ -39,7 +44,22 @@ El Funcionario no tiene mantenedores.
         {% url 'auditoria:logs' as url_auditoria %}
         {% include 'indicadores/components/acceso.html' with url=url_auditoria icono='bi-clock-history' titulo='Auditoría' texto='Quién hizo qué y cuándo.' %}
         {% endif %}
+        {% endif %}
+        {# Seguimiento: antes iba dentro de la pestaña Resumen #}
+        {% if tipo_tablero == 'admin' %}
+        {% include 'indicadores/components/acceso.html' with url=url_semaforo icono='bi-stoplights' titulo='Semáforo' texto='Avance al día de cada responsable y ausencias.' %}
+        {% include 'indicadores/components/acceso.html' with url=url_resumen icono='bi-building-gear' titulo='Resumen por delegación' texto='Metas, cumplimiento y equipo.' %}
+        {% include 'indicadores/components/acceso.html' with url=url_atrasos icono='bi-hourglass-bottom' titulo='Atrasos de validación' texto='Reporte por delegado: evidencias sin validar y tiempo de respuesta.' %}
+        {% elif tipo_tablero == 'coordinador' %}
+        {% if perms.IndicadoresApp.view_metadesempeno %}
+        {% include 'indicadores/components/acceso.html' with url=url_semaforo icono='bi-stoplights' titulo='Semáforo' texto='Avance al día de cada responsable.' %}
+        {% endif %}
+        {% include 'indicadores/components/acceso.html' with url=url_resumen icono='bi-building-gear' titulo='Resumen por delegación' texto='Metas, cumplimiento y equipo.' %}
+        {% include 'indicadores/components/acceso.html' with url=url_atrasos icono='bi-hourglass-bottom' titulo='Atrasos de validación' texto='Reporte por delegado: evidencias sin validar y tiempo de respuesta.' %}
+        {% elif tipo_tablero == 'delegado' and perms.IndicadoresApp.view_metadesempeno %}
+        {% include 'indicadores/components/acceso.html' with url=url_semaforo icono='bi-stoplights' titulo='Semáforo' texto='Avance al día de cada responsable.' %}
+        {% include 'indicadores/components/acceso.html' with url=url_resumen icono='bi-building-gear' titulo='Resumen de la delegación' texto='Metas, cumplimiento y equipo.' %}
+        {% endif %}
     </div>
 </div>
-{% endif %}
 {% endwith %}

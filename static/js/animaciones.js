@@ -94,3 +94,26 @@
         requestAnimationFrame(paso);
     });
 })();
+
+/* Etiquetas de columna para el celular: bajo 768 px cada fila de una tabla SGR se ve como tarjeta y cada dato
+   muestra arriba el nombre de su columna (CSS: td[data-cell]::before en sgr-moderno.css). Si una celda no trae
+   data-cell en la plantilla, se toma del encabezado de su columna. Solo agrega un atributo: no cambia datos. */
+(function () {
+    document.querySelectorAll('table.tabla-sgr').forEach(function (tabla) {
+        var titulos = [];
+        tabla.querySelectorAll('thead tr:last-child th').forEach(function (th) {
+            var span = parseInt(th.getAttribute('colspan') || '1', 10);
+            for (var i = 0; i < span; i++) { titulos.push(th.textContent.trim()); }
+        });
+        if (!titulos.length) { return; }
+        tabla.querySelectorAll('tbody tr').forEach(function (fila) {
+            var columna = 0;
+            Array.prototype.forEach.call(fila.children, function (celda) {
+                if (!celda.hasAttribute('data-cell') && titulos[columna] && !celda.hasAttribute('colspan')) {
+                    celda.setAttribute('data-cell', titulos[columna]);
+                }
+                columna += parseInt(celda.getAttribute('colspan') || '1', 10);
+            });
+        });
+    });
+})();

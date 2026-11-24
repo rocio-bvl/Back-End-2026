@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}SGR — Ilustre Municipalidad de La Serena{% endblock %}</title>
+    {% include 'components/favicon.html' %}
 
     <!-- Hojas de Estilo Oficiales Framework La Serena & Bootstrap v5.3 -->
     <link href="https://framework.laserena.cl/css/frameworkV1.css" rel="stylesheet" />
@@ -14,7 +15,7 @@
     <!-- Definición de Clases de Paleta Municipal (Proyecto/static/css/styles.css). ?v= cambia cuando se modifica la hoja: obliga al navegador a descargar la versión nueva -->
     <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=2026-11-17c">
     <!-- Capa visual moderna (animaciones, sombras, tablas y formularios). Va después de styles.css para que sus reglas manden. Quitar esta línea vuelve al diseño anterior -->
-    <link rel="stylesheet" href="{% static 'css/sgr-moderno.css' %}?v=2026-11-20">
+    <link rel="stylesheet" href="{% static 'css/sgr-moderno.css' %}?v=2026-11-24c">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -125,8 +126,10 @@
     </div>
 </nav>
 
-<!-- 3. SUB-NAVBAR DE PESTAÑAS PRINCIPALES SGR (RESTRINGIDO POR ROL) -->
-<div class="bg-gris-10 border-bottom overflow-x-auto sgr-barra-pestanas">
+<!-- 3. SUB-NAVBAR DE PESTAÑAS PRINCIPALES SGR (RESTRINGIDO POR ROL).
+     Las pantallas de Administración reemplazan este bloque por su propia barra roja (users/components/barra_admin.html) -->
+{% block barra_pestanas %}
+<div class="sgr-barra-pestanas">
     <div class="container-fluid p-0">
         <ul class="nav nav-tabs ls-nav-tabs flex-nowrap border-0 text-uppercase fw-semibold" id="sgrTabs" style="font-size: 0.82rem;">
             
@@ -180,33 +183,36 @@
             {% endwith %}
             {% endif %}
 
-            <!-- 6. Administración: usuarios y delegaciones (Admin gestiona, Coordinador visualiza, el Delegado ve los
-                 Funcionarios de su delegación), Felicitaciones y Reclamos (Delegado y Admin) y Auditoría (Admin y
-                 Coordinador). Ocultar un enlace no protege la pantalla: cada vista revisa también el permiso -->
-            {% if request.user.puede_ver_usuarios or request.user.puede_gestionar_felicitaciones or request.user.puede_administrar %}
+            <!-- 6. Felicitaciones y Reclamos (Delegado y Admin) y Administración (usuarios, delegaciones, metas, periodos y
+                 auditoría, en su propia parte del sistema). Ocultar un enlace no protege la pantalla: cada vista revisa
+                 también el permiso -->
             {% with nombre=request.resolver_match.url_name %}
-            <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle border-0 py-2 px-3 {% if nombre == 'administracion' or nombre == 'felicitaciones_reclamos' or nombre == 'logs' %}active{% else %}text-dark{% endif %}" href="#" role="button" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false">
+            {% if request.user.puede_gestionar_felicitaciones %}
+            <li class="nav-item">
+                <a class="nav-link border-0 py-2 px-3 {% if nombre == 'felicitaciones_reclamos' %}active{% else %}text-dark{% endif %}" href="{% url 'indicadores:felicitaciones_reclamos' %}">
+                    <i class="bi bi-chat-square-heart me-1 text-danger"></i> Felicitaciones y Reclamos
+                </a>
+            </li>
+            {% endif %}
+            {% if request.user.puede_ver_usuarios %}
+            <li class="nav-item">
+                <a class="nav-link border-0 py-2 px-3 text-dark" href="{% url 'users:administracion' %}">
+                    <i class="bi bi-gear-fill me-1 text-danger"></i> {% if request.user.es_delegado %}Mi Delegación{% else %}Administración{% endif %}
+                </a>
+            </li>
+            {% elif request.user.puede_administrar %}
+            <li class="nav-item">
+                <a class="nav-link border-0 py-2 px-3 text-dark" href="{% url 'auditoria:logs' %}">
                     <i class="bi bi-gear-fill me-1 text-danger"></i> Administración
                 </a>
-                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
-                    {% if request.user.puede_ver_usuarios %}
-                    <li><a class="dropdown-item {% if nombre == 'administracion' %}active{% endif %}" href="{% url 'users:administracion' %}"><i class="bi bi-people-fill me-2 text-danger"></i>{% if request.user.es_delegado %}Mi Delegación{% else %}Usuarios y delegaciones{% endif %}</a></li>
-                    {% endif %}
-                    {% if request.user.puede_gestionar_felicitaciones %}
-                    <li><a class="dropdown-item {% if nombre == 'felicitaciones_reclamos' %}active{% endif %}" href="{% url 'indicadores:felicitaciones_reclamos' %}"><i class="bi bi-chat-square-heart me-2 text-danger"></i>Felicitaciones y Reclamos</a></li>
-                    {% endif %}
-                    {% if request.user.puede_administrar %}
-                    <li><a class="dropdown-item {% if nombre == 'logs' %}active{% endif %}" href="{% url 'auditoria:logs' %}"><i class="bi bi-clock-history me-2 text-danger"></i>Auditoría</a></li>
-                    {% endif %}
-                </ul>
             </li>
-            {% endwith %}
             {% endif %}
+            {% endwith %}
 
         </ul>
     </div>
 </div>
+{% endblock %}
 
 <!-- Mensajes del sistema (éxito / error). administracion.html ya los muestra dentro de su contenido. -->
 {# Alerta de validación para el Delegado: evidencias de su delegación que llevan días sin validar #}
@@ -275,7 +281,7 @@
     });
 </script>
 <!-- Animaciones: aparición al desplazar y conteo de números (static/js/animaciones.js) -->
-<script src="{% static 'js/animaciones.js' %}?v=2026-11-17"></script>
+<script src="{% static 'js/animaciones.js' %}?v=2026-11-24"></script>
 <script>
     document.addEventListener('submit', function (evento) {
         var form = evento.target;

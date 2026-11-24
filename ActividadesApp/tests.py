@@ -51,10 +51,7 @@ class BaseActividades(TestCase):
 
     def registrar(self, tubo=False, **extra):
         """tubo=True usa el formulario del Tubo de Trabajo."""
-        datos = {'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item': '1',
-                 'territorio': self.territorio.pk,
-                 'fecha_realizacion': '' if tubo else self.hoy.isoformat(),
-                 'rut_solicitante': '12312312-3', 'nombre_solicitante': 'Juan Pérez', 'telefono_solicitante': '912345678', 'agregar_solicitante': 'True'}
+        datos = {'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item': '1', 'territorio': self.territorio.pk, 'fecha_realizacion': '' if tubo else self.hoy.isoformat(), 'rut_solicitante': '12312312-3', 'nombre_solicitante': 'Juan Pérez', 'telefono_solicitante': '912345678', 'agregar_solicitante': 'True'}
         datos.update(extra)
         url = 'actividades:actividad_crear_tubo' if tubo else 'actividades:actividad_crear'
         return self.client.post(reverse(url), datos)
@@ -90,8 +87,7 @@ class RegistroActividadTest(BaseActividades):
         self.entrar('55555555-5')
         self.assertRedirects(self.registrar(), reverse('actividades:mi_gestion'))
         actividad = Actividad.objects.get()
-        self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos),
-                         ('EVIDENCIA_INGRESADA', self.hoy, False))
+        self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos), ('EVIDENCIA_INGRESADA', self.hoy, False))
         evidencia = actividad.evidencias.get()  # la evidencia es opcional: sin foto también se valida
         self.assertEqual((evidencia.comentario, bool(evidencia.imagen)), ('', False))
 
@@ -112,8 +108,7 @@ class RegistroActividadTest(BaseActividades):
     def test_fecha_futura_queda_como_compromiso(self):
         self.entrar('55555555-5')
         futura = self.hoy + timedelta(days=7)
-        self.assertRedirects(self.registrar(fecha_realizacion=futura.isoformat(), comentario=''),
-                             reverse('actividades:mi_gestion'))
+        self.assertRedirects(self.registrar(fecha_realizacion=futura.isoformat(), comentario=''), reverse('actividades:mi_gestion'))
         actividad = Actividad.objects.get()
         self.assertEqual((actividad.estado, actividad.fecha_realizacion), ('PROGRAMADA', futura))
         self.assertTrue(actividad.es_compromiso())
@@ -156,8 +151,7 @@ class RegistroActividadTest(BaseActividades):
     def test_tubo_con_fecha_de_realizacion_opcional(self):
         self.entrar('55555555-5')
         futura = self.hoy + timedelta(days=6)
-        self.assertRedirects(self.registrar(tubo=True, fecha_realizacion=futura.isoformat()),
-                             reverse('actividades:tubo_trabajo'))
+        self.assertRedirects(self.registrar(tubo=True, fecha_realizacion=futura.isoformat()), reverse('actividades:tubo_trabajo'))
         actividad = Actividad.objects.get()
         # Con fecha sigue siendo del Tubo (no pasa a programada) hasta que se realice
         self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos), ('EN_TUBO', futura, True))
@@ -288,8 +282,7 @@ class EvidenciaYEncargadoTest(BaseActividades):
         actividad, evidencia = self.con_evidencia(encargado=self.companero)
         self.entrar('33333333-3')
         self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR', 'otorga_puntaje': 'SI'})
-        avance = {u.username: indicadores_usuario(u, self.datos['periodo'], self.hoy)[0].avance_actual
-                  for u in [self.func, self.companero]}
+        avance = {u.username: indicadores_usuario(u, self.datos['periodo'], self.hoy)[0].avance_actual for u in [self.func, self.companero]}
         self.assertEqual(avance, {'55555555-5': 0, '77777777-7': 1})
 
     def test_encargado_ve_la_actividad_en_mi_gestion(self):
@@ -306,9 +299,7 @@ class BitacoraTest(BaseActividades):
     def test_responsable_y_delegado_comentan_con_fecha(self):
         actividad = self.crear()
         self.entrar('55555555-5')
-        self.assertRedirects(self.comentar(actividad),
-                             reverse('actividades:actividad_detalle', args=[actividad.pk]) + '#bitacora',
-                             fetch_redirect_response=False)
+        self.assertRedirects(self.comentar(actividad), reverse('actividades:actividad_detalle', args=[actividad.pk]) + '#bitacora', fetch_redirect_response=False)
         self.entrar('33333333-3')
         self.comentar(actividad, 'Revisado por el Delegado')
         comentarios = list(actividad.comentarios.all())
@@ -372,8 +363,7 @@ class ValidacionTest(BaseActividades):
 
     def test_compromiso_cuenta_en_el_trimestre_en_que_se_realiza(self):
         from IndicadoresApp.models import Periodo
-        anterior = Periodo.objects.create(nombre='Anterior', fecha_inicio=self.hoy - timedelta(days=60),
-                                          fecha_termino=self.hoy - timedelta(days=10), dias_computables=40)
+        anterior = Periodo.objects.create(nombre='Anterior', fecha_inicio=self.hoy - timedelta(days=60), fecha_termino=self.hoy - timedelta(days=10), dias_computables=40)
         actividad = self.crear()
         actividad.periodo = anterior
         actividad.save()
