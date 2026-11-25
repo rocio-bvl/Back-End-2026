@@ -256,6 +256,7 @@ Las vistas se protegen con `@login_required` o con `@permiso_requerido(permiso, 
 | Ausencias (vacaciones, días administrativos y licencias) | Sí | Sí | Sí (su delegación) | No |
 | Felicitaciones y reclamos | Sí | No | Sí (su delegación) | No |
 | Auditoría (solo lectura) | Sí | Sí | No | No |
+| Asistente de chat con IA | Sí | Sí | Sí | No |
 | Entrar a Django Admin | Sí (superusuario) | No | No | No |
 
 ## Funcionalidades
@@ -306,6 +307,76 @@ Luego se registra la ejecución, el Delegado valida (`VALIDADA`) o rechaza con m
 
 Un funcionario registra la solicitud de una persona natural (fecha y funcionario automáticos). La persona (solicitante) se identifica por su RUT: si ya está registrada, el sistema completa nombre y teléfono; si no, pregunta "¿Desea agregar solicitante al sistema?" y la registra, opcionalmente como presidente, secretario o tesorero de una organización. Sus datos se guardan una sola vez, en la tabla `solicitante`, y las atenciones y actividades la referencian. Las acciones para atenderla son actividades vinculadas a ella. Estado de la solicitud: **Pendiente** (sin actividades), **En proceso** (con actividades) y **Atendida** (todas sus actividades vinculadas fueron validadas).
 
+## Chatbot con IA
+
+El sistema incluye un asistente de chat con IA en un widget flotante (abajo a la derecha), disponible para los roles **Admin, Coordinador y Delegado** y para el superusuario. El rol **Funcionario** no ve el widget y, si invoca los endpoints directamente, recibe `403` con el intento registrado en la auditoría (`ACCESO_DENEGADO`). Sin sesión, el usuario es enviado al login. El código vive en `ChatbotApp` y el historial se guarda por usuario en la tabla `mensaje_chat`; el botón **Nueva** del widget borra la conversación propia.
+
+El asistente responde con **contexto real del SGR** (Fase 2): documentación interna y FAQ cargadas en la base (`DocumentoConocimiento`) más datos agregados de actividades, metas, atenciones, usuarios y ausencias, filtrados por el alcance del rol. Cada usuario tiene su **propia caché** y cada interacción queda registrada en `EventoChatbot` (prompt, contexto, mensajes, respuesta, modelo, origen, latencia, tokens, guardrails y documentos usados). El detalle técnico está en [`docs/chatbot.md`](docs/chatbot.md).
+
+La conversación se envía al proveedor **desde el servidor**: la ApiKey se lee del `.env`, nunca se incluye en plantillas, JavaScript ni respuestas, y los errores del proveedor se muestran con un mensaje genérico. El cliente HTTP usa solo la biblioteca estándar (`urllib.request`), por lo que no se agregaron dependencias.
+
+Configuración en el `.env` (cualquier proveedor compatible con la API *OpenAI Chat Completions*):
+
+```
+CHATBOT_API_KEY='clave-del-proveedor'
+CHATBOT_API_URL='https://api.openai.com/v1/chat/completions'
+CHATBOT_MODEL='gpt-4o-mini'
+CHATBOT_TIMEOUT=30
+
+# Alternativa local (Ollama): se usa si CHATBOT_MODEL queda vacío
+CHATBOT_LOCAL_API_URL='http://127.0.0.1:11434/v1/chat/completions'
+CHATBOT_LOCAL_MODEL=''
+CHATBOT_LOCAL_TIMEOUT=120
+
+# Fase 2: RAG, caché por usuario y observabilidad
+CHATBOT_PROMPT_VERSION=2.0
+CHATBOT_CACHE_TTL=600         # segundos de vida de una respuesta cacheada
+CHATBOT_RATE_LIMIT=30         # consultas por usuario y ventana
+CHATBOT_RATE_VENTANA=3600     # segundos de la ventana
+CHATBOT_RAG_MAX_CARACTERES=4000
+CHATBOT_MAX_RESPUESTA=4000
+CHATBOT_LOG_LEVEL=INFO
+```
+
+| Proveedor | `CHATBOT_API_URL` | Ejemplo de `CHATBOT_MODEL` |
+|---|---|----------------------------|
+| OpenAI | `https://api.openai.com/v1/chat/completions` | `gpt-4o-mini`              |
+| OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | `openai/gpt-4o-mini`       |
+| Groq | `https://api.groq.com/openai/v1/chat/completions` | `llama-3.3-70b-versatile`  |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` | `gemini-2.0-flash`         |
+| Ollama (local) | `http://127.0.0.1:11434/v1/chat/completions` | `Nombre del modelo`        |
+
+El cliente elige el proveedor en este orden:
+
+1. **API remota**: si `CHATBOT_API_KEY` y `CHATBOT_MODEL` tienen valor, se usa `CHATBOT_API_URL` con esa clave.
+2. **Modelo local (Ollama)**: si `CHATBOT_MODEL` queda vacío y `CHATBOT_LOCAL_MODEL` tiene valor, se usa `CHATBOT_LOCAL_API_URL`, sin clave ni internet.
+3. Si no hay ninguna de las dos configuraciones, el chatbot queda **desactivado** y el endpoint responde `503`.
+
+Para usar un **modelo local con Ollama** basta con tener Ollama corriendo (`ollama serve`, por defecto en `http://127.0.0.1:11434`) y el modelo descargado (`ollama pull qwen3.5_progra_128k:latest` o el que se prefiera). El nombre debe ser el ID exacto que muestra `ollama list`. Si el modelo es de **razonamiento** (por ejemplo las familias Qwen), `CHATBOT_LOCAL_REASONING_EFFORT='none'` hace que la respuesta llegue en `content` en lugar de quedarse en `reasoning`; dejar esa variable vacía si el servidor local no acepta el parámetro. Cambiar de proveedor solo requiere editar el `.env` y reiniciar el servidor; no hay que tocar código. Cada mensaje se limita a 2000 caracteres y al proveedor se le envían como contexto los últimos 12 mensajes del usuario.
+
+Endpoints (JSON, solo usuarios autenticados con acceso):
+
+| Ruta | Método | Uso |
+|---|---|---|
+| `/chatbot/mensaje/` | POST | Envía la pregunta y devuelve `{"respuesta", "fecha"}` (400/403/429/502/503 ante errores) |
+| `/chatbot/historial/` | GET | Últimos 50 mensajes del usuario, en orden cronológico |
+| `/chatbot/limpiar/` | POST | Borra la conversación del usuario autenticado |
+
+### RAG, caché y observabilidad (Fase 2)
+
+- **Documentación**: `python manage.py cargar_conocimiento_chatbot` carga 12 documentos iniciales
+  (idempotente, se puede ejecutar varias veces). El Administrador los edita en Django Admin.
+- **Datos por rol**: Admin, Coordinador y superusuario reciben datos de toda la municipalidad; el
+  Delegado, solo de su delegación. El contexto no incluye nombres, RUT ni teléfonos.
+- **Guardrails**: se rechazan los intentos claros de prompt injection, se aplica un rate limit por
+  usuario (`429`) y se sanean secretos/truncado en la salida.
+- **Caché por usuario**: clave `chatbot:respuesta:{usuario_id}:{sha256(...)}`; nunca se comparte
+  entre usuarios. TTL configurable (`CHATBOT_CACHE_TTL`, 600 s por defecto).
+- **Observabilidad**: cada interacción (incluidos bloqueos y errores) queda en `EventoChatbot` y en
+  `logs/chatbot.log`. El evento es de solo lectura en Django Admin.
+- **Limitación**: la caché es `LocMemCache`, por proceso. Con varios workers cada uno tiene su
+  propia caché y su propio contador de rate limit.
+
 ## Pruebas automatizadas
 
 ```
@@ -322,6 +393,7 @@ python manage.py test
 | `IndicadoresApp` | Periodos, metas, ponderaciones, semáforo, resumen por delegación, ausencias, felicitaciones, reclamos y tableros |
 | `ActividadesApp` | Actividades, evidencias, validación, territorios, Tubo de Trabajo y gestión social: organizaciones, solicitantes, representantes y atenciones sociales |
 | `AuditoriaApp` | Bitácora de cambios y accesos denegados |
+| `ChatbotApp` | Asistente de chat con IA: modelos `MensajeChat`, `DocumentoConocimiento` y `EventoChatbot`, cliente del proveedor, RAG, guardrails, caché por usuario, endpoints JSON, widget, JS y CSS |
 | `config` | Configuración del proyecto (lee el `.env`) |
 | `nginx` | Configuración del proxy inverso y ubicación de los certificados SSL |
 | `Dockerfile` y `docker-compose.yml` | Imagen de la aplicación y orquestación de `db`, `web` y `nginx` |

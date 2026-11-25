@@ -25,6 +25,8 @@ ROLES_VERIFICACION = ['Admin', 'Delegado']                 # validan la evidenci
 # en las actividades de los funcionarios
 ROLES_ASIGNAN_ENCARGADO = ['Admin', 'Coordinador', 'Delegado']
 ROLES_RESERVADOS = ['Admin', 'Coordinador']                # solo el Admin puede asignarlos
+# Usan el asistente de chat con IA. El Funcionario queda fuera: no ve el widget y el endpoint le responde 403
+ROLES_CHATBOT = ['Admin', 'Coordinador', 'Delegado']
 
 # «enumeration» EstadoRegistro
 estados_registro = (

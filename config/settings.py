@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'IndicadoresApp',
     'ActividadesApp',
     'AuditoriaApp',
+    'ChatbotApp',
 ]
 
 MIDDLEWARE = [
@@ -209,3 +210,109 @@ MAX_IMAGEN_EVIDENCIA = 5 * 1024 * 1024
 
 # messages.error se muestra con la clase de Bootstrap "alert-danger"
 MESSAGE_TAGS = {message_constants.ERROR: 'danger'}
+
+
+# Chatbot con IA: la clave NUNCA se expone al navegador, solo la usa el servidor en ChatbotApp/cliente_ia.py.
+# Si no hay proveedor configurado (ni API ni modelo local), el chatbot se desactiva y el endpoint responde 503
+# (el widget se muestra solo a los roles con acceso, así que el aviso aparece dentro del panel de chat).
+# La URL debe hablar la API "OpenAI Chat Completions" (OpenAI, OpenRouter, Groq, Gemini compatible).
+CHATBOT_API_KEY = os.getenv('CHATBOT_API_KEY', '')
+CHATBOT_API_URL = os.getenv('CHATBOT_API_URL', 'https://api.openai.com/v1/chat/completions')
+# Modelo de la API remota. Si queda vacío se usa el modelo local configurado más abajo (Ollama).
+CHATBOT_MODEL = os.getenv('CHATBOT_MODEL', 'gpt-4o-mini')
+CHATBOT_TIMEOUT = int(os.getenv('CHATBOT_TIMEOUT') or '30')  # segundos: igual que EMAIL_PORT, 'or' cubre la variable vacía
+# Alternativa local (Ollama u otro servidor compatible): se usa cuando no hay modelo de API configurado.
+# Ollama no valida la clave, así que aquí no se necesita CHATBOT_API_KEY.
+CHATBOT_LOCAL_API_URL = os.getenv('CHATBOT_LOCAL_API_URL', 'http://127.0.0.1:11434/v1/chat/completions')
+CHATBOT_LOCAL_MODEL = os.getenv('CHATBOT_LOCAL_MODEL', '')
+CHATBOT_LOCAL_TIMEOUT = int(os.getenv('CHATBOT_LOCAL_TIMEOUT') or '120')  # un modelo local puede tardar más
+# Modelos locales de razonamiento: con 'none' la respuesta llega en 'content' y no solo en 'reasoning'.
+# Dejar vacío para no enviar el parámetro (otros servidores locales podrían no aceptarlo).
+CHATBOT_LOCAL_REASONING_EFFORT = os.getenv('CHATBOT_LOCAL_REASONING_EFFORT', 'none')
+CHATBOT_ACTIVO = bool((CHATBOT_API_KEY and CHATBOT_MODEL) or CHATBOT_LOCAL_MODEL)
+CHATBOT_MAX_MENSAJE = 2000    # caracteres máximos por pregunta del usuario
+CHATBOT_MAX_HISTORIAL = 12    # mensajes (6 turnos) que se envían al proveedor como contexto
+CHATBOT_MAX_HISTORIAL_MENSAJE = int(os.getenv('CHATBOT_MAX_HISTORIAL_MENSAJE') or '1000')   # tope por mensaje del historial
+CHATBOT_MAX_HISTORIAL_CARACTERES = int(os.getenv('CHATBOT_MAX_HISTORIAL_CARACTERES') or '4000')  # presupuesto total del historial
+# Techo duro del prompt completo (prompt de sistema + contexto + historial + pregunta). Al superarlo
+# se descarta primero el historial más antiguo y luego se recorta el contexto; la pregunta nunca se
+# recorta (ya está acotada por CHATBOT_MAX_MENSAJE). Rollback: subirlo por `.env`.
+CHATBOT_MAX_PROMPT_CARACTERES = int(os.getenv('CHATBOT_MAX_PROMPT_CARACTERES') or '20000')
+
+# ----- Retención y tope de historial (T-C-04) -----
+# La purga se ejecuta con `manage.py purgar_chatbot`; programarla (cron/systemd timer) es una
+# decisión de Operaciones y no se activa desde el código. Los mensajes se borran por antigüedad y
+# cada usuario conserva como máximo los N más recientes.
+CHATBOT_RETENCION_MENSAJES_DIAS = int(os.getenv('CHATBOT_RETENCION_MENSAJES_DIAS') or '90')
+CHATBOT_RETENCION_EVENTOS_DIAS = int(os.getenv('CHATBOT_RETENCION_EVENTOS_DIAS') or '365')
+CHATBOT_MAX_MENSAJES_POR_USUARIO = int(os.getenv('CHATBOT_MAX_MENSAJES_POR_USUARIO') or '200')
+
+# ----- Fase 2: RAG, caché por usuario y observabilidad -----
+# Versión del prompt de sistema: se incrementa al cambiarlo y queda en cada EventoChatbot y en la clave de caché.
+CHATBOT_PROMPT_VERSION = os.getenv('CHATBOT_PROMPT_VERSION', '2.1')
+# Guardrail de entrada: 'completo' (multicapa) o 'basico' (los 9 patrones históricos, rollback).
+CHATBOT_GUARDRAIL_MODO = os.getenv('CHATBOT_GUARDRAIL_MODO', 'completo').strip().lower()
+CHATBOT_CACHE_TTL = int(os.getenv('CHATBOT_CACHE_TTL') or '600')          # segundos de vida de una respuesta cacheada
+# Mensajes recientes del historial que entran en la huella de la clave de caché (0 = sin historial).
+# Incluirlos evita servir respuestas de otra conversación, pero baja la tasa de acierto: cada turno
+# cambia la huella. Valor configurable (4 = dos turnos completos).
+CHATBOT_CACHE_HISTORIAL_MENSAJES = int(os.getenv('CHATBOT_CACHE_HISTORIAL_MENSAJES') or '4')
+CHATBOT_RATE_LIMIT = int(os.getenv('CHATBOT_RATE_LIMIT') or '30')         # consultas permitidas por ventana
+CHATBOT_RATE_VENTANA = int(os.getenv('CHATBOT_RATE_VENTANA') or '3600')   # segundos de la ventana del rate limit
+# Backend del rate limit: 'db' (contador compartido por todos los procesos, recomendado) o 'cache'
+# (LocMemCache por proceso, solo para desarrollo/rollback).
+CHATBOT_RATE_BACKEND = os.getenv('CHATBOT_RATE_BACKEND', 'db').strip().lower()
+CHATBOT_RAG_MAX_CARACTERES = int(os.getenv('CHATBOT_RAG_MAX_CARACTERES') or '4000')  # presupuesto del contexto RAG
+CHATBOT_MAX_RESPUESTA = int(os.getenv('CHATBOT_MAX_RESPUESTA') or '4000')            # tope de la respuesta saneada
+# Canarios sintéticos (CSV) que el saneo de salida debe redactar siempre. Vacío por defecto.
+CHATBOT_CANARIOS = os.getenv('CHATBOT_CANARIOS', '')
+
+# Caché en memoria del proceso (sin dependencias). LocMemCache es por proceso: con varios workers
+# la caché de respuestas no se comparte entre ellos (solo afecta rendimiento, no el rate limit, que
+# por defecto vive en la BD). Trade-off documentado en docs/chatbot.md.
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'sgr-chatbot',
+        'TIMEOUT': CHATBOT_CACHE_TTL,
+    }
+}
+
+# Carpeta de logs del chatbot: se crea sola al arrancar (no se versiona, ver .gitignore).
+LOGS_DIR = BASE_DIR / 'logs'
+try:
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+except OSError:
+    # Sin permisos de escritura la aplicación sigue funcionando: el logger escribe solo en consola.
+    pass
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'chatbot': {
+            'format': '%(asctime)s %(levelname)s %(name)s %(message)s',
+        },
+    },
+    'handlers': {
+        'chatbot_consola': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'chatbot',
+        },
+        'chatbot_archivo': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': str(LOGS_DIR / 'chatbot.log'),
+            'maxBytes': 1024 * 1024,   # 1 MB
+            'backupCount': 5,
+            'encoding': 'utf-8',
+            'formatter': 'chatbot',
+        },
+    },
+    'loggers': {
+        'chatbot': {
+            'handlers': ['chatbot_consola', 'chatbot_archivo'],
+            'level': os.getenv('CHATBOT_LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+    },
+}

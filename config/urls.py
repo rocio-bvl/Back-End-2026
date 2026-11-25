@@ -9,6 +9,7 @@ urlpatterns = [
     path('indicadores/', include('IndicadoresApp.urls')),
     path('actividades/', include('ActividadesApp.urls')),
     path('auditoria/', include('AuditoriaApp.urls')),
+    path('chatbot/', include('ChatbotApp.urls')),
     path('', vusuario.inicio, name="home"),
     # Fotografías subidas: pasan por Django para revisar la sesión y el permiso (ActividadesApp/archivos.py)
     path('media/<path:ruta>', archivo_protegido, name="archivo_protegido"),
