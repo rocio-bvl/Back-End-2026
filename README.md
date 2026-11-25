@@ -2,7 +2,7 @@
 
 Aplicación web en Django para registrar y medir la gestión territorial de los funcionarios municipales: actividades con evidencia, compromisos con fecha, Tubo de Trabajo para lo que depende de terceros, atenciones sociales, verificación, metas trimestrales con semáforo y auditoría de cambios.
 
-Todas las operaciones se hacen desde pantallas propias del sistema. Django Admin queda solo como herramienta técnica del superusuario.
+Todas las operaciones se hacen desde pantallas propias del sistema (Django Templates). Django Admin queda solo como herramienta técnica del superusuario.
 
 ## Tecnologías
 
