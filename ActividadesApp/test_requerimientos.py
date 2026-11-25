@@ -14,7 +14,7 @@ from ActividadesApp.tests import BaseActividades
 from AuditoriaApp.models import Auditoria
 from IndicadoresApp.calculos import indicadores_usuario
 from IndicadoresApp.forms import AusenciaForm
-from IndicadoresApp.models import Ausencia, MetaDesempeno
+from IndicadoresApp.models import Ausencia, MetaDesempeno, AjusteDesempeno, Felicitacion, Reclamo
 from UsuarioApp.models import Catalogo
 
 
@@ -268,9 +268,30 @@ class MiGestionUnificadaTest(BaseActividades):
 
     def test_pestana_pedida_o_resumen(self):
         self.assertEqual(self.pagina('33333333-3', pestana='delegacion').context['pestana'], 'delegacion')
-        # El Funcionario no tiene la pestaña de su delegación: se abre Resumen
-        self.assertEqual(self.pagina('55555555-5', pestana='delegacion').context['pestana'], 'resumen')
+        # El Funcionario no tiene la pestaña de su delegación ni Resumen: se abre Mis actividades
+        self.assertEqual(self.pagina('55555555-5', pestana='delegacion').context['pestana'], 'mias')
+        self.assertEqual(self.pagina('55555555-5', pestana='resumen').context['pestana'], 'mias')
+        self.assertNotContains(self.pagina('55555555-5'), 'id="tab-resumen"')
         self.assertNotContains(self.pagina('55555555-5'), '>Indicadores<')
+
+    def test_tabla_lateral_avance_del_mismo_cargo_de_mayor_a_menor(self):
+        # Felicitación al Funcionario de Rural: queda primero aunque sea de otra delegación
+        self.entrar('11111111-1')
+        self.client.post(reverse('indicadores:felicitacion_crear'),
+                         {'felicitacion-persona': self.otro.username, 'felicitacion-fecha': self.hoy.isoformat(),
+                          'felicitacion-motivo': 'Gracias'})
+        respuesta = self.pagina('55555555-5')
+        ranking = respuesta.context['ranking_cargo']
+        self.assertEqual({fila['id'] for fila in ranking}, {self.func.pk, self.companero.pk, self.otro.pk})
+        self.assertEqual(ranking[0]['id'], self.otro.pk)
+        self.assertEqual(ranking[0]['delegacion'], str(self.rural))
+        avances = [fila['avance'] for fila in ranking]
+        self.assertEqual(avances, sorted(avances, reverse=True))
+        self.assertEqual([fila['lugar'] for fila in ranking], [1, 2, 2])  # empate: comparten el lugar
+        self.assertEqual([fila['es_yo'] for fila in ranking if fila['id'] == self.func.pk], [True])
+        self.assertContains(respuesta, 'Avance Actual')
+        # Sin cargo (Delegado y Admin de los datos de prueba) no hay tabla lateral
+        self.assertEqual(self.pagina('33333333-3').context['ranking_cargo'], [])
 
 
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
@@ -285,7 +306,7 @@ class SolicitantesTest(BaseActividades):
 
     def atencion(self, **extra):
         datos = {'rut_solicitante': '11.222.333-9', 'nombre_solicitante': 'Juan Ficticio', 'telefono_solicitante': '987654321',
-                 'tipo_atencion': self.tipo.pk, 'subtipo_atencion': ''}
+                 'tipo_atencion': self.tipo.pk, 'subtipo_atencion': '', 'detalle_solicitud': 'Consulta por beneficio'}
         datos.update(extra)
         return self.client.post(reverse('actividades:atencion_crear'), datos)
 
@@ -362,3 +383,176 @@ class SolicitantesTest(BaseActividades):
         self.assertIn('no está registrado', str(respuesta.context['form'].errors['rut_solicitante']))
         self.registrar(rut_solicitante='11222333-9')  # "Sí": agregar_solicitante viene en True
         self.assertEqual(Actividad.objects.get().solicitante.rut, '11222333-9')
+
+
+@override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
+class FelicitacionesYReclamosTest(BaseActividades):
+    """Pantalla solo para Delegado y Administrador; la felicitación suma puntos al cumplimiento total."""
+    def setUp(self):
+        super().setUp()
+        self.periodo = self.datos['periodo']
+        self.url = reverse('indicadores:felicitaciones_reclamos')
+
+    def total(self, usuario):
+        from IndicadoresApp.calculos import seguimiento_usuario
+        return seguimiento_usuario(usuario, self.periodo, self.hoy)['avance_logrado']
+
+    def felicitar(self, funcionario, **extra):
+        datos = {'persona': funcionario.username, 'fecha': self.hoy.isoformat(), 'motivo': 'Muy buena atención'}
+        datos = {f'felicitacion-{campo}': valor for campo, valor in datos.items()}
+        datos.update({f'felicitacion-{campo}': valor for campo, valor in extra.items()})
+        return self.client.post(reverse('indicadores:felicitacion_crear'), datos)
+
+    def test_solo_delegado_y_admin_ven_la_pantalla_y_el_enlace(self):
+        for rut in ['33333333-3', '11111111-1']:
+            self.entrar(rut)
+            self.assertEqual(self.client.get(self.url).status_code, 200, rut)
+            self.assertIn(self.url, self.client.get(reverse('actividades:mi_gestion')).content.decode(), rut)
+        for rut in ['55555555-5', '22222222-2']:  # Funcionario y Coordinador
+            self.entrar(rut)
+            self.assertRedirects(self.client.get(self.url), reverse('actividades:mi_gestion'), msg_prefix=rut)
+            self.assertNotIn(self.url, self.client.get(reverse('actividades:mi_gestion')).content.decode(), rut)
+
+    def test_la_felicitacion_suma_aunque_el_item_no_este_en_las_metas(self):
+        self.periodo.puntos_felicitacion = 2
+        self.periodo.save()
+        antes = self.total(self.func)
+        self.entrar('33333333-3')
+        self.felicitar(self.func)
+        felicitacion = Felicitacion.objects.get()
+        self.assertEqual((felicitacion.funcionario, felicitacion.ajuste.valor), (self.func, 2))
+        self.assertEqual(self.total(self.func), antes + 2)
+        self.assertTrue(Auditoria.objects.filter(entidad='Felicitacion', evento='CREACION').exists())
+        # Al eliminarla, los puntos dejan de sumar
+        self.client.post(reverse('indicadores:felicitacion_eliminar', args=[felicitacion.pk]))
+        self.assertFalse(AjusteDesempeno.objects.exists())
+        self.assertEqual(self.total(self.func), antes)
+
+    def test_el_delegado_solo_elige_funcionarios_de_su_delegacion(self):
+        self.entrar('33333333-3')
+        self.felicitar(self.otro)  # Rural
+        self.assertFalse(Felicitacion.objects.exists())
+        self.entrar('11111111-1')  # el Administrador, a cualquiera
+        self.felicitar(self.otro)
+        self.assertEqual(Felicitacion.objects.get().funcionario, self.otro)
+
+    def test_las_felicitaciones_respetan_el_tope(self):
+        self.periodo.puntos_felicitacion = 500
+        self.periodo.save()
+        self.entrar('33333333-3')
+        self.felicitar(self.func)
+        self.assertEqual(self.total(self.func), self.periodo.tope_cumplimiento)
+
+    def test_sin_metas_se_registra_y_avisa(self):
+        self.func.cargo = None
+        self.func.save()
+        self.entrar('33333333-3')
+        respuesta = self.client.post(reverse('indicadores:felicitacion_crear'),
+                                     {'felicitacion-persona': self.func.username, 'felicitacion-fecha': self.hoy.isoformat(),
+                                      'felicitacion-motivo': 'Gracias'},
+                                     follow=True)
+        self.assertTrue(Felicitacion.objects.exists())
+        self.assertIn('no tiene metas', respuesta.content.decode())
+
+    def test_reclamo_queda_pendiente_hasta_que_se_responde(self):
+        self.entrar('33333333-3')
+        self.client.post(reverse('indicadores:reclamo_crear'),
+                         {'reclamo-persona': self.func.username, 'reclamo-fecha': self.hoy.isoformat(),
+                          'reclamo-motivo': 'No llegó a la visita'})
+        reclamo = Reclamo.objects.get()
+        self.assertEqual(reclamo.estado, 'PENDIENTE')
+        antes = self.total(self.func)
+        self.client.post(reverse('indicadores:reclamo_responder', args=[reclamo.pk]), {'respuesta': ''})
+        reclamo.refresh_from_db()
+        self.assertEqual(reclamo.estado, 'PENDIENTE')  # sin respuesta no se cierra
+        self.client.post(reverse('indicadores:reclamo_responder', args=[reclamo.pk]), {'respuesta': 'Se reprogramó'})
+        reclamo.refresh_from_db()
+        self.assertEqual((reclamo.estado, reclamo.respondido_por), ('RESUELTO', self.delegado))
+        self.assertEqual(self.total(self.func), antes)  # el reclamo no afecta el puntaje
+
+
+@override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
+class RequerimientosPendientesTest(BaseActividades):
+    """RF-005 (validación del periodo), RF-015 (hasta 3 gestiones por atención) y RF-033 (exportar el Semáforo)."""
+
+    # ----- RF-005 -----
+    def test_periodo_rechaza_termino_anterior_al_inicio(self):
+        from django.core.exceptions import ValidationError
+        from IndicadoresApp.models import Periodo
+        periodo = Periodo(nombre='Prueba', fecha_inicio=self.hoy, fecha_termino=self.hoy - timedelta(days=1))
+        with self.assertRaises(ValidationError) as error:
+            periodo.full_clean()
+        self.assertIn('fecha_termino', error.exception.message_dict)
+
+    def test_periodo_calcula_sus_dias_y_no_acepta_mas_dias_que_los_del_periodo(self):
+        from datetime import date
+        from django.core.exceptions import ValidationError
+        from IndicadoresApp.models import Periodo
+        periodo = Periodo(nombre='T3 prueba', fecha_inicio=date(2026, 7, 1), fecha_termino=date(2026, 9, 30))
+        periodo.full_clean()
+        self.assertEqual(periodo.dias_computables, 92)  # 1 de julio al 30 de septiembre, ambos incluidos
+        periodo.dias_computables = 100
+        with self.assertRaises(ValidationError):
+            periodo.full_clean()
+
+    # ----- RF-015 -----
+    def atencion_con_gestiones(self, cantidad):
+        tipo = Catalogo.objects.get_or_create(tipo='TIPO_ATENCION', nombre='Ayuda social')[0]
+        persona = Solicitante.objects.create(rut='11222333-9', nombre='Juan Pérez', telefono='912345678')
+        atencion = AtencionSocial.objects.create(usuario=self.func, solicitante=persona, tipo_atencion=tipo)
+        for _ in range(cantidad):
+            actividad = self.crear()
+            actividad.solicitud = atencion
+            actividad.save()
+        return atencion
+
+    def test_atencion_admite_hasta_tres_gestiones(self):
+        atencion = self.atencion_con_gestiones(3)
+        self.assertFalse(atencion.admite_gestion())
+        cuarta = self.crear()
+        self.entrar('33333333-3')
+        self.client.post(reverse('actividades:atencion_vincular', args=[atencion.pk]), {'actividad': cuarta.pk})
+        cuarta.refresh_from_db()
+        self.assertIsNone(cuarta.solicitud)
+        self.assertEqual(atencion.cantidad_gestiones(), 3)
+
+    def test_con_dos_gestiones_todavia_se_puede_vincular_una_tercera(self):
+        atencion = self.atencion_con_gestiones(2)
+        tercera = self.crear()
+        self.entrar('33333333-3')
+        self.client.post(reverse('actividades:atencion_vincular', args=[atencion.pk]), {'actividad': tercera.pk})
+        tercera.refresh_from_db()
+        self.assertEqual(tercera.solicitud, atencion)
+
+    def test_formulario_no_vincula_una_cuarta_gestion(self):
+        atencion = self.atencion_con_gestiones(3)
+        self.entrar('55555555-5')
+        respuesta = self.registrar(solicitud=atencion.pk, rut_solicitante='11.222.333-9', nombre_solicitante='',
+                                   telefono_solicitante='')
+        self.assertIn('solicitud', respuesta.context['form'].errors)
+        self.assertEqual(atencion.cantidad_gestiones(), 3)
+
+    # ----- RF-033 -----
+    def test_exportar_semaforo_en_csv_con_filtros_y_fecha(self):
+        self.entrar('33333333-3')
+        respuesta = self.client.get(reverse('indicadores:semaforo_exportar'), {'q': 'zzz-sin-coincidencias'})
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertTrue(respuesta['Content-Type'].startswith('text/csv'))
+        self.assertIn('attachment', respuesta['Content-Disposition'])
+        texto = respuesta.content.decode('utf-8-sig')
+        self.assertIn('Búsqueda;zzz-sin-coincidencias', texto)
+        self.assertIn('Fecha de generación', texto)
+        self.assertIn('Área;Responsable;Delegación', texto)
+        self.assertTrue(Auditoria.objects.filter(entidad='Exportación', id_entidad='Semáforo').exists())
+
+    def test_exportar_trae_las_mismas_filas_que_la_pantalla(self):
+        self.entrar('11111111-1')
+        pantalla = self.client.get(reverse('indicadores:semaforo')).context['seguimiento']
+        texto = self.client.get(reverse('indicadores:semaforo_exportar')).content.decode('utf-8-sig')
+        for fila in pantalla:
+            self.assertIn(fila['responsable'], texto)
+
+    def test_funcionario_no_puede_exportar(self):
+        self.entrar('55555555-5')
+        respuesta = self.client.get(reverse('indicadores:semaforo_exportar'))
+        self.assertEqual(respuesta.status_code, 302)

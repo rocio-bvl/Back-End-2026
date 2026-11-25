@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import date, timedelta
 
 from django.contrib import messages
@@ -9,15 +10,15 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 
-from ActividadesApp.choices import ESTADOS_PENDIENTES
+from ActividadesApp.choices import ESTADOS_PENDIENTES, MAX_GESTIONES_ATENCION
 # validar_imagen se importa aquí porque las pruebas la usan como ActividadesApp.views.validar_imagen
 from ActividadesApp.forms import (ActividadForm, EvidenciaForm, FechaRealizacionForm, ComentarioForm, EncargadoForm,
                                 AtencionForm, solicitudes_para, validar_imagen)
 from ActividadesApp.models import (Actividad, Evidencia, Validacion, AtencionSocial, ComentarioActividad,
                                 Territorio, Solicitante, DIAS_POR_VENCER)
 from AuditoriaApp.registro import registrar_auditoria
-from IndicadoresApp.calculos import indicadores_usuario, total_ponderado
-from IndicadoresApp.models import periodo_vigente
+from IndicadoresApp.calculos import indicadores_usuario, total_ponderado, ranking_cargo
+from IndicadoresApp.models import periodo_vigente, estado_medicion
 from UsuarioApp.funciones import opciones_delegacion, limpiar_rut
 from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado, permiso_requerido
 from UsuarioApp.models import Usuario
@@ -72,11 +73,11 @@ def puede_cambiar_puntaje(usuario, actividad):
 
 
 def candidatos_encargado(usuario, actividad):
-    """Funcionarios activos que se pueden asignar: el Delegado elige entre los de su delegación;
-    el Coordinador y el Admin, entre todos los de las delegaciones registradas."""
+    """Funcionarios activos que se pueden asignar: siempre los de la misma delegación de la actividad (la de quien la
+    registró), así su avance suma en esa delegación. Vale para el Delegado, el Coordinador y el Admin."""
     funcionarios = Usuario.objects.filter(is_active=True, roles_asignados__rol__codigo='Funcionario').select_related('delegacion')
-    if usuario.es_delegado():
-        funcionarios = funcionarios.filter(delegacion_id=usuario.delegacion_id)
+    # El Delegado, además, solo llega aquí con actividades de su delegación (puede_asignar_encargado)
+    funcionarios = funcionarios.filter(delegacion_id=actividad.usuario.delegacion_id)
     return funcionarios.distinct().order_by('delegacion__nombre', 'first_name', 'last_name')
 
 
@@ -139,7 +140,7 @@ def mi_gestion(request):
     resumen = {
         'cumplimiento': cumplimiento,
         'barra': int(min(cumplimiento, 100)),  # ancho de la barra de progreso (máximo 100%)
-        'tiene_metas': bool(indicadores),
+        'tiene_metas': bool(indicadores), 'aviso_medicion': estado_medicion(usuario.cargo_id, periodo, usuario.delegacion_id) if periodo and usuario.cargo_id else '',
         'completadas': completadas.count(),
         'pendientes': len(pendientes),
         'en_revision': mias.filter(estado='EVIDENCIA_INGRESADA').count(),
@@ -206,9 +207,15 @@ def mi_gestion(request):
         'opciones_delegacion': opciones_delegacion(),
         'delegacion_activa': codigo,
         'delegacion_nombre': nombre,
+        # Tabla lateral: Avance Actual de quienes tienen el mismo cargo (cualquier perfil con cargo asignado)
+        'ranking_cargo': ranking_cargo(usuario, periodo, hoy),
     }
-    # Pestaña abierta (?pestana=): solo una de las que tiene el perfil; si no, Resumen
-    disponibles = ['resumen']
+    # Tablero del perfil (lo que antes era Indicadores): tarjetas de avance y pestaña Resumen
+    from IndicadoresApp.views import datos_tablero, comparacion_delegaciones
+    data.update(datos_tablero(request))
+    # Pestaña abierta (?pestana=): solo una de las que tiene el perfil; si no, la primera. El Funcionario no
+    # tiene Resumen: sus accesos rápidos van sobre las pestañas y abre en Mis actividades
+    disponibles = [] if data['tipo_tablero'] == 'administrativo' else ['resumen']
     if data['muestra_mis_actividades']:
         disponibles += ['mias', 'pendientes']
     if not vista_global:
@@ -216,11 +223,59 @@ def mi_gestion(request):
     if ve_delegacion:
         disponibles.append('delegacion')
     pedida = request.GET.get('pestana', '')
-    data['pestana'] = pedida if pedida in disponibles else 'resumen'
-    # Tablero del perfil (lo que antes era Indicadores): tarjetas de avance y pestaña Resumen
-    from IndicadoresApp.views import datos_tablero
-    data.update(datos_tablero(request))
+    data['pestana'] = pedida if pedida in disponibles else (disponibles[0] if disponibles else '')
+    if data['tipo_tablero'] == 'admin':
+        data['delegaciones'] = comparacion_delegaciones(periodo, hoy)  # para el gráfico por delegación
+    data['graficos'] = datos_graficos(data)
     return render(request, 'actividades/mi_gestion.html', data)
+
+
+# Estados de las actividades en el gráfico de Mi Gestión: código, nombre y color
+ESTADOS_GRAFICO = [
+    ('PROGRAMADA', 'Programadas', '#3B7DDD'),
+    ('EN_TUBO', 'En el Tubo', '#8B1D19'),
+    ('EVIDENCIA_INGRESADA', 'Por validar', '#F2A900'),
+    ('RECHAZADA', 'Rechazadas', '#DB3334'),
+    ('VALIDADA', 'Completadas', '#2E9E5B'),
+]
+
+
+def datos_graficos(data):
+    """Datos de los gráficos de Mi Gestión. Se envían con json_script y static/js/graficos.js los dibuja con
+    Chart.js. Solo números ya calculados por la vista: los gráficos no hacen consultas propias.
+    - avance: medidor del avance (del funcionario, o de la delegación elegida) contra lo esperado a hoy;
+    - estados: cuántas actividades hay en cada estado;
+    - barras: cumplimiento por ítem (funcionario), puntaje por delegación (Admin y Coordinador) o los
+      responsables con menor avance (Delegado), con una línea de referencia."""
+    propias = data['tipo_tablero'] == 'administrativo'
+    filas = data['mis_actividades'] if propias else data['actividades_delegacion']
+    conteo = Counter(fila['estado_codigo'] for fila in filas)
+    estados = [{'etiqueta': nombre, 'valor': conteo.get(codigo, 0), 'color': color}
+               for codigo, nombre, color in ESTADOS_GRAFICO]
+    avance, barras = None, None
+    if propias:
+        mio = data.get('mi_avance')
+        if mio:
+            avance = {'valor': float(mio['avance_logrado']), 'objetivo': float(mio['objetivo_hoy']), 'color': mio['color']}
+        if data['metas']:
+            barras = {'titulo': 'Cumplimiento por ítem', 'referencia': 100, 'texto_referencia': 'Meta',
+                      'filas': [{'etiqueta': meta['item_nombre'], 'valor': float(meta['porcentaje_cumplimiento'])}
+                                for meta in data['metas']]}
+    else:
+        if data.get('periodo'):
+            avance = {'valor': float(data.get('avance') or 0), 'objetivo': float(data.get('avance_esperado') or 0),
+                      'color': data.get('semaforo_color', '')}
+        if data.get('delegaciones'):
+            barras = {'titulo': 'Puntaje colectivo por delegación', 'referencia': float(data.get('meta_colectiva') or 0),
+                      'texto_referencia': 'Meta colectiva hoy',
+                      'filas': [{'etiqueta': str(fila['delegacion']), 'valor': float(fila['puntaje_colectivo'])}
+                                for fila in data['delegaciones']]}
+        elif data.get('atrasados'):
+            barras = {'titulo': 'Responsables con menor avance', 'referencia': float(data.get('avance_esperado') or 0),
+                      'texto_referencia': 'Esperado hoy',
+                      'filas': [{'etiqueta': fila['responsable'], 'valor': float(fila['avance_logrado'])}
+                                for fila in data['atrasados']]}
+    return {'avance': avance, 'estados': estados, 'total_estados': sum(conteo.values()), 'barras': barras}
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +301,16 @@ def guardar_evidencia(actividad, usuario, comentario, imagen):
 
 @permiso_requerido('ActividadesApp.add_actividad', 'Registrar Actividad')
 def actividad_crear(request):
+    return registrar_actividad(request, tubo=False)
+
+
+@permiso_requerido('ActividadesApp.add_actividad', 'Agregar al Tubo de Trabajo')
+def actividad_crear_tubo(request):
+    """Formulario propio del Tubo de Trabajo: la actividad depende de factores externos (sin evidencia)."""
+    return registrar_actividad(request, tubo=True)
+
+
+def registrar_actividad(request, tubo):
     if not request.user.is_authenticated:
         return redirect('users:login')
     # Registran actividades el Funcionario y el Admin; el Delegado ingresa sus gestiones (sin puntaje).
@@ -255,7 +320,7 @@ def actividad_crear(request):
 
     periodo = periodo_vigente()
     if request.method == 'POST':
-        form = ActividadForm(request.POST, request.FILES, usuario=request.user)
+        form = ActividadForm(request.POST, request.FILES, usuario=request.user, tubo=tubo)
         if form.is_valid():
             datos = form.cleaned_data
             if periodo is None or periodo.periodo_cerrado():
@@ -270,7 +335,7 @@ def actividad_crear(request):
                 solicitud_problema=datos['solicitud_problema'].strip(),
                 accion=datos['accion'].strip(),
                 territorio=datos['territorio'],
-                depende_externos=datos['depende_externos'],
+                depende_externos=tubo,
                 fecha_realizacion=datos['fecha_realizacion'],
                 estado=estado,
                 item=datos['item'],
@@ -288,36 +353,30 @@ def actividad_crear(request):
             avisar_tope(request, actividad)
 
             if estado == 'EVIDENCIA_INGRESADA':
+                # Realizada: pasa a validación con la foto o sin ella
                 guardar_evidencia(actividad, request.user, datos['comentario'].strip(), datos['imagen'])
                 actividad.sincronizar_estado()
                 if actividad.es_gestion:
                     messages.success(request, f"Gestión {actividad.folio()} registrada. Las gestiones del Delegado no "
                                               "suman puntaje.")
                 else:
-                    messages.success(request, f"Actividad {actividad.folio()} registrada con su evidencia. "
-                                              "Queda a la espera de la validación del Delegado.")
+                    messages.success(request, f"Actividad {actividad.folio()} registrada. Queda a la espera de "
+                                              "su validación.")
                 return redirect('actividades:mi_gestion')
-            if actividad.depende_externos:
-                if actividad.fecha_realizacion:
-                    messages.success(request, f"Actividad {actividad.folio()} ingresada al Tubo de Trabajo con fecha de "
-                                            f"realización {actividad.fecha_realizacion:%d/%m/%Y}.")
-                else:
-                    messages.success(request, f"Actividad {actividad.folio()} ingresada al Tubo de Trabajo. "
-                                            "La fecha de realización se puede agregar después.")
+            if tubo:
+                messages.success(request, f"Actividad {actividad.folio()} agregada al Tubo de Trabajo.")
                 return redirect('actividades:tubo_trabajo')
             messages.success(request, f"Actividad {actividad.folio()} programada para el "
                                     f"{actividad.fecha_realizacion:%d/%m/%Y}. Queda pendiente hasta que se realice.")
             return redirect('actividades:mi_gestion')
     else:
-        inicial = {'depende_externos': request.GET.get('tubo') == '1'}
-        if inicial['depende_externos']:
-            inicial['fecha_realizacion'] = None  # en el Tubo la fecha de realización parte vacía
+        inicial = {}
         if request.GET.get('solicitud', '').isdigit():
             inicial['solicitud'] = request.GET['solicitud']  # "Crear actividad" desde el Registro de Atenciones
-        form = ActividadForm(usuario=request.user, initial=inicial)
+        form = ActividadForm(usuario=request.user, initial=inicial, tubo=tubo)
 
     return render(request, 'actividades/actividad_form.html', {
-        'form': form, 'hoy': timezone.localdate(), 'es_delegado': request.user.es_delegado()})
+        'form': form, 'hoy': timezone.localdate(), 'es_delegado': request.user.es_delegado(), 'tubo': tubo})
 
 
 def avisar_tope(request, actividad):
@@ -359,7 +418,8 @@ def actividad_editar(request, pk):
             request.POST,
             request.FILES,
             usuario=request.user,
-            actividad=actividad
+            actividad=actividad,
+            tubo=actividad.depende_externos
         )
 
         if form.is_valid():
@@ -370,16 +430,16 @@ def actividad_editar(request, pk):
             actividad.accion = datos['accion'].strip()
             actividad.item = datos['item']
             actividad.territorio = datos['territorio']
-            actividad.depende_externos = datos['depende_externos']
             actividad.fecha_realizacion = datos['fecha_realizacion']
             actividad.encargado = datos['encargado']
             actividad.solicitud = datos['solicitud']
             actividad.solicitante = registrar_solicitante(form, request)
             actividad.save()
-            # Si queda con fecha de hoy o anterior y aún no tenía evidencia, se agrega como en actividad_crear            
-            if datos['comentario'] and actividad.evidencia_vigente() is None:                
-                guardar_evidencia(actividad, request.user, datos['comentario'].strip(), datos['imagen'])            
-            # El estado se recalcula según la fecha, el Tubo y la evidencia (EN_TUBO, PROGRAMADA, EVIDENCIA_INGRESADA...)            
+            # Fuera del Tubo, si queda con fecha de hoy o anterior y aún no se informaba realizada, pasa a validación
+            if (not actividad.depende_externos and actividad.evidencia_vigente() is None
+                    and actividad.fecha_realizacion <= timezone.localdate()):
+                guardar_evidencia(actividad, request.user, datos['comentario'].strip(), datos['imagen'])
+            # El estado se recalcula según el Tubo, la fecha y la evidencia (EN_TUBO, PROGRAMADA, EVIDENCIA_INGRESADA...)
             actividad.sincronizar_estado()
 
             registrar_auditoria(
@@ -397,12 +457,12 @@ def actividad_editar(request, pk):
     else:
         form = ActividadForm(
             usuario=request.user,
+            tubo=actividad.depende_externos,
             initial={
                 'solicitud_problema': actividad.solicitud_problema,
                 'accion': actividad.accion,
                 'item': actividad.item,
                 'territorio': actividad.territorio,
-                'depende_externos': actividad.depende_externos,
                 'fecha_realizacion': actividad.fecha_realizacion,
                 'encargado': actividad.encargado,
                 'solicitud': actividad.solicitud,
@@ -513,7 +573,7 @@ def mostrar_errores(request, form):
 
 @permiso_requerido('ActividadesApp.add_actividad', 'Agregar Evidencia')
 def registrar_evidencia(request, pk):
-    """Quien registró la actividad o su encargado deja constancia de que se hizo (comentario + foto opcional).
+    """Quien registró la actividad o su encargado informa que se realizó (foto opcional, con su descripción).
     Sirve para un compromiso, una actividad del Tubo o una evidencia rechazada."""
     if not request.user.is_authenticated:
         return redirect('users:login')
@@ -550,7 +610,7 @@ def registrar_evidencia(request, pk):
 
 @permiso_requerido('ActividadesApp.view_actividad', 'Asignar Fecha')
 def asignar_fecha(request, pk):
-    """Asigna la fecha a una actividad del Tubo (pasa a PROGRAMADA) o cambia la de un compromiso."""
+    """Asigna la fecha a una actividad del Tubo (sigue en el Tubo) o cambia la de un compromiso."""
     if not request.user.is_authenticated:
         return redirect('users:login')
     actividad = get_object_or_404(Actividad, pk=pk)
@@ -567,11 +627,11 @@ def asignar_fecha(request, pk):
 
     antes = f"{actividad.estado} {actividad.fecha_realizacion or 'sin fecha'}"
     actividad.fecha_realizacion = form.cleaned_data['fecha_realizacion']
-    actividad.estado = 'PROGRAMADA'
+    actividad.estado = 'EN_TUBO' if actividad.depende_externos else 'PROGRAMADA'
     actividad.save()
     registrar_auditoria(request.user, 'MODIFICACION', 'Actividad', actividad.pk, antes,
                         f"{actividad.estado} {actividad.fecha_realizacion}")
-    messages.success(request, f"Actividad {actividad.folio()} programada para el {actividad.fecha_realizacion:%d/%m/%Y}.")
+    messages.success(request, f"Fecha de realización de {actividad.folio()}: {actividad.fecha_realizacion:%d/%m/%Y}.")
     return redirect('actividades:actividad_detalle', pk=actividad.pk)
 
 
@@ -684,11 +744,11 @@ def tubo_trabajo(request):
             Q(usuario__username__icontains=texto) | Q(encargado__first_name__icontains=texto) |
             Q(encargado__last_name__icontains=texto) | Q(encargado__username__icontains=texto)).distinct()
     if filtros['estado'] == 'SIN_FECHA':
-        actividades = actividades.filter(estado='EN_TUBO')
+        actividades = actividades.filter(estado='EN_TUBO', fecha_realizacion__isnull=True)
     elif filtros['estado'] == 'CON_FECHA':
-        actividades = actividades.filter(estado='PROGRAMADA')
+        actividades = actividades.filter(estado='EN_TUBO', fecha_realizacion__isnull=False)
     elif filtros['estado'] == 'VENCIDOS':
-        actividades = actividades.filter(estado='PROGRAMADA', fecha_realizacion__lt=hoy)
+        actividades = actividades.filter(estado='EN_TUBO', fecha_realizacion__lt=hoy)
     elif filtros['estado'] == 'CON_EVIDENCIA':
         actividades = actividades.filter(estado__in=['EVIDENCIA_INGRESADA', 'RECHAZADA'])
     elif filtros['estado'] == 'COMPLETADAS':
@@ -828,6 +888,10 @@ def atencion_vincular(request, pk):
         return redirect(detalle)
     if not request.user.puede_vincular_atenciones() or not puede_ver_atencion(request.user, atencion):
         return acceso_denegado(request, 'Vincular Actividad')
+    if not atencion.admite_gestion():
+        # RF-015: hasta 3 gestiones por atención social
+        messages.error(request, f"La atención {atencion.codigo()} ya tiene {MAX_GESTIONES_ATENCION} gestiones, el máximo permitido.")
+        return redirect(detalle)
     actividad = actividades_vinculables(request.user, atencion).filter(pk=request.POST.get('actividad', '0') or 0).first()
     if actividad is None:
         messages.error(request, "Esa actividad no se puede vincular: ya tiene una solicitud o es de otra delegación.")
@@ -849,11 +913,15 @@ def atencion_detalle(request, pk):
     if not puede_ver_atencion(request.user, atencion):
         return acceso_denegado(request, f"la atención {atencion.codigo()}")
     actividades = atencion.actividades.select_related('usuario', 'encargado', 'item', 'territorio').order_by('fecha')
-    puede_vincular = request.user.puede_vincular_atenciones()
+    # RF-015: con 3 gestiones la atención ya no admite otra (no se ofrece vincular ni crear una nueva)
+    admite_gestion = atencion.admite_gestion()
+    puede_vincular = request.user.puede_vincular_atenciones() and admite_gestion
     q = request.GET.get('q', '').strip()
     data = {
         'atencion': atencion,
         'actividades': actividades,
+        'admite_gestion': admite_gestion,
+        'max_gestiones': MAX_GESTIONES_ATENCION,
         'puede_vincular': puede_vincular,
         'q': q,
         'candidatas': buscar_para_vincular(request.user, atencion, q) if puede_vincular and q else None,
@@ -1084,6 +1152,8 @@ def validar_evidencia(request, pk):
         messages.success(request, f"Actividad {evidencia.actividad.folio()} validada: queda completada y {texto}.")
     else:
         messages.success(request, f"Evidencia {evidencia.codigo()} rechazada: el funcionario debe agregarla de nuevo.")
+        from ActividadesApp.avisos import aviso_rechazo  # aviso por correo con el motivo
+        aviso_rechazo(evidencia, observacion, request.user)
     return redirect('actividades:verificacion')
 
 

@@ -7,7 +7,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
         <h3 class="m-0 fw-bold"><i class="bi bi-kanban text-danger me-2"></i>Tubo de Trabajo</h3>
         {% if request.user.puede_registrar %} 
-        <a href="{% url 'actividades:actividad_crear' %}?tubo=1" class="btn btn-sm text-nowrap btn-muni">    
+        <a href="{% url 'actividades:actividad_crear_tubo' %}" class="btn btn-sm text-nowrap btn-muni">    
             <i class="bi bi-plus-circle me-1"></i>Agregar al Tubo 
         </a> 
         {% endif %}
@@ -20,7 +20,7 @@
     <!-- Filtros: el Funcionario ve solo lo suyo y filtra por estado; los demás también por funcionario y territorio -->
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body py-3">
-            <form method="get" class="row g-2 align-items-end" style="font-size: 0.85rem;">
+            <form method="get" class="row g-2 align-items-end" style="font-size: 0.9rem;">
                 {% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}
                 <input type="hidden" name="delegacion" value="{{ codigo_delegacion }}">
                 {% endif %}

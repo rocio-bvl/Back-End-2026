@@ -2,7 +2,7 @@
 Resumen del Delegado en Mi Gestión: quién de su equipo va más atrasado y cuántas evidencias esperan su validación.
 {% endcomment %}
 <div class="p-3 p-md-4">
-    <div class="row g-4 mb-4">
+    <div class="row g-4">
         <div class="col-lg-8">
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-muni text-white fw-bold">Responsables con menor avance</div>
@@ -35,14 +35,5 @@ Resumen del Delegado en Mi Gestión: quién de su equipo va más atrasado y cuá
                 <h3 class="fw-bold mb-0 text-primary">{{ por_validar }}</h3>
             </div>
         </div>
-    </div>
-
-    <div class="row g-3">
-        {% if perms.IndicadoresApp.view_metadesempeno %}
-        {% url 'indicadores:semaforo' as url_semaforo %}
-        {% include 'indicadores/components/acceso.html' with url=url_semaforo icono='bi-stoplights' titulo='Semáforo' texto='Avance al día de cada responsable.' %}
-        {% url 'indicadores:resumen_delegacion' as url_resumen %}
-        {% include 'indicadores/components/acceso.html' with url=url_resumen icono='bi-building-gear' titulo='Resumen de la delegación' texto='Metas, cumplimiento y equipo.' %}
-        {% endif %}
     </div>
 </div>

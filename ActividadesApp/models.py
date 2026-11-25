@@ -3,7 +3,8 @@ from django.db import models
 from django.utils import timezone
 
 from ActividadesApp.choices import (estados_actividad, estados_evidencia, decisiones,
-                                    ESTADOS_PENDIENTES, cargos_representante, tipos_organizacion)
+                                    ESTADOS_PENDIENTES, cargos_representante, tipos_organizacion,
+                                    MAX_GESTIONES_ATENCION)
 from UsuarioApp.choices import estados_registro
 
 # Días antes de la fecha de realización en que un compromiso se marca "por vencer"
@@ -29,9 +30,10 @@ class Territorio(models.Model):
 
 class Actividad(models.Model):
     """Actividad territorial de un funcionario. Se registra con la fecha en que se realiza:
-    - Hoy o antes: se agrega su evidencia (comentario obligatorio, foto opcional) y queda EVIDENCIA_INGRESADA para validar.
+    - Hoy o antes: queda realizada (EVIDENCIA_INGRESADA) y pasa a validación, con foto o sin ella.
     - Fecha futura: es un compromiso (PROGRAMADA), pendiente hasta que se realice.
-    - Depende de factores externos: va al Tubo de Trabajo (EN_TUBO) sin fecha, hasta que se le asigne una.
+    - Depende de factores externos: se agrega desde el Tubo de Trabajo (EN_TUBO) y sigue ahí, con o sin fecha,
+      hasta que se realice.
     Una actividad pendiente puede tener un encargado (un Funcionario) que la realiza, y puede vincularse a una
     solicitud social (AtencionSocial) registrada antes por un funcionario."""
     # Fecha y hora de ingreso: se guarda sola. Solo el Administrador puede corregirla
@@ -64,7 +66,7 @@ class Actividad(models.Model):
         return f"ACT{self.pk}"
 
     def pendiente(self):
-        """Todavía no se realiza: compromiso con fecha (PROGRAMADA) o en el Tubo sin fecha (EN_TUBO)."""
+        """Todavía no se realiza: compromiso con fecha (PROGRAMADA) o en el Tubo (EN_TUBO)."""
         return self.estado in ESTADOS_PENDIENTES
 
     def es_compromiso(self):
@@ -75,10 +77,11 @@ class Actividad(models.Model):
         return self.estado == 'EN_TUBO'
 
     def vencido(self):
-        return self.es_compromiso() and self.fecha_realizacion is not None and timezone.localdate() > self.fecha_realizacion
+        """Pendiente (compromiso o del Tubo) con la fecha de realización ya pasada."""
+        return self.pendiente() and self.fecha_realizacion is not None and timezone.localdate() > self.fecha_realizacion
 
     def proximo_a_vencer(self):
-        if not self.es_compromiso() or self.fecha_realizacion is None:
+        if not self.pendiente() or self.fecha_realizacion is None:
             return False
         dias = (self.fecha_realizacion - timezone.localdate()).days
         return 0 <= dias <= DIAS_POR_VENCER
@@ -124,11 +127,11 @@ class Actividad(models.Model):
     # Nombre anterior
     
     def sincronizar_estado(self):
-        """El estado sigue al la última evidencia. Sin evidencia, la actividad está pendiente:
-        en el Tubo si espera factores externos y aún no tiene fecha; si no, programada."""
+        """El estado sigue a la última evidencia. Sin evidencia, la actividad está pendiente: en el Tubo si
+        depende de factores externos (tenga o no fecha); si no, programada."""
         evidencia = self.evidencia_vigente()
         if evidencia is None:
-            self.estado = 'EN_TUBO' if (self.depende_externos and self.fecha_realizacion is None) else 'PROGRAMADA'
+            self.estado = 'EN_TUBO' if self.depende_externos else 'PROGRAMADA'
         elif evidencia.estado_revision == 'APROBADA':
             self.estado = 'VALIDADA'
         elif evidencia.estado_revision == 'RECHAZADA':
@@ -165,11 +168,11 @@ class ComentarioActividad(models.Model):
 
 
 class Evidencia(models.Model):
-    """Evidencia de una actividad: el comentario de lo que se hizo (obligatorio) y una fotografía
-    (opcional). Si se rechaza, el nuevo registro es una nueva versión que reemplaza a la anterior."""
+    """Registro de que la actividad se realizó, que pasa a validación. La fotografía es opcional, y la descripción
+    solo acompaña a la foto. Si se rechaza, el nuevo registro es una nueva versión que reemplaza a la anterior."""
     version = models.PositiveSmallIntegerField(default=1, verbose_name="Versión")
     imagen = models.ImageField(upload_to='evidencias/', blank=True, default="", verbose_name="Fotografía (opcional, JPG/PNG, máx. 5 MB)")
-    comentario = models.TextField(verbose_name="Comentario de la evidencia")
+    comentario = models.TextField(blank=True, default="", verbose_name="Descripción de la fotografía")
     fecha = models.DateTimeField(default=timezone.now, verbose_name="Fecha")
     estado_revision = models.CharField(max_length=10, choices=estados_evidencia, default='PENDIENTE', verbose_name="Estado de revisión")
     actividad = models.ForeignKey(Actividad, on_delete=models.CASCADE, related_name='evidencias', verbose_name="Actividad")
@@ -290,6 +293,9 @@ class AtencionSocial(models.Model):
     requiere_visita = models.BooleanField(default=False, verbose_name="¿Requiere visita?")
     tipo_atencion = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, related_name='atenciones_tipo', limit_choices_to={'tipo': 'TIPO_ATENCION'}, verbose_name="Tipo de atención")
     subtipo_atencion = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, null=True, blank=True, related_name='atenciones_subtipo', limit_choices_to={'tipo': 'SUBTIPO_ATENCION'}, verbose_name="Subtipo de atención")
+    # Lo que la persona solicita (obligatorio) y lo que queda por hacer para atenderla (opcional)
+    detalle_solicitud = models.TextField(blank=True, default="", verbose_name="Solicitud")
+    accion_pendiente = models.TextField(blank=True, default="", verbose_name="Acción pendiente")
 
     def __str__(self):
         return f"{self.codigo()} - {self.solicitante.nombre}"
@@ -313,6 +319,17 @@ class AtencionSocial(models.Model):
 
     def delegacion(self):
         return self.usuario.delegacion if self.usuario else None
+
+    def cantidad_gestiones(self, excluir=None):
+        """Actividades vinculadas (gestiones). 'excluir' deja fuera la actividad que se está modificando."""
+        actividades = self.actividades.all()
+        if excluir is not None and excluir.pk is not None:
+            actividades = actividades.exclude(pk=excluir.pk)
+        return actividades.count()
+
+    def admite_gestion(self, excluir=None):
+        """RF-015 / RN-012: una atención social admite hasta MAX_GESTIONES_ATENCION gestiones (3)."""
+        return self.cantidad_gestiones(excluir) < MAX_GESTIONES_ATENCION
 
     class Meta:
         db_table = "atencion_social"

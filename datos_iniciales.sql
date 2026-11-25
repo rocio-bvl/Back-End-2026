@@ -6,7 +6,7 @@
 --
 -- Usuarios de prueba (todos con la contraseña: Serena2026!)
 --   11111111-1  Administrador
---   22222222-2  Coordinador (solo visualiza)
+--   22222222-2  Coordinador (define metas y ponderaciones; lo demás solo lo visualiza)
 --   33333333-3  Delegada de Las Compañías (Patricia Vega)
 --   44444444-4  Delegado de Rural (Rodrigo Araya)
 --   14141414-3  Delegada de La Pampa (Carolina Navarro)
@@ -23,8 +23,8 @@ START TRANSACTION;
 -- ---------------------------------------------------------------------------
 INSERT INTO `rol` (`id`, `codigo`, `nombre`, `descripcion`) VALUES
 (1, 'Admin',       'Administrador',    'Acceso total: usuarios, delegaciones, metas y corrección de fechas'),
-(2, 'Coordinador', 'Coordinador',      'Visualiza actividades, usuarios, delegaciones y metas de todas las delegaciones; asigna encargados'),
-(3, 'Delegado',    'Delegado',         'Gestiona los Funcionarios y las metas de su delegación, valida actividades y asigna encargados'),
+(2, 'Coordinador', 'Coordinador',      'Define metas y ponderaciones; visualiza actividades, usuarios y delegaciones de todas las delegaciones; asigna encargados'),
+(3, 'Delegado',    'Delegado',         'Gestiona los Funcionarios de su delegación, valida actividades y asigna encargados (las metas solo las ve)'),
 (5, 'Funcionario', 'Funcionario',      'Registra actividades y atenciones sociales');
 
 -- ---------------------------------------------------------------------------
@@ -83,35 +83,58 @@ INSERT INTO `cargo` (`id`, `codigo`, `nombre`, `vigencia_inicio`, `vigencia_fin`
 -- Periodos trimestrales (días computables = días corridos del trimestre)
 -- ---------------------------------------------------------------------------
 INSERT INTO `periodo` (`id`, `nombre`, `fecha_inicio`, `fecha_termino`, `dias_computables`, `estado`,
-                    `umbral_verde`, `umbral_ambar`, `umbral_colectivo`, `tope_cumplimiento`) VALUES
-(1, 'T3 - 2026', '2026-07-01', '2026-09-30', 92, 'ACTIVO', 100.00, 60.00, 80.00, 150.00),
-(2, 'T4 - 2026', '2026-10-01', '2026-12-31', 92, 'ACTIVO', 100.00, 60.00, 80.00, 150.00);
+                    `umbral_verde`, `umbral_ambar`, `umbral_colectivo`, `tope_cumplimiento`, `puntos_felicitacion`) VALUES
+(1, 'T3 - 2026', '2026-07-01', '2026-09-30', 92, 'ACTIVO', 100.00, 60.00, 80.00, 120.00, 1.00),
+(2, 'T4 - 2026', '2026-10-01', '2026-12-31', 92, 'ACTIVO', 100.00, 60.00, 80.00, 120.00, 1.00);
 
 -- ---------------------------------------------------------------------------
--- Metas por cargo (los ponderadores de cada cargo suman 100).
--- delegacion_id NULL = meta general de la municipalidad (solo el Administrador).
--- Las metas 17 a 19 son propias de Las Compañías: para el cargo 1 reemplazan a las generales en esa delegación.
+-- Ponderación por cargo (una sola para toda la municipalidad; las de cada cargo suman 100).
+-- La definen el Coordinador y el Administrador. Un cargo cuya ponderación no suma 100 no se mide.
 -- ---------------------------------------------------------------------------
-INSERT INTO `meta_desempeno` (`id`, `valor_objetivo`, `unidad`, `ponderador`, `cargo_id`, `item_id`, `periodo_id`, `delegacion_id`) VALUES
-(1,  60, 'actividades', 40.00, 1, 1, 1, NULL),
-(2,  24, 'actividades', 35.00, 1, 2, 1, NULL),
-(3,  12, 'actividades', 25.00, 1, 3, 1, NULL),
-(4,  30, 'actividades', 30.00, 2, 1, 1, NULL),
-(5,  30, 'actividades', 50.00, 2, 2, 1, NULL),
-(6,   6, 'actividades', 20.00, 2, 3, 1, NULL),
-(7,  45, 'actividades', 60.00, 3, 1, 1, NULL),
-(8,  20, 'actividades', 40.00, 3, 2, 1, NULL),
-(9,  60, 'actividades', 40.00, 1, 1, 2, NULL),
-(10, 24, 'actividades', 35.00, 1, 2, 2, NULL),
-(11, 12, 'actividades', 25.00, 1, 3, 2, NULL),
-(12, 30, 'actividades', 30.00, 2, 1, 2, NULL),
-(13, 30, 'actividades', 50.00, 2, 2, 2, NULL),
-(14,  6, 'actividades', 20.00, 2, 3, 2, NULL),
-(15, 45, 'actividades', 60.00, 3, 1, 2, NULL),
-(16, 20, 'actividades', 40.00, 3, 2, 2, NULL),
-(17, 50, 'actividades', 30.00, 1, 1, 2, 2),
-(18, 30, 'actividades', 50.00, 1, 2, 2, 2),
-(19, 10, 'actividades', 20.00, 1, 3, 2, 2);
+INSERT INTO `ponderacion` (`id`, `ponderador`, `cargo_id`, `item_id`, `periodo_id`) VALUES
+(1, 40.00, 1, 1, 1),
+(2, 35.00, 1, 2, 1),
+(3, 25.00, 1, 3, 1),
+(4, 30.00, 2, 1, 1),
+(5, 50.00, 2, 2, 1),
+(6, 20.00, 2, 3, 1),
+(7, 60.00, 3, 1, 1),
+(8, 40.00, 3, 2, 1),
+(9, 40.00, 1, 1, 2),
+(10, 35.00, 1, 2, 2),
+(11, 25.00, 1, 3, 2),
+(12, 30.00, 2, 1, 2),
+(13, 50.00, 2, 2, 2),
+(14, 20.00, 2, 3, 2),
+(15, 60.00, 3, 1, 2),
+(16, 40.00, 3, 2, 2);
+
+-- ---------------------------------------------------------------------------
+-- Metas por cargo (valor objetivo del trimestre). Las definen el Coordinador y el Administrador.
+-- delegacion_id NULL = meta general de la municipalidad.
+-- Las metas 17 a 19 son propias de Las Compañías: cambian el valor objetivo del cargo 1 solo en esa delegación
+-- (el ponderador es el mismo de la tabla ponderacion).
+-- ---------------------------------------------------------------------------
+INSERT INTO `meta_desempeno` (`id`, `valor_objetivo`, `unidad`, `cargo_id`, `item_id`, `periodo_id`, `delegacion_id`) VALUES
+(1,   60, 'actividades', 1, 1, 1, NULL),
+(2,   24, 'actividades', 1, 2, 1, NULL),
+(3,   12, 'actividades', 1, 3, 1, NULL),
+(4,   30, 'actividades', 2, 1, 1, NULL),
+(5,   30, 'actividades', 2, 2, 1, NULL),
+(6,    6, 'actividades', 2, 3, 1, NULL),
+(7,   45, 'actividades', 3, 1, 1, NULL),
+(8,   20, 'actividades', 3, 2, 1, NULL),
+(9,   60, 'actividades', 1, 1, 2, NULL),
+(10,  24, 'actividades', 1, 2, 2, NULL),
+(11,  12, 'actividades', 1, 3, 2, NULL),
+(12,  30, 'actividades', 2, 1, 2, NULL),
+(13,  30, 'actividades', 2, 2, 2, NULL),
+(14,   6, 'actividades', 2, 3, 2, NULL),
+(15,  45, 'actividades', 3, 1, 2, NULL),
+(16,  20, 'actividades', 3, 2, 2, NULL),
+(17,  50, 'actividades', 1, 1, 2, 2),
+(18,  30, 'actividades', 1, 2, 2, 2),
+(19,  10, 'actividades', 1, 3, 2, 2);
 
 -- ---------------------------------------------------------------------------
 -- Usuarios de prueba (contraseña: Serena2026!). Solo los Funcionarios tienen territorio.
@@ -182,10 +205,10 @@ INSERT INTO `solicitante` (`id`, `rut`, `nombre`, `telefono`) VALUES
 (7, '17890123-0', 'Carmen Ejemplo', '977778888');
 
 INSERT INTO `atencion_social` (`id`, `fecha`, `solicitante_id`, `requiere_visita`, `tipo_atencion_id`, `subtipo_atencion_id`,
-                            `usuario_id`) VALUES
-(1, '2026-10-22 13:00:00', 1, 1, 7,  8,    5),
-(2, '2026-10-23 15:30:00', 2, 0, 10, 11,   6),
-(3, '2026-10-24 12:00:00', 3, 1, 7,  NULL, 9);
+                            `usuario_id`, `detalle_solicitud`, `accion_pendiente`) VALUES
+(1, '2026-10-22 13:00:00', 1, 1, 7,  8,    5, 'Solicita apoyo por emergencia en su vivienda.', 'Coordinar visita domiciliaria.'),
+(2, '2026-10-23 15:30:00', 2, 0, 10, 11,   6, 'Consulta por beneficio social.', ''),
+(3, '2026-10-24 12:00:00', 3, 1, 7,  NULL, 9, 'Pide evaluación de su situación habitacional.', 'Agendar visita.');
 
 -- ---------------------------------------------------------------------------
 -- Actividades de ejemplo:
@@ -207,16 +230,18 @@ INSERT INTO `actividad` (`id`, `fecha`, `solicitud_problema`, `accion`, `territo
 (6, '2026-10-25 11:00:00', 'Visita domiciliaria para evaluar la ayuda social solicitada.', 'Visita domiciliaria', 4, 0, '2026-11-04', 'PROGRAMADA', 2, 2, NULL, 5, 6, 1, 0, 1);
 
 INSERT INTO `evidencia` (`id`, `version`, `imagen`, `comentario`, `fecha`, `estado_revision`, `actividad_id`, `reemplaza_a_id`) VALUES
-(1, 1, '', 'Se atendió a la vecina y se derivó al área social para evaluar la ayuda.', '2026-10-22 16:30:00', 'PENDIENTE', 3, NULL);
+(1, 1, '', '', '2026-10-22 16:30:00', 'PENDIENTE', 3, NULL);
 
 INSERT INTO `comentario_actividad` (`id`, `texto`, `fecha`, `actividad_id`, `usuario_id`) VALUES
 (1, 'Se envió el correo a la empresa eléctrica; se espera respuesta.', '2026-10-23 13:00:00', 2, 5),
 (2, 'La directiva confirmó asistencia para la fecha programada.', '2026-10-24 12:15:00', 1, 5);
 
-INSERT INTO `auditoria` (`id`, `evento`, `fecha`, `entidad`, `id_entidad`, `valor_anterior`, `valor_nuevo`, `usuario_id`) VALUES
-(1, 'CREACION', '2026-10-20 12:30:00', 'Actividad', '1', '', 'ACT1 - Reunión con organización [PROGRAMADA]', 5),
-(2, 'CREACION', '2026-10-21 14:00:00', 'Actividad', '2', '', 'ACT2 - Gestión con unidad de alumbrado [EN_TUBO]', 5),
-(3, 'CREACION', '2026-10-22 13:00:00', 'AtencionSocial', '1', '', 'SOC1 - María Ejemplo', 5),
-(4, 'CREACION', '2026-10-22 16:00:00', 'Actividad', '3', '', 'ACT3 - Atención presencial [EVIDENCIA_INGRESADA]', 5);
+-- Datos de ejemplo cargados por este script, no desde el sistema: canal EXTERNO y sin IP
+INSERT INTO `auditoria` (`id`, `evento`, `fecha`, `entidad`, `id_entidad`, `valor_anterior`, `valor_nuevo`, `usuario_id`,
+                         `usuario_texto`, `ip`, `canal`) VALUES
+(1, 'CREACION', '2026-10-20 12:30:00', 'Actividad', '1', '', 'ACT1 - Reunión con organización [PROGRAMADA]', 5, 'Camila Rojas Pizarro (55555555-5)', NULL, 'EXTERNO'),
+(2, 'CREACION', '2026-10-21 14:00:00', 'Actividad', '2', '', 'ACT2 - Gestión con unidad de alumbrado [EN_TUBO]', 5, 'Camila Rojas Pizarro (55555555-5)', NULL, 'EXTERNO'),
+(3, 'CREACION', '2026-10-22 13:00:00', 'AtencionSocial', '1', '', 'SOC1 - María Ejemplo', 5, 'Camila Rojas Pizarro (55555555-5)', NULL, 'EXTERNO'),
+(4, 'CREACION', '2026-10-22 16:00:00', 'Actividad', '3', '', 'ACT3 - Atención presencial [EVIDENCIA_INGRESADA]', 5, 'Camila Rojas Pizarro (55555555-5)', NULL, 'EXTERNO');
 
 COMMIT;

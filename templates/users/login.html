@@ -5,70 +5,205 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SGR — Iniciar Sesión | Municipalidad de La Serena</title>
-    
+    {% include 'components/favicon.html' %}
+
     <link href="https://framework.laserena.cl/css/frameworkV1.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" integrity="sha512-dPXYcDub/aeb08c63jRq/k6GaKccl256JQy/AnOq7CAnEZ9FzSL9wSbcZkMp4R26vBsMLFYH4kQ67/bbV8XaCQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
+    {# Colores institucionales (laserena.cl/conocenos/normas-graficas): el rojo heráldico es el principal #}
     <style>
-        body {
-            background: linear-gradient(135deg, #1a0000 0%, #AD0000 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        :root {
+            --muni-luminoso: #DB3334;
+            --muni-heraldico: #C41230;
+            --muni-oscuro: #8B1D19;
+            --muni-tinta: #1F1A1A;
+            --curva: cubic-bezier(.65, 0, .25, 1);
         }
-        .btn-muni { background-color: #AD0000; color: #ffffff !important; border: none; }
-        .btn-muni:hover { background-color: #7a0000; }
+        html, body { height: 100%; }
+        body { margin: 0; background: #ffffff; color: var(--muni-tinta); overflow: hidden; }
+
+        /* Escena: una pista horizontal con tres paneles (bienvenida, fotos, ingreso).
+           Al acceder, la pista se desliza: sale la bienvenida y entra el formulario junto a las fotos */
+        .escena { position: relative; height: 100vh; overflow: hidden; }
+        .pista { display: flex; height: 100%; width: calc(145vw + 70px); transition: transform .9s var(--curva); }
+        .escena[data-vista="ingreso"] .pista { transform: translateX(calc(-45vw - 70px)); }  /* 70 px: el borde curvo también sale */
+
+        /* Bienvenida */
+        .bienvenida {
+            position: relative; z-index: 2; flex: 0 0 45vw; display: flex; flex-direction: column; justify-content: center;
+            padding: 0 6vw; color: #ffffff;
+            background: linear-gradient(160deg, var(--muni-heraldico) 0%, var(--muni-oscuro) 100%);
+        }
+        /* Borde curvo hacia las fotos, como en la referencia */
+        .bienvenida::after {
+            content: ""; position: absolute; top: -10%; right: -70px; width: 140px; height: 120%;
+            border-radius: 50%; background: linear-gradient(180deg, #B8142C 0%, #931A1F 100%);
+        }
+        /* Íconos de gestión de fondo (Bootstrap Icons, vectoriales y nítidos) en lugar de círculos */
+        .bienvenida .figuras { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        .bienvenida .figuras i { position: absolute; line-height: 1; color: #ffffff; opacity: .10; }
+        .bienvenida .figuras .g1 { font-size: 9rem; top: -1.5rem; left: -1.5rem; transform: rotate(-10deg); }
+        .bienvenida .figuras .g2 { font-size: 4.5rem; top: 12%; right: 14%; opacity: .14; }
+        .bienvenida .figuras .g3 { font-size: 7rem; bottom: -1.2rem; left: 30%; }
+        .bienvenida .figuras .g4 { font-size: 3.6rem; bottom: 18%; right: 12%; opacity: .13; transform: rotate(8deg); }
+        .bienvenida .figuras .g5 { font-size: 3rem; bottom: 31%; right: 24%; opacity: .10; }
+        .bienvenida .figuras .g6 { font-size: 3.2rem; bottom: 8%; left: 6%; opacity: .12; }
+        .bienvenida .logo { width: 150px; margin-bottom: 2.5rem; position: relative; z-index: 1; }
+        .bienvenida h1 { font-weight: 800; font-size: clamp(2rem, 3.4vw, 3.2rem); line-height: 1.1; margin-bottom: 1rem; position: relative; z-index: 1; }
+        .bienvenida p { font-size: 1.1rem; max-width: 30ch; opacity: .92; margin-bottom: 2.5rem; position: relative; z-index: 1; }
+        .btn-acceder {
+            position: relative; z-index: 1; align-self: flex-start; padding: .8rem 2.8rem; border-radius: 999px;
+            border: 2px solid #ffffff; background: transparent; color: #ffffff; font-weight: 700; letter-spacing: .06em;
+            text-decoration: none; transition: background-color .25s, color .25s;
+        }
+        .btn-acceder:hover, .btn-acceder:focus-visible { background: #ffffff; color: var(--muni-heraldico); }
+
+        /* Presentación de fotos: cada foto aparece difuminada y se enfoca mientras se acerca lentamente */
+        .galeria { position: relative; z-index: 1; flex: 0 0 calc(55vw + 70px); overflow: hidden; background: var(--muni-oscuro); }
+        .galeria img {
+            position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+            opacity: 0; filter: blur(14px); transform: scale(1.08);
+            transition: opacity 1.6s ease, filter 1.6s ease, transform 7s ease-out;
+        }
+        .galeria img.activa { opacity: 1; filter: blur(0); transform: scale(1); }
+        .galeria::after {  /* velo suave para que las fotos no compitan con el texto */
+            content: ""; position: absolute; inset: 0; z-index: 1;
+            background: linear-gradient(90deg, rgba(139, 29, 25, .35) 0%, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0) 75%, rgba(31, 26, 26, .25) 100%);
+        }
+
+        /* Ingreso */
+        .ingreso { flex: 0 0 45vw; display: flex; align-items: center; justify-content: center; background: #ffffff; padding: 2rem; }
+        .ingreso .caja { width: 100%; max-width: 380px; }
+        .ingreso .logo { height: 58px; margin-bottom: 2rem; }
+        .ingreso h2 { font-weight: 800; color: var(--muni-tinta); margin-bottom: .25rem; }
+        .ingreso .bajada { color: #6b6262; font-size: 1rem; font-weight: 400; margin: 0 0 2rem; padding: 0; border: 0; }
+        .ingreso .form-control:focus { border-color: var(--muni-heraldico); box-shadow: 0 0 0 .2rem rgba(196, 18, 48, .15); }
+        .btn-muni { background-color: var(--muni-heraldico); color: #ffffff !important; border: none; border-radius: 999px; }
+        .btn-muni:hover { background-color: var(--muni-oscuro); }
+        .ingreso a { color: var(--muni-heraldico); }
+        .volver { background: none; border: 0; padding: 0; color: #6b6262; font-size: .9rem; }
+        .volver:hover { color: var(--muni-heraldico); }
+        .pie { color: #8a8181; font-size: .75rem; margin-top: 2.5rem; }
+
+        /* Celular y tablet: las fotos quedan de fondo y los paneles se deslizan encima */
+        @media (max-width: 900px) {
+            .pista, .escena[data-vista="ingreso"] .pista { width: 100vw; transform: none; position: relative; }
+            .galeria { position: absolute; inset: 0; z-index: 0; }
+            .galeria::after { background: rgba(31, 26, 26, .45); }
+            .bienvenida, .ingreso { position: absolute; inset: 0; transition: transform .9s var(--curva); }
+            .bienvenida { background: linear-gradient(160deg, rgba(196, 18, 48, .88), rgba(139, 29, 25, .92)); }
+            .bienvenida::after { display: none; }
+            .ingreso { z-index: 2; background: transparent; padding: 1rem; transform: translateX(100%); }
+            .ingreso .caja { background: #ffffff; border-radius: 16px; padding: 2rem 1.5rem; box-shadow: 0 10px 40px rgba(0, 0, 0, .25); }
+            .escena[data-vista="ingreso"] .bienvenida { transform: translateX(-100%); }
+            .escena[data-vista="ingreso"] .ingreso { transform: translateX(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .pista, .galeria img, .bienvenida, .ingreso { transition: none; }
+        }
     </style>
 </head>
 <body>
+{# Con errores, bloqueo o mensajes (por ejemplo, al cerrar sesión) se muestra directo el formulario #}
+<div class="escena" id="escena" data-vista="{% if request.method == 'POST' or request.GET.acceder or messages %}ingreso{% else %}bienvenida{% endif %}">
+    <div class="pista">
 
-<div class="container py-5">
-    <div class="row justify-content-center">
-        <div class="col-md-5 col-lg-4">
-            <div class="card border-0 shadow-lg rounded-3 overflow-hidden">
-                <div class="card-body p-4 p-md-5 text-center">
-                    <img src="https://framework.laserena.cl/img/laserenaFuturo-Color.png" alt="La Serena Futuro" class="img-fluid mb-3" style="max-height: 70px;">
-                    <h5 class="fw-bold text-dark mb-1">SGR MUNICIPAL</h5>
-                    <p class="text-muted small mb-4">Sistema de Gestión de Resultados</p>
-
-                    <form method="post">
-                        {% csrf_token %}
-                        {% if form.errors %}
-                        <div class="alert alert-danger py-2 small mb-3 text-start">
-                            Rut o contraseña incorrectos. Por favor reintente.
-                        </div>
-                        {% endif %}
-
-                        <div class="form-floating mb-3 text-start">
-                            <input type="text" name="username" class="form-control" id="id_username" placeholder="12.345.678-9" required autofocus data-rut="solo-aviso" autocomplete="username">
-                            <label for="id_username"><i class="bi bi-person me-1"></i> RUT</label>
-                        </div>
-
-                        <div class="form-floating mb-4 text-start">
-                            <input type="password" name="password" class="form-control" id="id_password" placeholder="Contraseña" required>
-                            <label for="id_password"><i class="bi bi-lock me-1"></i> Contraseña</label>
-                        </div>
-
-                        <button type="submit" class="btn btn-muni w-100 py-2 fw-bold shadow-sm">
-                            <i class="bi bi-box-arrow-in-right me-1"></i> Iniciar Sesión
-                        </button>
-                    </form>
-
-                    <div class="mt-3">
-                        <a href="{% url 'users:recuperar' %}" class="small text-decoration-none">¿Olvidaste tu contraseña?</a>
-                    </div>
-                </div>
-                <div class="card-footer bg-light text-center py-2">
-                    <small class="text-muted" style="font-size: 0.75rem;">Ilustre Municipalidad de La Serena &copy; {% now "Y" %}</small>
-                </div>
+        <section class="bienvenida" aria-labelledby="titulo_bienvenida">
+            <div class="figuras" aria-hidden="true">
+                <i class="bi bi-bar-chart-line-fill g1"></i><i class="bi bi-graph-up-arrow g2"></i><i class="bi bi-pie-chart-fill g3"></i>
+                <i class="bi bi-clipboard-data g4"></i><i class="bi bi-speedometer2 g5"></i><i class="bi bi-bullseye g6"></i>
             </div>
-        </div>
+            <img src="{% static 'img/marca/vertical-blanco.svg' %}" alt="Ilustre Municipalidad de La Serena" class="logo">
+            <h1 id="titulo_bienvenida">Bienvenido al SGR</h1>
+            <p>Sistema de Gestión de Resultados de la Ilustre Municipalidad de La Serena.</p>
+            {# Sin JavaScript, el enlace igual lleva al formulario (?acceder=1) #}
+            <a href="?acceder=1" class="btn-acceder" id="btn_acceder">ACCEDER</a>
+        </section>
+
+        <section class="galeria" aria-hidden="true">
+            <img src="{% static 'img/landing/municipalidad_fachada.jpg' %}" alt="" class="activa">
+            <img src="{% static 'img/landing/faro.jpg' %}" alt="">
+            <img src="{% static 'img/landing/ceremonia.jpg' %}" alt="">
+        </section>
+
+        <section class="ingreso" aria-labelledby="titulo_ingreso">
+            <div class="caja">
+                <img src="{% static 'img/marca/horizontal-color.svg' %}" alt="Ilustre Municipalidad de La Serena" class="logo">
+                <h2 id="titulo_ingreso">Iniciar sesión</h2>
+                <p class="bajada">Ingrese con su RUT y contraseña.</p>
+
+                <form method="post" action="{% url 'users:login' %}">
+                    {% csrf_token %}
+                    {% if form.errors %}
+                    <div class="alert alert-danger py-2 small mb-3">Rut o contraseña incorrectos. Por favor reintente.</div>
+                    {% endif %}
+                    {% if bloqueo %}
+                    {# Límite de intentos: el mensaje no dice si el RUT existe #}
+                    <div class="alert alert-warning py-2 small mb-3">
+                        Demasiados intentos fallidos con este RUT. Espere {{ bloqueo }} minuto{{ bloqueo|pluralize }} antes de volver a intentar.
+                    </div>
+                    {% endif %}
+                    {% for mensaje in messages %}
+                    <div class="alert alert-{{ mensaje.tags }} py-2 small mb-3">{{ mensaje }}</div>
+                    {% endfor %}
+
+                    <div class="form-floating mb-3">
+                        <input type="text" name="username" class="form-control" id="id_username" placeholder="12.345.678-9" required data-rut="solo-aviso" autocomplete="username">
+                        <label for="id_username"><i class="bi bi-person me-1"></i> RUT</label>
+                    </div>
+                    <div class="form-floating mb-4">
+                        <input type="password" name="password" class="form-control" id="id_password" placeholder="Contraseña" required autocomplete="current-password">
+                        <label for="id_password"><i class="bi bi-lock me-1"></i> Contraseña</label>
+                    </div>
+                    <button type="submit" class="btn btn-muni w-100 py-2 fw-bold">
+                        <i class="bi bi-box-arrow-in-right me-1"></i> Iniciar sesión
+                    </button>
+                </form>
+
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <button type="button" class="volver" id="btn_volver"><i class="bi bi-arrow-left me-1"></i>Volver</button>
+                    <a href="{% url 'users:recuperar' %}" class="small text-decoration-none">¿Olvidaste tu contraseña?</a>
+                </div>
+                <p class="pie">Ilustre Municipalidad de La Serena &copy; {% now "Y" %}</p>
+            </div>
+        </section>
+
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 <script src="{% static 'js/validaciones.js' %}?v=2026-11-06"></script>
+<script>
+(function () {
+    var escena = document.getElementById('escena');
+    var rut = document.getElementById('id_username');
+
+    // Acceder / Volver: desliza la pista sin recargar la página
+    var bienvenida = document.querySelector('.bienvenida');
+    var ingreso = document.querySelector('.ingreso');
+    function mostrar(vista) {
+        escena.dataset.vista = vista;
+        // El panel que quedó fuera de la pantalla no recibe el foco con Tab
+        ingreso.inert = vista !== 'ingreso';
+        bienvenida.inert = vista === 'ingreso';
+        if (vista === 'ingreso') { setTimeout(function () { rut.focus({ preventScroll: true }); }, 650); }
+    }
+    document.getElementById('btn_acceder').addEventListener('click', function (e) { e.preventDefault(); mostrar('ingreso'); });
+    document.getElementById('btn_volver').addEventListener('click', function () { mostrar('bienvenida'); });
+    mostrar(escena.dataset.vista);
+
+    // Presentación: cambia de foto cada 6 segundos con transición difuminada
+    var fotos = document.querySelectorAll('.galeria img');
+    var actual = 0;
+    if (fotos.length > 1 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        setInterval(function () {
+            fotos[actual].classList.remove('activa');
+            actual = (actual + 1) % fotos.length;
+            fotos[actual].classList.add('activa');
+        }, 6000);
+    }
+})();
+</script>
 </body>
-</html>
+</html>

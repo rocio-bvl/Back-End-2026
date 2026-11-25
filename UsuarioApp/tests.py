@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 from urllib.parse import quote
 
@@ -5,7 +6,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from IndicadoresApp.models import Periodo, MetaDesempeno
+from IndicadoresApp.models import Periodo, MetaDesempeno, Ponderacion
 from UsuarioApp.funciones import limpiar_rut, validar_rut, normalizar_telefono
 from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion, Catalogo
 
@@ -13,6 +14,12 @@ from io import StringIO
 from django.core.management import call_command
 
 CLAVE = 'Serena2026!'
+
+
+def codigo_enviado():
+    """Código de 6 dígitos del último correo de verificación (en las pruebas los correos quedan en mail.outbox)."""
+    from django.core import mail
+    return re.search(r'\b(\d{6})\b', mail.outbox[-1].body).group(1)
 
 
 def crear_datos_base():
@@ -32,7 +39,8 @@ def crear_datos_base():
     cargo = Cargo.objects.create(codigo='TERR', nombre='Territorial', area=area)
     hoy = timezone.localdate()
     periodo = Periodo.objects.create(nombre='Prueba', fecha_inicio=hoy - timedelta(days=9), fecha_termino=hoy + timedelta(days=10), dias_computables=20)
-    MetaDesempeno.objects.create(valor_objetivo=10, ponderador=100, cargo=cargo, item=item1, periodo=periodo)
+    Ponderacion.objects.create(ponderador=100, cargo=cargo, item=item1, periodo=periodo)
+    MetaDesempeno.objects.create(valor_objetivo=10, cargo=cargo, item=item1, periodo=periodo)
     return {'delegacion': compania, 'cargo': cargo, 'periodo': periodo, 'item': item1, 'territorio': territorio}
 
 
@@ -262,7 +270,7 @@ class RolesYPermisosTest(TestCase):
     # ----- Delegado: controla su delegación -----
     def datos_actividad(self, **extra):
         datos = {'solicitud_problema': 'x', 'accion': 'y', 'item': '1', 'territorio': self.datos['territorio'].pk,
-                 'fecha_realizacion': timezone.localdate().isoformat(), 'comentario': 'Hecho',
+                 'fecha_realizacion': timezone.localdate().isoformat(),
                  'rut_solicitante': '12312312-3', 'nombre_solicitante': 'Juan Pérez', 'telefono_solicitante': '912345678', 'agregar_solicitante': 'True'}
         datos.update(extra)
         return datos
@@ -276,7 +284,7 @@ class RolesYPermisosTest(TestCase):
         # Lo que ingresa el Delegado queda como gestión: no suma puntaje
         self.entrar('33333333-3')
         self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad())
-        self.client.post(reverse('actividades:actividad_crear'), self.datos_actividad(depende_externos='on'))
+        self.client.post(reverse('actividades:actividad_crear_tubo'), self.datos_actividad(fecha_realizacion=''))
         gestiones = Actividad.objects.filter(usuario=self.delegado)
         self.assertEqual(gestiones.count(), 2)
         self.assertTrue(all(gestion.es_gestion for gestion in gestiones))
@@ -293,9 +301,9 @@ class RolesYPermisosTest(TestCase):
         lista = self.client.get(reverse('users:administracion')).context['lista_usuarios']
         self.assertEqual([u.pk for u in lista], [self.func.pk])
         self.assertRedirects(self.client.get(reverse('users:usuario_editar', args=[self.func_rural.pk])),
-                             reverse('users:administracion'))
+                             reverse('users:administracion') + '?pestana=usuarios')
         self.assertRedirects(self.client.get(reverse('users:usuario_editar', args=[self.delegado_rural.pk])),
-                             reverse('users:administracion'))
+                             reverse('users:administracion') + '?pestana=usuarios')
         self.assertEqual(self.client.get(reverse('users:usuario_editar', args=[self.func.pk])).status_code, 200)
         # Un POST directo sobre un Funcionario de otra delegación tampoco lo cambia
         self.client.post(reverse('users:usuario_editar', args=[self.func_rural.pk]), {
@@ -360,29 +368,29 @@ class RolesYPermisosTest(TestCase):
         self.entrar('11111111-1')
         self.assertNotIn('value="Consulta"', self.client.get(reverse('users:administracion')).content.decode())
 
-    def test_coordinador_solo_visualiza_actividades(self):
+    def test_coordinador_no_registra_ni_valida_actividades(self):
         self.entrar('22222222-2')
         detalle = self.client.get(reverse('actividades:actividad_detalle', args=[self.compromiso.pk]))
         self.assertEqual(detalle.status_code, 200)
         self.assertFalse(detalle.context['puede_registrar_evidencia'])
         self.assertFalse(detalle.context['puede_comentar'])
         self.assertFalse(detalle.context['puede_programar'])
-        self.assertFalse(detalle.context['puede_asignar'])  # no interviene en las actividades de los funcionarios
+        self.assertTrue(detalle.context['puede_asignar'])  # sí asigna encargados en cualquier delegación
         self.assertRedirects(self.client.get(reverse('actividades:verificacion')), reverse('actividades:mi_gestion'))
 
-    # ----- Metas (Admin y Coordinador) -----
-    def guardar_meta(self, item_id, ponderador):
-        return self.client.post(reverse('indicadores:guardar_metas'), {
-            'cargo': self.datos['cargo'].pk, 'item': item_id, 'valor_objetivo': '10', 'ponderador': ponderador})
+    # ----- Ponderación (Admin y Coordinador) -----
+    def guardar_ponderacion(self, item_id, ponderador):
+        return self.client.post(reverse('indicadores:guardar_ponderacion'), {
+            'cargo': self.datos['cargo'].pk, 'item': item_id, 'ponderador': ponderador})
 
     def test_ponderadores_validados(self):
         self.entrar('11111111-1')
-        self.assertEqual(self.guardar_meta(2, 'abc').status_code, 302)  # no es número: no rompe
-        self.guardar_meta(2, '10')  # 100 + 10 supera 100%
-        self.assertEqual(MetaDesempeno.objects.count(), 1)
-        self.guardar_meta(1, '60')
+        self.assertEqual(self.guardar_ponderacion(2, 'abc').status_code, 302)  # no es número: no rompe
+        self.guardar_ponderacion(2, '10')  # 100 + 10 supera 100%
+        self.assertEqual(Ponderacion.objects.count(), 1)
+        self.guardar_ponderacion(1, '60')  # se actualiza: queda en 60% (incompleto, se guarda con aviso)
         self.assertFalse(self.datos['cargo'].validar_ponderadores(self.datos['periodo']))
-        self.guardar_meta(2, '40')
+        self.guardar_ponderacion(2, '40')
         self.assertTrue(self.datos['cargo'].validar_ponderadores(self.datos['periodo']))
 
 
@@ -406,14 +414,16 @@ class MetasYFechasInlineTest(TestCase):
     def test_guardar_meta_vuelve_a_la_pestana(self):
         self.client.login(username='11111111-1', password=CLAVE)
         MetaDesempeno.objects.all().delete()
+        Ponderacion.objects.create(ponderador=40, cargo=self.datos['cargo'], item=Catalogo.objects.get(id=2),
+                                   periodo=self.datos['periodo'])
         respuesta = self.client.post(reverse('indicadores:guardar_metas'), {
-            'cargo': self.datos['cargo'].pk, 'item': 2, 'valor_objetivo': '30', 'ponderador': '40'})
+            'cargo': self.datos['cargo'].pk, 'item': 2, 'valor_objetivo': '30'})
         # Meta general: vuelve a Metas con el selector en GENERAL, para que se vea lo que se guardó
         self.assertEqual(respuesta['Location'], reverse('users:administracion') + '?pestana=metas&delegacion=GENERAL#goals')
         meta = MetaDesempeno.objects.get()
-        self.assertEqual((meta.valor_objetivo, meta.ponderador), (30, 40))
+        self.assertEqual((meta.valor_objetivo, meta.ponderador), (30, 40))  # el ponderador sale de la ponderación
         # Valores que no son número no provocan error 500
-        respuesta = self.client.post(reverse('indicadores:guardar_metas'), {'cargo': 'x', 'item': 'y', 'valor_objetivo': '1', 'ponderador': '1'})
+        respuesta = self.client.post(reverse('indicadores:guardar_metas'), {'cargo': 'x', 'item': 'y', 'valor_objetivo': '1'})
         self.assertEqual(respuesta.status_code, 302)
 
 
@@ -506,11 +516,16 @@ class PerfilTest(TestCase):
 
 
 class MetasPorDelegacionTest(TestCase):
-    """Metas generales (solo el Admin) y metas propias de cada delegación (Admin o su Delegado).
-    El Coordinador solo las visualiza."""
+    """Metas generales y metas propias de una delegación por ítem: las definen el Coordinador y el Administrador.
+    El Delegado solo las visualiza. La ponderación es una sola para toda la municipalidad."""
 
     def setUp(self):
-        self.datos = crear_datos_base()  # meta general: ítem 1, 10 actividades, 100 %
+        self.datos = crear_datos_base()  # meta general: ítem 1, 10 actividades
+        # Ponderación completa del cargo: ítem 1 con 60% e ítem 2 con 40%, cada uno con su meta general
+        Ponderacion.objects.filter(item=self.datos['item']).update(ponderador=60)
+        self.visitas = Catalogo.objects.get(id=2)
+        Ponderacion.objects.create(ponderador=40, cargo=self.datos['cargo'], item=self.visitas, periodo=self.datos['periodo'])
+        MetaDesempeno.objects.create(valor_objetivo=10, cargo=self.datos['cargo'], item=self.visitas, periodo=self.datos['periodo'])
         self.compania = self.datos['delegacion']
         self.rural = Delegacion.objects.get(nombre='RURAL')
         crear_usuario('11111111-1', 'Admin')
@@ -519,11 +534,10 @@ class MetasPorDelegacionTest(TestCase):
         self.func = crear_usuario('55555555-5', 'Funcionario', self.compania, self.datos['cargo'])
         self.func_rural = crear_usuario('88888888-8', 'Funcionario', self.rural, self.datos['cargo'])
 
-    def guardar(self, rut, alcance, item=2, valor='20', ponderador='100'):
+    def guardar(self, rut, alcance, item=2, valor='20'):
         self.client.login(username=rut, password=CLAVE)
         return self.client.post(reverse('indicadores:guardar_metas'), {
-            'alcance': alcance, 'cargo': self.datos['cargo'].pk, 'item': item,
-            'valor_objetivo': valor, 'ponderador': ponderador})
+            'alcance': alcance, 'cargo': self.datos['cargo'].pk, 'item': item, 'valor_objetivo': valor})
 
     def test_coordinador_filtra_metas_con_el_selector_de_delegacion(self):
         self.guardar('11111111-1', 'LAS_COMPANIAS')  # meta propia de Las Compañías (ítem 2)
@@ -566,8 +580,6 @@ class MetasPorDelegacionTest(TestCase):
         self.assertNotIn('delegaciones_navbar', self.client.get(reverse('actividades:mi_gestion')).context)
 
     def test_buscador_de_metas_por_cargo_o_item(self):
-        MetaDesempeno.objects.create(valor_objetivo=5, ponderador=0, cargo=self.datos['cargo'],
-                                     item=Catalogo.objects.get(id=2), periodo=self.datos['periodo'])  # general: Visitas
         self.client.login(username='11111111-1', password=CLAVE)
         url = reverse('users:administracion')
         items = lambda r: [m.item.nombre for g in r.context['metas_agrupadas'] for b in g['cargos'] for m in b['metas']]
@@ -596,38 +608,54 @@ class MetasPorDelegacionTest(TestCase):
         respuesta = self.guardar('11111111-1', 'LAS_COMPANIAS')
         self.assertEqual(respuesta.url, reverse('users:administracion') + '?pestana=metas&delegacion=LAS_COMPANIAS#goals')
 
-    def test_delegado_define_metas_solo_de_su_delegacion(self):
+    def test_meta_de_delegacion_cambia_solo_el_valor_objetivo(self):
         from IndicadoresApp.calculos import indicadores_usuario
-        self.guardar('33333333-3', 'GENERAL')  # pide general: se le impone su delegación (la elección no es válida)
-        self.guardar('33333333-3', 'LAS_COMPANIAS')
-        propias = MetaDesempeno.objects.filter(delegacion=self.compania)
-        self.assertEqual(propias.count(), 1)
-        self.assertEqual(MetaDesempeno.objects.filter(delegacion__isnull=True).count(), 1)  # la general sigue igual
-        # La meta propia reemplaza a la general en Las Compañías; Rural sigue con la general
+        self.guardar('22222222-2', 'LAS_COMPANIAS')  # el Coordinador: Visitas = 20 solo en Las Compañías
+        self.assertEqual(MetaDesempeno.objects.filter(delegacion=self.compania).count(), 1)
         hoy = timezone.localdate()
-        self.assertEqual([i.meta.item_id for i in indicadores_usuario(self.func, self.datos['periodo'], hoy)], [2])
-        self.assertEqual([i.meta.item_id for i in indicadores_usuario(self.func_rural, self.datos['periodo'], hoy)], [1])
+        compania = {i.meta.item_id: (i.meta.valor_objetivo, i.meta.ponderador)
+                    for i in indicadores_usuario(self.func, self.datos['periodo'], hoy)}
+        rural = {i.meta.item_id: (i.meta.valor_objetivo, i.meta.ponderador)
+                 for i in indicadores_usuario(self.func_rural, self.datos['periodo'], hoy)}
+        # El ítem 1 usa la meta general en ambas; Visitas cambia de valor objetivo, pero no de ponderador
+        self.assertEqual(compania, {1: (10, 60), 2: (20, 40)})
+        self.assertEqual(rural, {1: (10, 60), 2: (10, 40)})
 
-    def test_delegado_no_edita_metas_generales_y_admin_si(self):
-        general = MetaDesempeno.objects.get()
-        self.client.login(username='33333333-3', password=CLAVE)
-        self.client.post(reverse('indicadores:meta_editar', args=[general.pk]), {'valor_objetivo': '99', 'ponderador': '100'})
+    def test_delegado_no_define_ni_edita_metas(self):
+        self.guardar('33333333-3', 'LAS_COMPANIAS')
+        self.assertFalse(MetaDesempeno.objects.filter(delegacion=self.compania).exists())
+        general = MetaDesempeno.objects.get(item=self.datos['item'])
+        self.client.post(reverse('indicadores:meta_editar', args=[general.pk]), {'valor_objetivo': '99'})
         general.refresh_from_db()
         self.assertEqual(general.valor_objetivo, 10)
-        self.client.login(username='11111111-1', password=CLAVE)
-        self.assertEqual(self.client.get(reverse('indicadores:meta_editar', args=[general.pk])).status_code, 200)
-        self.client.post(reverse('indicadores:meta_editar', args=[general.pk]), {'valor_objetivo': '15', 'ponderador': '100'})
-        general.refresh_from_db()
-        self.assertEqual(general.valor_objetivo, 15)
-        self.client.post(reverse('indicadores:meta_eliminar', args=[general.pk]))
-        self.assertFalse(MetaDesempeno.objects.exists())
-
-    def test_coordinador_solo_visualiza_metas(self):
-        self.guardar('22222222-2', 'GENERAL')
-        self.assertEqual(MetaDesempeno.objects.count(), 1)
+        self.client.post(reverse('indicadores:guardar_ponderacion'),
+                         {'cargo': self.datos['cargo'].pk, 'item': 1, 'ponderador': '50'})
+        self.assertEqual(Ponderacion.objects.get(item_id=1).ponderador, 60)
         html = self.client.get(reverse('users:administracion')).content.decode()
         self.assertIn('Vista de consulta', html)
         self.assertNotIn('Guardar meta', html)
+        self.assertNotIn('Guardar ponderación', html)
+
+    def test_admin_edita_y_elimina_metas(self):
+        general = MetaDesempeno.objects.get(item=self.datos['item'])
+        self.client.login(username='11111111-1', password=CLAVE)
+        self.assertEqual(self.client.get(reverse('indicadores:meta_editar', args=[general.pk])).status_code, 200)
+        self.client.post(reverse('indicadores:meta_editar', args=[general.pk]), {'valor_objetivo': '15'})
+        general.refresh_from_db()
+        self.assertEqual(general.valor_objetivo, 15)
+        self.client.post(reverse('indicadores:meta_eliminar', args=[general.pk]))
+        self.assertFalse(MetaDesempeno.objects.filter(pk=general.pk).exists())
+
+    def test_coordinador_define_metas_y_ponderaciones(self):
+        self.guardar('22222222-2', 'GENERAL', item=1, valor='25')
+        self.assertEqual(MetaDesempeno.objects.get(item_id=1, delegacion__isnull=True).valor_objetivo, 25)
+        self.client.post(reverse('indicadores:guardar_ponderacion'),
+                         {'cargo': self.datos['cargo'].pk, 'item': 1, 'ponderador': '50'})
+        self.assertEqual(Ponderacion.objects.get(item_id=1).ponderador, 50)
+        html = self.client.get(reverse('users:administracion')).content.decode()
+        self.assertIn('Guardar meta', html)
+        self.assertIn('Guardar ponderación', html)
+        self.assertIn('Faltan 10', html)  # 50 + 40 = 90: aviso de que el cargo no se mide
 
     def test_admin_define_meta_para_una_delegacion(self):
         self.guardar('11111111-1', 'RURAL')
@@ -756,7 +784,8 @@ class GruposYPermisosTest(TestCase):
         self.assertFalse(coord.has_perm('ActividadesApp.change_actividad'))  # pero no las actividades
         self.assertTrue(func.has_perm('ActividadesApp.add_actividad'))
         self.assertFalse(func.has_perm('UsuarioApp.view_usuario'))
-        self.assertTrue(delegado.has_perm('IndicadoresApp.change_metadesempeno'))
+        self.assertFalse(delegado.has_perm('IndicadoresApp.change_metadesempeno'))  # las metas las define el Coordinador
+        self.assertTrue(coord.has_perm('IndicadoresApp.change_metadesempeno'))
         self.assertFalse(delegado.has_perm('UsuarioApp.delete_usuario'))
 
     def test_crear_usuario_desde_la_pantalla_le_asigna_grupo(self):

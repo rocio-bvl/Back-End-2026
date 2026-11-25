@@ -49,13 +49,12 @@ class BaseActividades(TestCase):
     def entrar(self, rut):
         self.client.login(username=rut, password=CLAVE)
 
-    def registrar(self, **extra):
-        datos = {'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item': '1',
-                 'territorio': self.territorio.pk,
-                 'fecha_realizacion': self.hoy.isoformat(), 'comentario': 'Se inspeccionó el sector',
-                 'rut_solicitante': '12312312-3', 'nombre_solicitante': 'Juan Pérez', 'telefono_solicitante': '912345678', 'agregar_solicitante': 'True'}
+    def registrar(self, tubo=False, **extra):
+        """tubo=True usa el formulario del Tubo de Trabajo."""
+        datos = {'solicitud_problema': 'Vecinos piden poda', 'accion': 'Inspección', 'item': '1', 'territorio': self.territorio.pk, 'fecha_realizacion': '' if tubo else self.hoy.isoformat(), 'rut_solicitante': '12312312-3', 'nombre_solicitante': 'Juan Pérez', 'telefono_solicitante': '912345678', 'agregar_solicitante': 'True'}
         datos.update(extra)
-        return self.client.post(reverse('actividades:actividad_crear'), datos)
+        url = 'actividades:actividad_crear_tubo' if tubo else 'actividades:actividad_crear'
+        return self.client.post(reverse(url), datos)
 
     def crear(self, estado='PROGRAMADA', usuario=None, dias=5, territorio=None, encargado=None):
         """Actividad pendiente creada directo en la base: PROGRAMADA (con fecha) o EN_TUBO (sin fecha)."""
@@ -73,7 +72,6 @@ class BaseActividades(TestCase):
         return actividad, evidencia
 
     def agregar_evidencia(self, actividad, **datos):
-        datos.setdefault('comentario', 'Listo')
         return self.client.post(reverse('actividades:registrar_evidencia', args=[actividad.pk]), datos)
 
     def folios_tubo(self, **filtros):
@@ -85,32 +83,32 @@ class RegistroActividadTest(BaseActividades):
     """La fecha de realización decide el estado: hoy o antes = con_evidencia; después = compromiso;
     depende de factores externos = Tubo de Trabajo sin fecha."""
 
-    def test_hoy_con_comentario_y_sin_foto_queda_registrada(self):
+    def test_hoy_sin_foto_queda_registrada_y_pasa_a_validacion(self):
         self.entrar('55555555-5')
         self.assertRedirects(self.registrar(), reverse('actividades:mi_gestion'))
         actividad = Actividad.objects.get()
-        self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos),
-                         ('EVIDENCIA_INGRESADA', self.hoy, False))
-        evidencia = actividad.evidencias.get()
-        self.assertEqual((evidencia.comentario, bool(evidencia.imagen)), ('Se inspeccionó el sector', False))
+        self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos), ('EVIDENCIA_INGRESADA', self.hoy, False))
+        evidencia = actividad.evidencias.get()  # la evidencia es opcional: sin foto también se valida
+        self.assertEqual((evidencia.comentario, bool(evidencia.imagen)), ('', False))
 
-    def test_hoy_con_foto_guarda_la_foto(self):
+    def test_hoy_con_foto_guarda_la_foto_y_su_descripcion(self):
         self.entrar('55555555-5')
-        self.registrar(imagen=foto())
-        self.assertTrue(Actividad.objects.get().evidencias.get().imagen)
+        self.registrar(imagen=foto(), comentario='Poda terminada')
+        evidencia = Actividad.objects.get().evidencias.get()
+        self.assertTrue(evidencia.imagen)
+        self.assertEqual(evidencia.comentario, 'Poda terminada')
 
-    def test_hoy_sin_comentario_no_se_guarda(self):
+    def test_descripcion_sin_foto_no_se_guarda(self):
         self.entrar('55555555-5')
-        respuesta = self.registrar(comentario='  ')
+        respuesta = self.registrar(comentario='Se inspeccionó el sector')
         self.assertEqual(respuesta.status_code, 200)
-        self.assertIn('comentario', respuesta.context['form'].errors)
+        self.assertIn('imagen', respuesta.context['form'].errors)
         self.assertEqual(Actividad.objects.count(), 0)
 
     def test_fecha_futura_queda_como_compromiso(self):
         self.entrar('55555555-5')
         futura = self.hoy + timedelta(days=7)
-        self.assertRedirects(self.registrar(fecha_realizacion=futura.isoformat(), comentario=''),
-                             reverse('actividades:mi_gestion'))
+        self.assertRedirects(self.registrar(fecha_realizacion=futura.isoformat(), comentario=''), reverse('actividades:mi_gestion'))
         actividad = Actividad.objects.get()
         self.assertEqual((actividad.estado, actividad.fecha_realizacion), ('PROGRAMADA', futura))
         self.assertTrue(actividad.es_compromiso())
@@ -119,7 +117,7 @@ class RegistroActividadTest(BaseActividades):
 
     def test_factores_externos_va_al_tubo_sin_fecha(self):
         self.entrar('55555555-5')
-        respuesta = self.registrar(depende_externos='on', fecha_realizacion='')
+        respuesta = self.registrar(tubo=True)
         self.assertRedirects(respuesta, reverse('actividades:tubo_trabajo'))
         actividad = Actividad.objects.get()
         self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos), ('EN_TUBO', None, True))
@@ -153,17 +151,30 @@ class RegistroActividadTest(BaseActividades):
     def test_tubo_con_fecha_de_realizacion_opcional(self):
         self.entrar('55555555-5')
         futura = self.hoy + timedelta(days=6)
-        self.assertRedirects(self.registrar(depende_externos='on', fecha_realizacion=futura.isoformat()),
-                             reverse('actividades:tubo_trabajo'))
+        self.assertRedirects(self.registrar(tubo=True, fecha_realizacion=futura.isoformat()), reverse('actividades:tubo_trabajo'))
         actividad = Actividad.objects.get()
-        self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos), ('PROGRAMADA', futura, True))
-        self.assertEqual(self.folios_tubo(), [actividad.folio()])  # sigue en el Tubo, ahora con fecha
+        # Con fecha sigue siendo del Tubo (no pasa a programada) hasta que se realice
+        self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos), ('EN_TUBO', futura, True))
+        self.assertEqual(self.folios_tubo(), [actividad.folio()])
+        self.assertEqual(self.folios_tubo(estado='CON_FECHA'), [actividad.folio()])
         # Una fecha pasada en el Tubo no se acepta
-        self.registrar(depende_externos='on', fecha_realizacion=(self.hoy - timedelta(days=1)).isoformat())
+        self.registrar(tubo=True, fecha_realizacion=(self.hoy - timedelta(days=1)).isoformat())
         self.assertEqual(Actividad.objects.count(), 1)
         # La tabla dice que aún no hay fecha cuando no se eligió
-        self.registrar(depende_externos='on', fecha_realizacion='')
+        self.registrar(tubo=True)
         self.assertContains(self.client.get(reverse('actividades:tubo_trabajo')), 'Aún no se ha agregado fecha de realización')
+
+    def test_formularios_del_tubo_y_normal_son_distintos(self):
+        self.entrar('55555555-5')
+        normal = self.client.get(reverse('actividades:actividad_crear'))
+        tubo = self.client.get(reverse('actividades:actividad_crear_tubo'))
+        self.assertNotIn('depende_externos', normal.context['form'].fields)  # ya no se marca: cada uno tiene su formulario
+        self.assertNotContains(tubo, 'name="imagen"')                        # en el Tubo no hay evidencia
+        self.assertContains(normal, 'name="imagen"')
+        self.assertContains(tubo, 'Agregar al Tubo de Trabajo')
+        # Lo que se registra en el formulario normal nunca va al Tubo, aunque llegue el dato
+        self.registrar(depende_externos='on', fecha_realizacion=(self.hoy + timedelta(days=3)).isoformat())
+        self.assertEqual((Actividad.objects.get().depende_externos, self.folios_tubo()), (False, []))
 
     def test_ya_no_hay_contacto_ni_telefono_en_la_actividad(self):
         self.assertFalse(hasattr(Actividad(), 'contacto'))
@@ -188,12 +199,15 @@ class EvidenciaYEncargadoTest(BaseActividades):
         actividad.refresh_from_db()
         self.assertEqual((actividad.estado, actividad.fecha_realizacion), ('EVIDENCIA_INGRESADA', self.hoy))
 
-    def test_evidencia_exige_comentario(self):
+    def test_descripcion_de_la_evidencia_solo_con_foto(self):
         actividad = self.crear()
         self.entrar('55555555-5')
-        self.agregar_evidencia(actividad, comentario='', imagen=foto())
+        self.agregar_evidencia(actividad, comentario='Se hizo la reunión')  # descripción sin foto: no
         actividad.refresh_from_db()
         self.assertEqual((actividad.estado, actividad.evidencias.count()), ('PROGRAMADA', 0))
+        self.agregar_evidencia(actividad, comentario='Asistentes', imagen=foto())
+        actividad.refresh_from_db()
+        self.assertEqual((actividad.estado, actividad.evidencia_vigente().comentario), ('EVIDENCIA_INGRESADA', 'Asistentes'))
 
     def test_solo_quien_registro_o_el_encargado_agregan_evidencia(self):
         actividad = self.crear()
@@ -219,8 +233,8 @@ class EvidenciaYEncargadoTest(BaseActividades):
         fecha = self.hoy + timedelta(days=4)
         self.client.post(url, {'fecha_realizacion': fecha.isoformat()})
         actividad.refresh_from_db()
-        self.assertEqual((actividad.estado, actividad.fecha_realizacion), ('PROGRAMADA', fecha))
-        self.assertEqual(self.folios_tubo(), [actividad.folio()])  # sigue pendiente en el Tubo
+        self.assertEqual((actividad.estado, actividad.fecha_realizacion), ('EN_TUBO', fecha))
+        self.assertEqual(self.folios_tubo(), [actividad.folio()])  # sigue en el Tubo hasta que se realice
         self.assertEqual(self.folios_tubo(estado='SIN_FECHA'), [])
         self.assertEqual(self.folios_tubo(estado='CON_FECHA'), [actividad.folio()])
 
@@ -239,11 +253,19 @@ class EvidenciaYEncargadoTest(BaseActividades):
         ajena = self.crear(usuario=self.otro, territorio=self.territorio_rural)
         self.assertIsNone(self.asignar(ajena, self.otro))
 
-    def test_coordinador_no_asigna_y_admin_asigna_en_todas_las_delegaciones(self):
+    def test_coordinador_y_admin_asignan_en_todas_las_delegaciones(self):
         actividad = self.crear()
-        self.entrar('22222222-2')  # el Coordinador supervisa: no interviene en las actividades de los funcionarios
-        self.assertIsNone(self.asignar(actividad, self.otro))
+        self.entrar('22222222-2')  # el Coordinador asigna encargados en cualquier delegación...
+        self.assertIsNone(self.asignar(actividad, self.otro))  # ...pero solo Funcionarios de la delegación de la actividad
+        self.assertEqual(self.asignar(actividad, self.companero), self.companero)
+        ajena = self.crear(usuario=self.otro, territorio=self.territorio_rural)
+        self.assertIsNone(self.asignar(ajena, self.companero))  # Las Compañías no queda a cargo de una de Rural
         self.entrar('11111111-1')
+        self.assertIsNone(self.asignar(ajena, self.companero))
+        # Al modificar la actividad, el Admin también elige solo entre los de esa delegación
+        from ActividadesApp.forms import funcionarios_para
+        self.assertNotIn(self.companero, list(funcionarios_para(self.admin, ajena)))
+        self.assertIn(self.companero, list(funcionarios_para(self.admin, actividad)))
         self.assertEqual(self.asignar(actividad, self.companero), self.companero)
 
     def test_funcionario_no_asigna_encargado(self):
@@ -260,8 +282,7 @@ class EvidenciaYEncargadoTest(BaseActividades):
         actividad, evidencia = self.con_evidencia(encargado=self.companero)
         self.entrar('33333333-3')
         self.client.post(reverse('actividades:validar_evidencia', args=[evidencia.pk]), {'decision': 'APROBAR', 'otorga_puntaje': 'SI'})
-        avance = {u.username: indicadores_usuario(u, self.datos['periodo'], self.hoy)[0].avance_actual
-                  for u in [self.func, self.companero]}
+        avance = {u.username: indicadores_usuario(u, self.datos['periodo'], self.hoy)[0].avance_actual for u in [self.func, self.companero]}
         self.assertEqual(avance, {'55555555-5': 0, '77777777-7': 1})
 
     def test_encargado_ve_la_actividad_en_mi_gestion(self):
@@ -278,9 +299,7 @@ class BitacoraTest(BaseActividades):
     def test_responsable_y_delegado_comentan_con_fecha(self):
         actividad = self.crear()
         self.entrar('55555555-5')
-        self.assertRedirects(self.comentar(actividad),
-                             reverse('actividades:actividad_detalle', args=[actividad.pk]) + '#bitacora',
-                             fetch_redirect_response=False)
+        self.assertRedirects(self.comentar(actividad), reverse('actividades:actividad_detalle', args=[actividad.pk]) + '#bitacora', fetch_redirect_response=False)
         self.entrar('33333333-3')
         self.comentar(actividad, 'Revisado por el Delegado')
         comentarios = list(actividad.comentarios.all())
@@ -330,7 +349,7 @@ class ValidacionTest(BaseActividades):
         detalle = self.client.get(reverse('actividades:actividad_detalle', args=[actividad.pk]))
         self.assertContains(detalle, 'Falta indicar con quién se reunió')
         self.assertTrue(detalle.context['puede_registrar_evidencia'])
-        self.agregar_evidencia(actividad, comentario='Reunión con la directiva completa')
+        self.agregar_evidencia(actividad, comentario='Reunión con la directiva completa', imagen=foto())
         actividad.refresh_from_db()
         nueva = actividad.evidencia_vigente()
         self.assertEqual((actividad.estado, nueva.version, nueva.reemplaza_a_id), ('EVIDENCIA_INGRESADA', 2, evidencia.pk))
@@ -344,8 +363,7 @@ class ValidacionTest(BaseActividades):
 
     def test_compromiso_cuenta_en_el_trimestre_en_que_se_realiza(self):
         from IndicadoresApp.models import Periodo
-        anterior = Periodo.objects.create(nombre='Anterior', fecha_inicio=self.hoy - timedelta(days=60),
-                                          fecha_termino=self.hoy - timedelta(days=10), dias_computables=40)
+        anterior = Periodo.objects.create(nombre='Anterior', fecha_inicio=self.hoy - timedelta(days=60), fecha_termino=self.hoy - timedelta(days=10), dias_computables=40)
         actividad = self.crear()
         actividad.periodo = anterior
         actividad.save()
@@ -360,7 +378,7 @@ class TuboYMiGestionTest(BaseActividades):
         propio = self.crear('EN_TUBO')
         ajeno = self.crear('EN_TUBO', usuario=self.companero, territorio=self.territorio_bajo)
         con_fecha = self.crear(dias=-2)
-        con_fecha.depende_externos = True  # vino del Tubo y ya tiene fecha (vencida)
+        con_fecha.depende_externos, con_fecha.estado = True, 'EN_TUBO'  # del Tubo, con fecha (vencida)
         con_fecha.save()
         self.crear(dias=3)  # compromiso común: no es del Tubo
         # El Funcionario ve solo lo suyo y solo filtra por estado (los otros filtros se ignoran)
@@ -470,7 +488,8 @@ class SolicitudSocialTest(BaseActividades):
 
     def agregar_atencion(self, **extra):
         datos = {'nombre_solicitante': 'Juan Ficticio', 'rut_solicitante': '11.222.333-9', 'telefono_solicitante': '987654321',
-                 'tipo_atencion': self.tipo.pk, 'subtipo_atencion': '', 'agregar_solicitante': 'True'}
+                 'tipo_atencion': self.tipo.pk, 'subtipo_atencion': '', 'agregar_solicitante': 'True',
+                 'detalle_solicitud': 'Pide apoyo para reparar su techo'}
         datos.update(extra)
         return self.client.post(reverse('actividades:atencion_crear'), datos)
 
@@ -484,6 +503,17 @@ class SolicitudSocialTest(BaseActividades):
         self.assertNotIn('Pestaña Personal', html)
         self.assertNotIn('1RA GESTIÓN', html)  # las acciones son las actividades vinculadas
         self.assertIn(self.func.get_full_name(), html)  # se ve quién la registró
+
+    def test_atencion_exige_la_solicitud_y_la_accion_pendiente_es_opcional(self):
+        self.entrar('55555555-5')
+        self.assertEqual(self.agregar_atencion(detalle_solicitud='  ').status_code, 200)
+        self.assertEqual(AtencionSocial.objects.count(), 0)
+        self.agregar_atencion(accion_pendiente='Coordinar visita domiciliaria')
+        atencion = AtencionSocial.objects.get()
+        self.assertEqual((atencion.detalle_solicitud, atencion.accion_pendiente),
+                         ('Pide apoyo para reparar su techo', 'Coordinar visita domiciliaria'))
+        detalle = self.client.get(reverse('actividades:atencion_detalle', args=[atencion.pk]))
+        self.assertContains(detalle, 'Coordinar visita domiciliaria')
 
     def test_delegado_y_coordinador_solo_visualizan(self):
         for rut in ['33333333-3', '22222222-2']:

@@ -1,0 +1,29 @@
+{% comment %}
+Barra de Administración: reemplaza a la barra de pestañas del SGR en las pantallas de administración (bloque
+barra_pestanas de base.html), en rojo con letras blancas para que se note que es otra parte del sistema.
+Cada sección es ?pestana= de users:administracion; Auditoría es su propia pantalla. Ocultar un enlace no protege
+la pantalla: cada vista revisa también el permiso.
+{% endcomment %}
+{% with nombre=request.resolver_match.url_name pestana=request.GET.pestana %}
+<div class="sgr-barra-admin">
+    <div class="container-fluid d-flex align-items-center gap-2">
+        <span class="sgr-barra-admin-titulo d-none d-lg-inline"><i class="bi bi-gear-fill me-1"></i>Administración</span>
+        <ul class="nav flex-nowrap text-uppercase fw-semibold" id="adminTabs">
+            {% if request.user.puede_ver_usuarios %}
+            <li class="nav-item"><a class="nav-link {% if nombre == 'administracion' and not pestana %}active{% endif %}" href="{% url 'users:administracion' %}"><i class="bi bi-grid me-1"></i>Panel</a></li>
+            {% if not request.user.es_delegado %}
+            <li class="nav-item"><a class="nav-link {% if pestana == 'delegaciones' or nombre == 'delegacion_crear' or nombre == 'delegacion_editar' %}active{% endif %}" href="{% url 'users:administracion' %}?pestana=delegaciones"><i class="bi bi-diagram-3 me-1"></i>Delegaciones</a></li>
+            {% endif %}
+            <li class="nav-item"><a class="nav-link {% if pestana == 'usuarios' or nombre == 'usuario_editar' %}active{% endif %}" href="{% url 'users:administracion' %}?pestana=usuarios"><i class="bi bi-people me-1"></i>{% if request.user.es_delegado %}Funcionarios{% else %}Usuarios{% endif %}</a></li>
+            {% if perms.IndicadoresApp.view_metadesempeno %}
+            <li class="nav-item"><a class="nav-link {% if pestana == 'metas' or pestana == 'periodos' or nombre == 'meta_editar' or nombre == 'ponderacion_editar' or nombre == 'periodo_editar' %}active{% endif %}" href="{% url 'users:administracion' %}?pestana=metas"><i class="bi bi-bullseye me-1"></i>Metas y periodos</a></li>
+            {% endif %}
+            {% endif %}
+            {% if request.user.puede_administrar %}
+            <li class="nav-item"><a class="nav-link {% if nombre == 'logs' %}active{% endif %}" href="{% url 'auditoria:logs' %}"><i class="bi bi-clock-history me-1"></i>Auditoría</a></li>
+            {% endif %}
+        </ul>
+        <a href="{% url 'actividades:mi_gestion' %}" class="btn btn-sm btn-outline-light ms-auto text-nowrap"><i class="bi bi-arrow-left me-1"></i>Volver al SGR</a>
+    </div>
+</div>
+{% endwith %}

@@ -1,103 +1,179 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Semáforo Institucional — Ilustre Municipalidad de La Serena{% endblock %}
 
 {% block content %}
 <main class="container-fluid p-4">
-    <h3 class="fw-bold mb-3"><i class="bi bi-stoplights me-2 text-danger"></i>Semáforo: Seguimiento de Avance al Día</h3>
-
-    <div class="row g-4">
-        <div class="col-lg-8">
-            <div class="card shadow-sm border-0">
-                {# Sin botones de agregar ni modificar: los indicadores se calculan solos desde las actividades validadas #}
-                <div class="card-header bg-muni text-white fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <span>Monitoreo por Responsable de Área</span>
-                    {% include 'indicadores/components/buscar.html' with texto='Ingresa nombre o RUT' %}
-                </div>
-                    <div class="tarjeta-tabla table-responsive">
-                        <table class="table table-hover tabla-sgr text-center">
-                            <thead>
-                            <tr>
-                                <th>ÁREA</th>
-                                <th>RESPONSABLE</th>
-                                <th>OBJETIVO HOY</th>
-                                <th>MÍNIMO (60%)</th>
-                                <th>AVANCE LOGRADO</th>
-                                <th>DÍAS AUSENTE</th>
-                                <th>SEMÁFORO</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for item in seguimiento %}
-                            <tr>
-                                <td class="text-start" data-cell="ÁREA">{{ item.area }}</td>
-                                <td data-cell="RESPONSABLE">{{ item.responsable }}</td>
-                                <td data-cell="OBJETIVO">{{ item.objetivo_hoy }}%</td>
-                                <td data-cell="MÍNIMO">{{ item.minimo }}%</td>
-                                <td class="fw-bold" data-cell="AVANCE">{{ item.avance_logrado }}%{% if item.items_en_tope %} <i class="bi bi-exclamation-triangle-fill text-warning" title="Ítems al tope: {{ item.items_en_tope|join:', ' }}"></i>{% endif %}</td>
-                                <td data-cell="DÍAS AUSENTE">{{ item.dias_ausencia|default:"-" }}</td>
-                                <td data-cell="SEMÁFORO">
-                                    {% if item.color == 'VERDE' %}
-                                    <span class="badge bg-success px-3 py-2"><i class="bi bi-circle-fill me-1"></i> VERDE</span>
-                                    {% elif item.color == 'AMBAR' %}
-                                    <span class="badge bg-muni-v4 text-dark px-3 py-2"><i class="bi bi-circle-fill me-1"></i> ÁMBAR</span>
-                                    {% else %}
-                                    <span class="badge bg-muni px-3 py-2"><i class="bi bi-circle-fill me-1"></i> ROJO</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="7" class="text-center text-muted py-3">{% if q %}Ningún responsable coincide con "{{ q }}".{% else %}No hay métricas registradas para la fecha.{% endif %}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                        </table>
-                    </div>
-            </div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <h3 class="fw-bold mb-0"><i class="bi bi-stoplights me-2 text-danger"></i>Semáforo: Seguimiento de Avance al Día</h3>
+            {% if periodo %}<small class="text-muted">{{ periodo }} · día {{ dias_transcurridos }} de {{ periodo.dias_computables }} · evaluado el {% now "d/m/Y" %}</small>{% endif %}
         </div>
+        {# RF-033: exporta lo que muestra la tabla, con los mismos filtros (delegación y búsqueda) #}
+        <a href="{% url 'indicadores:semaforo_exportar' %}?{{ request.GET.urlencode }}" class="btn btn-sm btn-outline-dark text-nowrap" title="Descargar la tabla en CSV (Excel)"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Exportar</a>
+    </div>
 
-        <div class="col-lg-4">
-            <div class="card shadow-sm border-0 mb-3 border-start border-4 border-{% if resumen.cumple_colectivo %}success{% else %}warning{% endif %}">
-                <div class="card-body">
-                    <span class="text-muted small">Puntaje colectivo del equipo</span>
-                    <h3 class="fw-bold mb-0">{{ resumen.puntaje_colectivo }}%</h3>
-                    {% if resumen.umbral_colectivo %}<small class="text-muted">Meta colectiva hoy: {{ resumen.meta_colectiva }}% ({{ resumen.umbral_colectivo|floatformat:0 }}% de lo esperado)</small>{% endif %}
-                </div>
-            </div>
-
-            <div class="card shadow-sm border-0 mb-3">
-                <div class="card-header bg-muni-b2 text-white fw-bold text-center">META SEGÚN AVANCE DEL DÍA</div>
-                <div class="card-body text-center bg-gris-10">
-                    <h2 class="display-6 fw-bold text-danger">{{ dias_transcurridos }} / {{ porcentaje_esperado }}%</h2>
-                    <hr>
-                    <div class="d-flex justify-content-between text-muted small">
-                        <span>Fecha Evaluación:</span>
-                        <strong>{% now "d M Y" %}</strong>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-gris-90 text-white fw-bold text-center">PARÁMETROS DEL TRIMESTRE</div>
-                <div class="card-body p-0">
-                    <ul class="list-group list-group-flush small">
-                        <li class="list-group-item d-flex justify-content-between"><span>FECHA INICIO:</span> <strong>{{ periodo.fecha_inicio|date:"d/m/Y" }}</strong></li>
-                        <li class="list-group-item d-flex justify-content-between"><span>FECHA TÉRMINO:</span> <strong>{{ periodo.fecha_termino|date:"d/m/Y" }}</strong></li>
-                        <li class="list-group-item d-flex justify-content-between"><span>DÍAS TOTALES:</span> <strong>{{ periodo.dias_computables }} días</strong></li>
-                    </ul>
-                </div>
-            </div>
+    <!-- 1. Cuántos responsables hay en cada color (toda la delegación elegida) -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-xl-3">
+            <div class="card border-0 h-100"><div class="card-body p-4">
+                <span class="text-muted small">Responsables evaluados</span>
+                <div class="indicador-numero mt-1">{{ total_responsables }}</div>
+                <small class="text-muted">{% if colores.SIN_MEDIR.cantidad %}{{ colores.SIN_MEDIR.cantidad }} sin medir (ponderación incompleta){% else %}Todos con medición{% endif %}</small>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card border-0 h-100"><div class="card-body p-4">
+                <span class="text-muted small"><i class="bi bi-circle-fill text-success me-1"></i>Verde · al día</span>
+                <div class="indicador-numero mt-1">{{ colores.VERDE.cantidad }}</div>
+                <div class="progress mt-2"><div class="progress-bar bg-success" style="width: {{ colores.VERDE.porcentaje }}%"></div></div>
+                <small class="text-muted">{{ colores.VERDE.porcentaje }}% del equipo</small>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card border-0 h-100"><div class="card-body p-4">
+                <span class="text-muted small"><i class="bi bi-circle-fill text-warning me-1"></i>Ámbar · atrasados</span>
+                <div class="indicador-numero mt-1">{{ colores.AMBAR.cantidad }}</div>
+                <div class="progress mt-2"><div class="progress-bar bg-warning" style="width: {{ colores.AMBAR.porcentaje }}%"></div></div>
+                <small class="text-muted">{{ colores.AMBAR.porcentaje }}% del equipo</small>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card border-0 h-100"><div class="card-body p-4">
+                <span class="text-muted small"><i class="bi bi-circle-fill text-danger me-1"></i>Rojo · muy atrasados</span>
+                <div class="indicador-numero mt-1">{{ colores.ROJO.cantidad }}</div>
+                <div class="progress mt-2"><div class="progress-bar bg-danger" style="width: {{ colores.ROJO.porcentaje }}%"></div></div>
+                <small class="text-muted">{{ colores.ROJO.porcentaje }}% del equipo</small>
+            </div></div>
         </div>
     </div>
 
+    <!-- 2. Avance del equipo (medidor), distribución por color y parámetros del periodo -->
+    <div class="row g-4 mb-4">
+        <div class="col-lg-4">
+            <div class="card border-0 h-100"><div class="card-body p-4 text-center">
+                <h6 class="fw-bold text-start mb-3">Puntaje colectivo del equipo</h6>
+                {% if graficos.avance %}
+                <div class="medidor">
+                    <canvas id="grafico-avance" role="img" aria-label="Puntaje colectivo {{ resumen.puntaje_colectivo }}%"></canvas>
+                    <div class="medidor-valor">
+                        <span class="medidor-numero">{{ resumen.puntaje_colectivo }}%</span>
+                        <span class="medidor-texto">Esperado hoy: {{ porcentaje_esperado }}%</span>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-center gap-2 mt-2 flex-wrap">
+                    <span class="badge {% if resumen.cumple_colectivo %}bg-success{% else %}bg-warning text-dark{% endif %}">Meta colectiva hoy: {{ resumen.meta_colectiva }}%</span>
+                </div>
+                <small class="text-muted d-block mt-2">Se cumple al llegar al {{ resumen.umbral_colectivo|floatformat:0 }}% de lo esperado a la fecha.</small>
+                {% else %}
+                <p class="text-muted my-5">No hay un periodo vigente.</p>
+                {% endif %}
+            </div></div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 h-100"><div class="card-body p-4">
+                <h6 class="fw-bold mb-3">Distribución del semáforo</h6>
+                {% if total_responsables %}
+                <div class="grafico-anillo"><canvas id="grafico-estados" role="img" aria-label="Responsables por color del semáforo"></canvas></div>
+                {% else %}
+                <p class="text-muted text-center my-5">Sin responsables evaluados.</p>
+                {% endif %}
+            </div></div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card border-0 h-100"><div class="card-body p-4">
+                <h6 class="fw-bold mb-3">Avance del trimestre</h6>
+                {% if periodo %}
+                <div class="d-flex justify-content-between small mb-1"><span>Día {{ dias_transcurridos }} de {{ periodo.dias_computables }}</span><strong>{{ porcentaje_esperado }}%</strong></div>
+                <div class="progress mb-4" style="height: .6rem"><div class="progress-bar bg-dark" style="width: {{ porcentaje_esperado|floatformat:0 }}%"></div></div>
+                <dl class="perfil-datos-lista small mb-0">
+                    <dt>Inicio</dt><dd>{{ periodo.fecha_inicio|date:"d/m/Y" }}</dd>
+                    <dt>Término</dt><dd>{{ periodo.fecha_termino|date:"d/m/Y" }}</dd>
+                    <dt>Días computables</dt><dd>{{ periodo.dias_computables }}</dd>
+                    <dt>Verde desde</dt><dd>{{ periodo.umbral_verde|floatformat:0 }}% de lo esperado</dd>
+                    <dt>Ámbar desde</dt><dd>{{ periodo.umbral_ambar|floatformat:0 }}% de lo esperado</dd>
+                </dl>
+                {% else %}
+                <p class="text-muted my-5 text-center">No hay un periodo vigente.</p>
+                {% endif %}
+            </div></div>
+        </div>
+    </div>
+
+    <!-- 3. Detalle por responsable: barra de avance con la marca de lo esperado a hoy -->
+    {# Sin botones de agregar ni modificar: los indicadores se calculan solos desde las actividades validadas #}
+    <div class="card border-0">
+        <div class="card-body p-4 pb-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <h6 class="fw-bold m-0">Monitoreo por Responsable de Área</h6>
+            {% include 'indicadores/components/buscar.html' with texto='Ingresa nombre o RUT' %}
+        </div>
+        <div class="tarjeta-tabla table-responsive">
+            <table class="table table-hover tabla-sgr text-center mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-start">RESPONSABLE</th>
+                        <th>ÁREA</th>
+                        <th>OBJETIVO HOY</th>
+                        <th>MÍNIMO ({{ periodo.umbral_ambar|floatformat:0|default:"60" }}%)</th>
+                        <th class="col-avance">AVANCE LOGRADO</th>
+                        <th>DÍAS AUSENTE</th>
+                        <th>SEMÁFORO</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in seguimiento %}
+                    <tr>
+                        <td class="text-start fw-semibold" data-cell="RESPONSABLE">{{ item.responsable }}</td>
+                        <td data-cell="ÁREA">{{ item.area }}</td>
+                        <td data-cell="OBJETIVO">{{ item.objetivo_hoy }}%</td>
+                        <td data-cell="MÍNIMO">{{ item.minimo }}%</td>
+                        <td data-cell="AVANCE">
+                            {# Escala hasta el 120%; la línea negra marca lo esperado a hoy #}
+                            <div class="avance-celda">
+                                <div class="avance-barra" title="Avance {{ item.avance_logrado }}% · esperado {{ item.objetivo_hoy }}%">
+                                    <span class="avance-relleno {% if item.color == 'VERDE' %}bg-success{% elif item.color == 'AMBAR' %}bg-warning{% elif item.sin_medir %}bg-secondary{% else %}bg-danger{% endif %}" style="width: {% widthratio item.avance_logrado 120 100 %}%"></span>
+                                    <span class="avance-marca" style="left: {% widthratio item.objetivo_hoy 120 100 %}%"></span>
+                                </div>
+                                <strong>{{ item.avance_logrado }}%</strong>{% if item.items_en_tope %} <i class="bi bi-exclamation-triangle-fill text-warning" title="Ítems al tope: {{ item.items_en_tope|join:', ' }}"></i>{% endif %}
+                            </div>
+                        </td>
+                        <td data-cell="DÍAS AUSENTE">{{ item.dias_ausencia|default:"-" }}</td>
+                        <td data-cell="SEMÁFORO">
+                            {% if item.color == 'VERDE' %}
+                            <span class="badge bg-success px-3 py-2"><i class="bi bi-circle-fill me-1"></i> VERDE</span>
+                            {% elif item.color == 'AMBAR' %}
+                            <span class="badge bg-muni-v4 text-dark px-3 py-2"><i class="bi bi-circle-fill me-1"></i> ÁMBAR</span>
+                            {% elif item.sin_medir %}
+                            <span class="badge bg-secondary px-3 py-2" title="{{ item.sin_medir }}" data-bs-toggle="tooltip"><i class="bi bi-dash-circle me-1"></i> SIN MEDIR</span>
+                            {% else %}
+                            <span class="badge bg-muni px-3 py-2"><i class="bi bi-circle-fill me-1"></i> ROJO</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-3">{% if q %}Ningún responsable coincide con "{{ q }}".{% else %}No hay métricas registradas para la fecha.{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{ graficos|json_script:"datos-graficos" }}
+
     {% if puede_ausencias %}
     <!-- Ausencias del periodo: ajustan las metas de cada usuario a los días que trabaja -->
-    <div class="card shadow-sm border-0 mt-4" id="ausencias">
-        <div class="card-header bg-muni text-white fw-bold">Ausencias del periodo (vacaciones, días administrativos y licencias)</div>
-        <div class="card-body">
-            <p class="text-muted small">Los días de ausencia se descuentan de los días del trimestre y la meta de la persona se ajusta sola. Por ejemplo, con 14 días de vacaciones en un trimestre de 90 días, la meta se mide sobre 76.</p>
-            <form method="post" action="{% url 'indicadores:ausencia_crear' %}" class="row g-2 align-items-end mb-3">
+    <div class="card border-0 mt-4" id="ausencias">
+        <div class="card-body p-4 pb-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <h6 class="fw-bold m-0">Ausencias del periodo</h6>
+                <small class="text-muted">Vacaciones, días administrativos y licencias: la meta de la persona se ajusta a los días que trabaja.</small>
+            </div>
+            <button class="btn btn-sm btn-muni" type="button" data-bs-toggle="collapse" data-bs-target="#form_ausencia" aria-expanded="{% if form_ausencia.errors %}true{% else %}false{% endif %}" aria-controls="form_ausencia"><i class="bi bi-plus-circle me-1"></i>Registrar ausencia</button>
+        </div>
+        <div class="card-body pt-2">
+            <form method="post" action="{% url 'indicadores:ausencia_crear' %}" class="row g-2 align-items-end mb-3 collapse {% if form_ausencia.errors %}show{% endif %}" id="form_ausencia">
                 {% csrf_token %}
                 <div class="col-md-3">
                     <label class="form-label small mb-1" for="id_persona">Funcionario o delegado</label>
@@ -156,4 +232,9 @@
     </div>
     {% endif %}
 </main>
-{% endblock %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha512-CQBWl4fJHWbryGE+Pc7UAxWMUMNMWzWxF4SQo9CgkJIN1kx6djDQZjh3Y8SZ1d+6I+1zze6Z7kHXO7q3UyZAWw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="{% static 'js/graficos.js' %}?v=2026-11-24"></script>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends 'users/base_acceso.html' %}
+
+{% block title %}Página no encontrada{% endblock %}
+{% block encabezado %}Página no encontrada{% endblock %}
+
+{% block contenido %}
+{# Página propia: con DEBUG=False Django no muestra rutas ni detalles internos #} <!--(OWASP A02) -->
+<div class="text-center">
+    <i class="bi bi-signpost-split text-secondary" style="font-size: 3rem;"></i>
+    <p class="mt-3">La página que busca no existe o fue movida.</p>
+    <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-sm mt-2"><i class="bi bi-house me-1"></i>Volver al inicio</a>
+</div>
+{% endblock %}

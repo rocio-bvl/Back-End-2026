@@ -1,24 +1,58 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Resumen Ejecutivo — Ilustre Municipalidad de La Serena{% endblock %}
 
 {% block content %}
 <main class="container-fluid p-4">
-    <h3 class="fw-bold mb-3"><i class="bi bi-building-gear me-2 text-danger"></i>Resumen Ejecutivo: {{ delegacion_nombre|default:"Delegación Las Compañías" }}</h3>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <h3 class="fw-bold mb-0"><i class="bi bi-building-gear me-2 text-danger"></i>Resumen Ejecutivo: {{ delegacion_nombre|default:"Delegación Las Compañías" }}</h3>
+            {% if periodo %}<small class="text-muted">{{ periodo }}</small>{% endif %}
+        </div>
+        {% if perms.IndicadoresApp.add_metadesempeno %}
+        <a href="{% url 'users:administracion' %}?pestana=metas" class="btn btn-sm btn-muni text-nowrap"><i class="bi bi-plus-circle me-1"></i>Agregar Meta</a>
+        {% endif %}
+    </div>
+
+    <!-- 1. Indicadores de la delegación -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-xl-3"><div class="card border-0 h-100"><div class="card-body p-4">
+            <i class="bi bi-people indicador-icono text-danger"></i>
+            <div class="indicador-numero mt-1">{{ total_equipo }}</div><span class="text-muted small">Integrantes evaluados</span>
+        </div></div></div>
+        <div class="col-6 col-xl-3"><div class="card border-0 h-100"><div class="card-body p-4">
+            <i class="bi bi-bullseye indicador-icono text-primary"></i>
+            <div class="indicador-numero mt-1">{{ comisiones|length }}</div><span class="text-muted small">Comisiones con meta</span>
+        </div></div></div>
+        <div class="col-6 col-xl-3"><div class="card border-0 h-100"><div class="card-body p-4">
+            <i class="bi bi-check2-all indicador-icono text-success"></i>
+            <div class="indicador-numero mt-1">{{ comisiones_cumplidas }}</div><span class="text-muted small">Comisiones cumplidas (100% o más)</span>
+        </div></div></div>
+        <div class="col-6 col-xl-3"><div class="card border-0 h-100"><div class="card-body p-4">
+            <i class="bi bi-graph-up-arrow indicador-icono text-warning"></i>
+            <div class="indicador-numero mt-1">{{ cumplimiento_promedio }}%</div><span class="text-muted small">Cumplimiento promedio</span>
+            <div class="progress mt-2"><div class="progress-bar bg-muni" style="width: {% widthratio cumplimiento_promedio 120 100 %}%"></div></div>
+        </div></div></div>
+    </div>
 
     <div class="row g-4">
-        <div class="col-lg-7">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-muni-b1 fw-bold text-white d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <span>Comisiones y Cumplimiento Ponderado Global</span>
-                    {% if perms.IndicadoresApp.add_metadesempeno %}
-                    <a href="{% url 'users:administracion' %}?pestana=metas" class="btn btn-sm btn-light text-nowrap">
-                        <i class="bi bi-plus-circle me-1"></i>Agregar Meta
-                    </a>
-                    {% endif %}
-                </div>
+        <div class="col-lg-8">
+            <!-- 2. Gráfico de cumplimiento por comisión -->
+            <div class="card border-0 mb-4"><div class="card-body p-4">
+                <h6 class="fw-bold mb-3">Cumplimiento por comisión</h6>
+                {% if graficos.barras %}
+                <div class="grafico-barras"><canvas id="grafico-barras" role="img" aria-label="Cumplimiento por comisión"></canvas></div>
+                {% else %}
+                <p class="text-muted text-center my-4">No hay metas configuradas para el periodo vigente.</p>
+                {% endif %}
+            </div></div>
+
+            <!-- 3. Detalle de las comisiones -->
+            <div class="card border-0">
+                <div class="card-body p-4 pb-2"><h6 class="fw-bold m-0">Comisiones y Cumplimiento Ponderado Global</h6></div>
                     <div class="tarjeta-tabla table-responsive">
-                        <table class="table table-hover tabla-sgr tabla-compacta text-center">
+                        <table class="table table-hover tabla-sgr tabla-compacta text-center mb-0">
                             <thead>
                             <tr>
                                 <th>CARGO</th>
@@ -34,13 +68,18 @@
                         <tbody>
                             {% for item in comisiones %}
                             <tr>
-                                <td class="fw-bold bg-gris-0" data-cell="CARGO">{{ item.cargo }}</td>
+                                <td class="fw-bold" data-cell="CARGO">{{ item.cargo }}</td>
                                 <td class="text-start" data-cell="COMISIÓN">{{ item.nombre }}</td>
                                 <td data-cell="POND">{{ item.ponderacion }}%</td>
                                 <td data-cell="META">{{ item.meta }}</td>
                                 <td data-cell="AVANCE">{{ item.avance }}</td>
-                                <td data-cell="% CUMP">{{ item.porcentaje_cumplimiento }}%</td>
-                                <td data-cell="TOTAL">{{ item.total_ponderado }}%</td>
+                                <td data-cell="% CUMP">
+                                    <div class="avance-celda">
+                                        <div class="avance-barra"><span class="avance-relleno {% if item.porcentaje_cumplimiento >= 100 %}bg-success{% else %}bg-danger{% endif %}" style="width: {% widthratio item.porcentaje_cumplimiento 120 100 %}%"></span><span class="avance-marca" style="left: {% widthratio 100 120 100 %}%"></span></div>
+                                        <strong>{{ item.porcentaje_cumplimiento }}%</strong>
+                                    </div>
+                                </td>
+                                <td class="fw-bold" data-cell="TOTAL">{{ item.total_ponderado }}%</td>
                                 {% if perms.IndicadoresApp.change_metadesempeno %}
                                 <td data-cell="ACCIONES">
                                     {% if item.editable %}
@@ -68,59 +107,49 @@
             </div>
         </div>
 
-        <div class="col-lg-5">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-gris-90 text-white fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <span>Equipo Asignado - {{ delegacion_nombre }}</span>
-                    <div class="d-flex flex-wrap gap-2 align-items-center">
-                        {% include 'indicadores/components/buscar.html' with texto='Funcionario o RUT' %}
+        <!-- 4. Equipo de la delegación -->
+        <div class="col-lg-4">
+            <div class="card border-0">
+                <div class="card-body p-4">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <h6 class="fw-bold m-0">Equipo asignado</h6>
                         {% if perms.UsuarioApp.add_usuario %}
-                        <a href="{% url 'users:administracion' %}?pestana=usuarios" class="btn btn-sm btn-light text-nowrap">
-                            <i class="bi bi-person-plus me-1"></i>Agregar Usuario
-                        </a>
+                        <a href="{% url 'users:administracion' %}?pestana=usuarios" class="btn btn-sm btn-outline-dark text-nowrap"><i class="bi bi-person-plus me-1"></i>Agregar Usuario</a>
                         {% endif %}
                     </div>
-                </div>
-                    <div class="tarjeta-tabla table-responsive">
-                        <table class="table table-hover tabla-sgr tabla-compacta">
-                            <thead>
-                            <tr>
-                                <th>CARGO DELEGACIÓN</th>
-                                <th>FUNCIONARIO ASIGNADO</th>
-                                {% if perms.UsuarioApp.change_usuario %}<th>ACCIONES</th>{% endif %}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for funcionario in equipo %}
-                            <tr>
-                                <td data-cell="CARGO">{{ funcionario.cargo }}</td>
-                                <td class="fw-bold" data-cell="FUNCIONARIO">{{ funcionario.get_full_name }}</td>
-                                {% if perms.UsuarioApp.change_usuario %}
-                                <td data-cell="ACCIONES">
-                                    <div class="d-flex gap-1">
-                                        {% if funcionario.editable %}
-                                        <a href="{% url 'users:usuario_editar' funcionario.pk %}" class="btn btn-sm btn-outline-warning" title="Modificar usuario" aria-label="Modificar usuario"><i class="bi bi-pencil-square"></i></a>
-                                        {% endif %}
-                                        {% if funcionario.eliminable %}
-                                        <form method="post" action="{% url 'users:usuario_eliminar' funcionario.pk %}" data-confirmar="¿Eliminar a {{ funcionario.get_full_name }}? Si tiene registros, el sistema no lo permitirá y le sugerirá desactivarlo.">
-                                            {% csrf_token %}
-                                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar usuario" aria-label="Eliminar usuario"><i class="bi bi-trash"></i></button>
-                                        </form>
-                                        {% endif %}
-                                    </div>
-                                </td>
+                    {% include 'indicadores/components/buscar.html' with texto='Funcionario o RUT' %}
+                    <ul class="equipo-lista list-unstyled mt-3 mb-0">
+                        {% for funcionario in equipo %}
+                        <li>
+                            <span class="equipo-avatar">{{ funcionario.first_name|slice:":1" }}{{ funcionario.last_name|slice:":1" }}</span>
+                            <span class="flex-grow-1"><span class="fw-semibold d-block">{{ funcionario.get_full_name }}</span><small class="text-muted">{{ funcionario.cargo|default:"Sin cargo" }}</small></span>
+                            {% if perms.UsuarioApp.change_usuario %}
+                            <span class="d-flex gap-1">
+                                {% if funcionario.editable %}
+                                <a href="{% url 'users:usuario_editar' funcionario.pk %}" class="btn btn-sm btn-outline-warning" title="Modificar usuario" aria-label="Modificar usuario"><i class="bi bi-pencil-square"></i></a>
                                 {% endif %}
-                            </tr>
-                            {% empty %}
-                            <tr>
-                                <td colspan="3" class="text-muted text-center py-2">{% if q %}Ningún funcionario coincide con "{{ q }}".{% else %}Sin equipo asignado en el sistema.{% endif %}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                        </table>
-                    </div>
+                                {% if funcionario.eliminable %}
+                                <form method="post" action="{% url 'users:usuario_eliminar' funcionario.pk %}" data-confirmar="¿Eliminar a {{ funcionario.get_full_name }}? Si tiene registros, el sistema no lo permitirá y le sugerirá desactivarlo.">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Eliminar usuario" aria-label="Eliminar usuario"><i class="bi bi-trash"></i></button>
+                                </form>
+                                {% endif %}
+                            </span>
+                            {% endif %}
+                        </li>
+                        {% empty %}
+                        <li class="text-muted justify-content-center">{% if q %}Ningún funcionario coincide con "{{ q }}".{% else %}Sin equipo asignado en el sistema.{% endif %}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
+    {{ graficos|json_script:"datos-graficos" }}
 </main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha512-CQBWl4fJHWbryGE+Pc7UAxWMUMNMWzWxF4SQo9CgkJIN1kx6djDQZjh3Y8SZ1d+6I+1zze6Z7kHXO7q3UyZAWw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="{% static 'js/graficos.js' %}?v=2026-11-24"></script>
 {% endblock %}

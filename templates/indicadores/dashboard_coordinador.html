@@ -3,7 +3,7 @@ Resumen del Coordinador (grupo Supervisor) en Mi Gestión: compara las delegacio
 Las tarjetas de arriba siguen al selector de delegación; la tabla muestra todas y marca la elegida.
 {% endcomment %}
 <div class="p-3 p-md-4">
-    <div class="card shadow-sm border-0 mb-4">
+    <div class="card shadow-sm border-0">
         <div class="card-header bg-muni text-white fw-bold d-flex flex-wrap justify-content-between align-items-center gap-2">
             <span>Comparación entre delegaciones</span>
             <span class="badge bg-light text-dark">Actividades por validar en la comuna: {{ por_validar }}</span>
@@ -28,7 +28,7 @@ Las tarjetas de arriba siguen al selector de delegación; la tabla muestra todas
                         <td data-cell="RESPONSABLES">{{ fila.responsables }}</td>
                         <td data-cell="PENDIENTES">{{ fila.compromisos_pendientes_count }}</td>
                         <td data-cell="POR VALIDAR">{{ fila.por_validar }}</td>
-                        <td class="fw-bold" data-cell="PUNTAJE COLECTIVO">{{ fila.avance_periodo_porcentaje }}{% if fila.cumple_colectivo %} <i class="bi bi-check-circle-fill text-success" title="Cumple la meta colectiva"></i>{% endif %}</td>
+                        <td class="fw-bold" data-cell="PUNTAJE COLECTIVO">{{ fila.puntaje_colectivo }}%{% if fila.cumple_colectivo %} <i class="bi bi-check-circle-fill text-success" title="Cumple la meta colectiva"></i>{% endif %}</td>
                         <td data-cell="SEMÁFORO">
                             {% if fila.semaforo_color == 'VERDE' %}<span class="badge bg-success">VERDE</span>
                             {% elif fila.semaforo_color == 'AMBAR' %}<span class="badge bg-warning text-dark">ÁMBAR</span>
@@ -47,16 +47,5 @@ Las tarjetas de arriba siguen al selector de delegación; la tabla muestra todas
                 </tbody>
             </table>
         </div>
-    </div>
-
-    <div class="row g-3">
-        {% if perms.IndicadoresApp.view_metadesempeno %}
-        {% url 'indicadores:semaforo' as url_semaforo %}
-        {% include 'indicadores/components/acceso.html' with url=url_semaforo icono='bi-stoplights' titulo='Semáforo' texto='Avance al día de cada responsable.' %}
-        {% endif %}
-        {% url 'indicadores:resumen_delegacion' as url_resumen %}
-        {% include 'indicadores/components/acceso.html' with url=url_resumen icono='bi-building-gear' titulo='Resumen por delegación' texto='Metas, cumplimiento y equipo.' %}
-        {% url 'indicadores:atrasos_validacion' as url_atrasos %}
-        {% include 'indicadores/components/acceso.html' with url=url_atrasos icono='bi-hourglass-bottom' titulo='Atrasos de validación' texto='Reporte por delegado: evidencias sin validar y tiempo de respuesta.' %}
     </div>
 </div>

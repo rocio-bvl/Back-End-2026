@@ -1,31 +1,36 @@
 from decimal import Decimal
 
-from IndicadoresApp.models import IndicadorDesempeno, metas_para, dias_ausencia
+from IndicadoresApp.models import IndicadorDesempeno, dias_ausencia
 
 
-def indicadores_usuario(usuario, periodo, fecha):
-    lista = []
+def indicadores_usuario(usuario, periodo, fecha, datos=None):
+    """Indicadores de cada meta del usuario. datos (DatosMedicion) trae del periodo lo necesario en pocas consultas;
+    si no viene, se crea. No se guarda nada: el indicador se calcula al vuelo en cada pantalla."""
     if periodo is None or usuario.cargo_id is None:
-        return lista
-    metas = metas_para(usuario.cargo_id, periodo, usuario.delegacion_id)
-    for meta in metas:
-        indicador = IndicadorDesempeno.objects.filter(usuario=usuario, meta=meta, fecha_calculo=fecha).first()
-        if indicador is None:
-            indicador = IndicadorDesempeno(usuario=usuario, meta=meta, fecha_calculo=fecha)
+        return []
+    datos = datos or DatosMedicion(periodo)
+    lista = []
+    for meta in datos.metas_de(usuario.cargo_id, usuario.delegacion_id):
+        indicador = datos.indicador(usuario, meta, fecha)
         indicador.calcular()
         lista.append(indicador)
     return lista
 
 
 def total_ponderado(indicadores):
+    """Cumplimiento total: la suma de los cumplimientos ponderados, más los ajustes (por ejemplo, las felicitaciones).
+    Nunca supera el tope del periodo (120%), aunque los ajustes lo empujen más arriba."""
     total = Decimal('0')
     for indicador in indicadores:
         total = total + indicador.cumplimiento_ponderado
+    meta = getattr(indicadores[0], 'meta', None) if indicadores else None
+    if meta is not None:
+        total = min(total, meta.periodo.tope_cumplimiento)
     return round(total, 1)
 
 
-def seguimiento_usuario(usuario, periodo, fecha):
-    indicadores = indicadores_usuario(usuario, periodo, fecha)
+def seguimiento_usuario(usuario, periodo, fecha, datos=None):
+    indicadores = indicadores_usuario(usuario, periodo, fecha, datos)
     avance = total_ponderado(indicadores)
     objetivo_hoy = periodo.porcentaje_transcurrido(fecha)
     minimo = round(objetivo_hoy * periodo.umbral_ambar / 100, 1)
@@ -33,7 +38,7 @@ def seguimiento_usuario(usuario, periodo, fecha):
         logrado = avance * 100 / objetivo_hoy
     else:
         logrado = Decimal('100')
-    return {
+    fila = {
         'id': usuario.pk,
         'area': usuario.area() or '-',
         'responsable': usuario.get_full_name() or usuario.username,
@@ -44,3 +49,118 @@ def seguimiento_usuario(usuario, periodo, fecha):
         'dias_ausencia': indicadores[0].dias_ausencia() if indicadores else dias_ausencia(usuario, periodo),
         'items_en_tope': [ind.meta.item.nombre for ind in indicadores if ind.en_tope()],
     }
+    # Si la ponderación de su cargo no suma 100% (o falta una meta), el funcionario no se mide: sin color (RN-001)
+    fila['sin_medir'] = (datos or DatosMedicion(periodo)).estado(usuario.cargo_id, usuario.delegacion_id) if usuario.cargo_id else ''
+    if fila['sin_medir']:
+        fila['color'] = ''
+    return fila
+
+
+def ranking_cargo(usuario, periodo, fecha):
+    """Avance Actual de todos los funcionarios activos con el mismo cargo (de todas las delegaciones), de mayor a
+    menor. Usa el mismo cálculo de la tarjeta Avance Actual (seguimiento_usuario), así ambos números coinciden.
+    Los empates comparten el lugar (dos con 40% quedan 1° y 1°, el siguiente 3°)."""
+    from UsuarioApp.models import Usuario
+    if periodo is None or usuario.cargo_id is None:
+        return []
+    pares = Usuario.objects.filter(is_active=True, cargo_id=usuario.cargo_id).select_related('delegacion', 'cargo', 'cargo__area')
+    filas = []
+    datos = DatosMedicion(periodo)  # una sola carga para todos los del cargo
+    for par in pares:
+        seguimiento = seguimiento_usuario(par, periodo, fecha, datos)
+        if seguimiento['sin_medir']:
+            continue  # cargo con ponderación incompleta: no entra al ranking
+        filas.append({
+            'id': par.pk,
+            'nombre': par.get_full_name() or par.username,
+            'delegacion': str(par.delegacion) if par.delegacion_id else 'Sin delegación',
+            'avance': seguimiento['avance_logrado'],
+            'es_yo': par.pk == usuario.pk,
+        })
+    filas.sort(key=lambda fila: (-fila['avance'], fila['nombre']))
+    for indice, fila in enumerate(filas):
+        if indice > 0 and fila['avance'] == filas[indice - 1]['avance']:
+            fila['lugar'] = filas[indice - 1]['lugar']
+        else:
+            fila['lugar'] = indice + 1
+    return filas
+
+
+# ---------------------------------------------------------------------------
+# Datos de la medición en pocas consultas (evita el problema N+1)
+# ---------------------------------------------------------------------------
+class DatosMedicion:
+    """Carga UNA vez por pantalla todo lo que se necesita para medir a muchos funcionarios en un periodo:
+    ponderaciones, metas, avance por responsable e ítem, ajustes y quiénes tienen ausencias. Antes cada funcionario
+    hacía unas 40 consultas; ahora son unas 6 por pantalla, más una por funcionario con ausencias.
+    Aplica las mismas reglas que calcular_avance, metas_aplicables y estado_medicion (models.py)."""
+
+    def __init__(self, periodo):
+        from django.db.models import Count, Sum
+        from django.db.models.functions import Coalesce
+        from ActividadesApp.models import Actividad
+        from IndicadoresApp.models import Ponderacion, MetaDesempeno, Ausencia, AjusteDesempeno
+        self.periodo = periodo
+        # Ponderación: {cargo: {ítem: ponderador}}
+        self.ponderaciones = {}
+        for p in Ponderacion.objects.filter(periodo=periodo).order_by('item_id'):
+            self.ponderaciones.setdefault(p.cargo_id, {})[p.item_id] = p.ponderador
+        # Metas: {(cargo, ítem, delegación o None): meta}, con el ponderador ya puesto (no consulta otra vez)
+        self.metas = {}
+        for meta in MetaDesempeno.objects.filter(periodo=periodo).select_related('item', 'periodo'):
+            meta.__dict__['_ponderador'] = self.ponderaciones.get(meta.cargo_id, {}).get(meta.item_id, Decimal('0'))
+            self.metas[(meta.cargo_id, meta.item_id, meta.delegacion_id)] = meta
+        # Avance: la misma regla de calcular_avance, agrupada por responsable (encargado o quien registró) e ítem
+        validas = Actividad.objects.filter(periodo=periodo, estado='VALIDADA', es_gestion=False).exclude(
+            evidencias__validacion__decision='APROBAR', evidencias__validacion__otorga_puntaje=False)
+        self.avances = {(f['responsable'], f['item_id']): f['n'] for f in validas.annotate(
+            responsable=Coalesce('encargado_id', 'usuario_id')).values('responsable', 'item_id').annotate(
+            n=Count('id', distinct=True))}
+        # Ajustes (felicitaciones): suma por funcionario
+        self.ajustes = {f['usuario_id']: f['total'] for f in AjusteDesempeno.objects.filter(periodo=periodo)
+                        .values('usuario_id').annotate(total=Sum('valor'))}
+        # Solo quienes tienen alguna ausencia en el periodo necesitan contar sus días
+        self.con_ausencia = set(Ausencia.objects.filter(desde__lte=periodo.fecha_termino, hasta__gte=periodo.fecha_inicio)
+                                .values_list('usuario_id', flat=True))
+        self.dias = {}
+
+    def metas_aplicables(self, cargo_id, delegacion_id):
+        """{ítem: meta}: por cada ítem ponderado, la meta de la delegación si existe; si no, la general."""
+        aplicables = {}
+        for item_id in self.ponderaciones.get(cargo_id, {}):
+            meta = self.metas.get((cargo_id, item_id, delegacion_id)) if delegacion_id else None
+            meta = meta or self.metas.get((cargo_id, item_id, None))
+            if meta is not None:
+                aplicables[item_id] = meta
+        return aplicables
+
+    def estado(self, cargo_id, delegacion_id=None):
+        """'' si el cargo se mide; si no, el motivo (mismos mensajes que estado_medicion)."""
+        ponderados = self.ponderaciones.get(cargo_id, {})
+        total = sum(ponderados.values(), Decimal('0'))
+        if total != 100:
+            return f"La ponderación de este cargo suma {total}% y debe sumar 100%: todavía no se mide."
+        aplicables = self.metas_aplicables(cargo_id, delegacion_id)
+        faltan = [item_id for item_id in ponderados if item_id not in aplicables]
+        if faltan:
+            from UsuarioApp.models import Catalogo
+            nombres = ', '.join(Catalogo.objects.filter(pk__in=faltan).order_by('id').values_list('nombre', flat=True))
+            return f"Falta la meta de: {nombres}. Este cargo todavía no se mide."
+        return ''
+
+    def metas_de(self, cargo_id, delegacion_id):
+        if self.estado(cargo_id, delegacion_id):
+            return []
+        aplicables = self.metas_aplicables(cargo_id, delegacion_id)
+        return [aplicables[item_id] for item_id in sorted(aplicables)]
+
+    def indicador(self, usuario, meta, fecha):
+        """Indicador sin guardar, con los datos ya cargados: calcular() no vuelve a consultar."""
+        indicador = IndicadorDesempeno(usuario=usuario, meta=meta, fecha_calculo=fecha)
+        indicador._avance = self.avances.get((usuario.pk, meta.item_id), 0)
+        indicador._ajustes = self.ajustes.get(usuario.pk, Decimal('0'))
+        if usuario.pk not in self.dias:  # los días de ausencia se cuentan una vez por funcionario
+            self.dias[usuario.pk] = dias_ausencia(usuario, self.periodo) if usuario.pk in self.con_ausencia else 0
+        indicador._dias_ausencia = self.dias[usuario.pk]
+        return indicador
+

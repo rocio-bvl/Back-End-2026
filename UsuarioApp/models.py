@@ -5,7 +5,7 @@ from django.utils import timezone
 from UsuarioApp.choices import (roles, orden_roles, estados_registro, tipos_catalogo,
                                 ROLES_ADMINISTRACION, ROLES_VER_USUARIOS, ROLES_GESTION_USUARIOS, ROLES_METAS,
                                 ROLES_REGISTRO, ROLES_VERIFICACION, ROLES_ASIGNAN_ENCARGADO, ROLES_RESERVADOS,
-                                ROLES_DELEGACIONES, ROLES_AUSENCIAS, ROLES_CHATBOT)
+                                ROLES_DELEGACIONES, ROLES_AUSENCIAS, ROLES_FELICITACIONES, ROLES_CHATBOT)
 
 
 class Catalogo(models.Model):
@@ -67,20 +67,15 @@ class Cargo(models.Model):
     def __str__(self):
         return self.nombre
 
-    def total_ponderadores(self, periodo, excluir=None, delegacion=None):
-        """Suma de los ponderadores de las metas del cargo en el periodo, dentro de un mismo alcance
-        (generales si delegacion es None, o las de esa delegación). 'excluir' deja fuera la meta que se modifica."""
-        metas = self.metas.filter(periodo=periodo, delegacion=delegacion)
-        if excluir is not None and excluir.pk is not None:
-            metas = metas.exclude(pk=excluir.pk)
-        total = 0
-        for meta in metas:
-            total = total + meta.ponderador
-        return total
+    def total_ponderadores(self, periodo, excluir_item=None):
+        """Suma de los ponderadores del cargo en el periodo (la ponderación es una sola para toda la municipalidad).
+        'excluir_item' deja fuera el ítem que se está modificando."""
+        from IndicadoresApp.models import total_ponderacion
+        return total_ponderacion(self.pk, periodo, excluir_item)
 
-    def validar_ponderadores(self, periodo, delegacion=None):
-        """True si las metas del cargo en el periodo (y alcance) suman exactamente 100%."""
-        return self.total_ponderadores(periodo, delegacion=delegacion) == 100
+    def validar_ponderadores(self, periodo):
+        """True si los ponderadores del cargo en el periodo suman exactamente 100% (RN-001)."""
+        return self.total_ponderadores(periodo) == 100
 
     class Meta:
         db_table = "cargo"
@@ -211,6 +206,21 @@ class Usuario(AbstractUser):
             return usuarios.filter(roles_asignados__rol__codigo__in=['Delegado', 'Funcionario']).distinct()
         return usuarios.none()
 
+    def puede_gestionar_felicitaciones(self):
+        """Felicitaciones y reclamos: el Administrador (todos los funcionarios) y el Delegado (los de su delegación)."""
+        if self.es_delegado():
+            return self.delegacion_id is not None
+        return self.tiene_rol(ROLES_FELICITACIONES)
+
+    def funcionarios_para_felicitaciones(self):
+        """Funcionarios a los que puede registrar una felicitación o un reclamo."""
+        funcionarios = Usuario.objects.filter(is_active=True, roles_asignados__rol__codigo='Funcionario')
+        if self.es_delegado():
+            funcionarios = funcionarios.filter(delegacion_id=self.delegacion_id)
+        elif not self.puede_gestionar_felicitaciones():
+            return Usuario.objects.none()
+        return funcionarios.select_related('delegacion', 'cargo').distinct()
+
     def puede_vincular_atenciones(self):
         """Admin, Coordinador y Delegado vinculan actividades ya registradas a una atención social. Para el
         Coordinador es la única excepción a no modificar actividades: no edita, elimina ni valida."""
@@ -230,16 +240,12 @@ class Usuario(AbstractUser):
         return self.is_superuser or self.tiene_rol(ROLES_CHATBOT)
 
     def puede_gestionar_metas(self):
-        """El Admin agrega y edita todas las metas (generales y de cada delegación); el Delegado, las de su
-        delegación. El Coordinador solo las visualiza."""
-        if self.es_delegado():
-            return self.delegacion_id is not None
+        """Periodos, metas y ponderaciones: los gestionan el Coordinador y el Administrador desde Administración.
+        El Delegado y el Funcionario solo los visualizan."""
         return self.tiene_rol(ROLES_METAS)
 
     def puede_editar_meta(self, meta):
-        if self.es_administrador():
-            return True
-        return self.es_delegado() and meta.delegacion_id is not None and meta.delegacion_id == self.delegacion_id
+        return self.puede_gestionar_metas()
 
     def roles_asignables(self):
         """Perfiles que puede asignar. El Delegado, solo Funcionarios. Muestra el grupo que recibe."""

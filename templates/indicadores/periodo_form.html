@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block barra_pestanas %}{% include 'users/components/barra_admin.html' %}{% endblock %}
+
+{% block title %}Modificar periodo | SGR{% endblock %}
+
+{% block content %}
+<main class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-muni-b1 text-white fw-bold py-3"><i class="bi bi-calendar-range me-2"></i>Modificar periodo: {{ periodo }}</div>
+                <div class="card-body p-4">
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>
+                    {% endif %}
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            {% for campo in form %}
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="{{ campo.id_for_label }}">{{ campo.label }}</label>
+                                <input type="{% if campo.name == 'nombre' %}text{% elif 'fecha' in campo.name %}date{% else %}number{% endif %}"
+                                       name="{{ campo.html_name }}" id="{{ campo.id_for_label }}"
+                                       {% if campo.name != 'nombre' and 'fecha' not in campo.name %}step="{% if campo.name == 'dias_computables' %}1{% else %}0.01{% endif %}"{% endif %}
+                                       value="{{ campo.value|default_if_none:''|stringformat:'s' }}"
+                                       class="form-control {% if campo.errors %}is-invalid{% endif %}">
+                                {% for error in campo.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                {% if campo.help_text %}<div class="form-text">{{ campo.help_text }}</div>{% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <hr class="my-4">
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{% url 'users:administracion' %}?pestana=periodos" class="btn btn-outline-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-muni fw-bold px-4"><i class="bi bi-save me-1"></i>Guardar cambios</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

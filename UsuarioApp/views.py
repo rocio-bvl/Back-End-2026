@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.forms import AuthenticationForm
@@ -8,11 +9,13 @@ from AuditoriaApp.registro import registrar_auditoria
 from django.db.models import Q, ProtectedError
 
 from ActividadesApp.models import Territorio
-from IndicadoresApp.forms import MetaForm
-from IndicadoresApp.models import MetaDesempeno, periodo_vigente
+from IndicadoresApp.forms import MetaForm, PonderacionForm, PeriodoForm
+from IndicadoresApp.models import MetaDesempeno, Ponderacion, Periodo, periodo_vigente
 from UsuarioApp.forms import UsuarioCrearForm, UsuarioEditarForm, PerfilForm, DelegacionForm, TerritorioFormSet
 from UsuarioApp.funciones import limpiar_rut, acceso_denegado, opciones_delegacion, permiso_requerido, delegacion_seleccionada
 from UsuarioApp.models import Usuario, Rol, UsuarioRol, Cargo, Delegacion, Catalogo
+from UsuarioApp import seguridad
+from UsuarioApp.seguridad import minutos_bloqueo_restantes, registrar_bloqueo, registrar_fallo, enviar_codigo
 
 from django.contrib.auth.decorators import login_required
 
@@ -27,18 +30,62 @@ def iniciar_sesion(request):
     if request.user.is_authenticated:
         return redirect('actividades:mi_gestion')
 
+    bloqueo = 0
     if request.method == 'POST':
         datos = request.POST.copy()
         datos['username'] = limpiar_rut(datos.get('username', ''))  # acepta 12.345.678-9
+        rut = datos['username']
+        usuario = Usuario.objects.filter(username=rut).first()
         form = AuthenticationForm(request, data=datos)
-        if form.is_valid():
-            login(request, form.get_user())
-            # Al entrar, cada usuario llega a su perfil (Mi Gestión), que se adapta a su rol
-            return redirect('actividades:mi_gestion')
+        # Límite de intentos (OWASP A07): con el RUT bloqueado ni siquiera se revisa la contraseña
+        bloqueo = minutos_bloqueo_restantes(rut, usuario) if rut else 0
+        if bloqueo:
+            registrar_bloqueo(request, rut)
+        elif form.is_valid():
+            usuario = form.get_user()
+            if not settings.MFA_ACTIVO:
+                login(request, usuario)
+                return redirect('actividades:mi_gestion')
+            # Segundo factor: la sesión se abre recién cuando el código del correo es correcto
+            if enviar_codigo(request, usuario):
+                return redirect('users:verificar_codigo')
+            messages.error(request, "No se pudo enviar el código de verificación a su correo. "
+                                    "Intente de nuevo en unos minutos o avise al Administrador.")
+        elif rut:
+            registrar_fallo(request, rut, 'Contraseña incorrecta o RUT no registrado')
+            bloqueo = minutos_bloqueo_restantes(rut, usuario)
     else:
         form = AuthenticationForm(request)
 
-    return render(request, 'users/login.html', {'form': form})
+    return render(request, 'users/login.html', {'form': form, 'bloqueo': bloqueo})
+
+
+def verificar_codigo(request):
+    """Segundo paso del login: el código de 6 dígitos enviado al correo."""
+    datos = seguridad.pendiente(request)
+    if request.user.is_authenticated:
+        return redirect('actividades:mi_gestion')
+    if not datos:
+        return redirect('users:login')
+    usuario = get_object_or_404(Usuario, pk=datos['usuario_id'], is_active=True)
+
+    if request.method == 'POST':
+        resultado = seguridad.revisar_codigo(request, request.POST.get('codigo', ''))
+        if resultado == 'ok':
+            seguridad.descartar(request)
+            login(request, usuario, backend='django.contrib.auth.backends.ModelBackend')
+            return redirect('actividades:mi_gestion')
+        registrar_fallo(request, usuario.username, 'Código de verificación incorrecto o vencido')
+        if resultado in ['vencido', 'agotado']:
+            seguridad.descartar(request)
+            messages.error(request, "El código venció o se superaron los intentos. Inicie sesión de nuevo.")
+            return redirect('users:login')
+        messages.error(request, "Código incorrecto. Revise el correo e intente de nuevo.")
+
+    return render(request, 'users/verificar_codigo.html', {
+        'correo': seguridad.correo_oculto(usuario.email),
+        'minutos': settings.MFA_MINUTOS_VIGENCIA,
+    })
 
 
 def cerrar_sesion(request):
@@ -92,10 +139,28 @@ def metas_agrupadas(periodo, usuario, solo_alcance=False, alcance=None, texto=''
             alcance_actual['cargos'].append(cargo_actual)
         meta.editable = usuario.puede_editar_meta(meta)
         cargo_actual['metas'].append(meta)
-        cargo_actual['total'] = cargo_actual['total'] + meta.ponderador
     # Las generales primero
     grupos.sort(key=lambda grupo: not grupo['general'])
     return grupos
+
+
+def ponderaciones_por_cargo(periodo, usuario):
+    """Ponderación de cada cargo en el periodo (una sola para toda la municipalidad), con su total y lo que falta
+    para 100%. Un cargo bajo 100% no se mide (RN-001)."""
+    bloques = []
+    if periodo is None:
+        return bloques
+    actual = None
+    for ponderacion in Ponderacion.objects.filter(periodo=periodo).select_related('cargo', 'item'):
+        if actual is None or actual['cargo'] != ponderacion.cargo:
+            actual = {'cargo': ponderacion.cargo, 'filas': [], 'total': 0}
+            bloques.append(actual)
+        ponderacion.editable = usuario.puede_gestionar_metas()
+        actual['filas'].append(ponderacion)
+        actual['total'] = actual['total'] + ponderacion.ponderador
+    for bloque in bloques:
+        bloque['faltan'] = 100 - bloque['total']
+    return bloques
 
 
 def delegaciones_con_equipo(texto=''):
@@ -124,9 +189,9 @@ def delegaciones_con_equipo(texto=''):
 
 @permiso_requerido('UsuarioApp.view_usuario', 'Administración')
 def administracion(request):
-    """Admin: Gestión (delegaciones y usuarios, con todos los cambios) y Metas.
-    Coordinador: lo mismo, solo para visualizar (para él la pestaña se llama Usuarios).
-    Delegado: los Funcionarios de su delegación (filtra por territorio) y las metas de su delegación."""
+    """Admin: Gestión (delegaciones y usuarios, con todos los cambios) y Metas (metas y ponderaciones).
+    Coordinador: Gestión según sus permisos y Metas, donde define metas y ponderaciones.
+    Delegado: los Funcionarios de su delegación (filtra por territorio) y las metas, solo para consultar."""
 
     usuario = request.user
     periodo = periodo_vigente()
@@ -202,23 +267,40 @@ def administracion(request):
         'metas_agrupadas': grupos_metas,
         'aviso_metas': aviso_metas,
         'form_meta': MetaForm(usuario=usuario, periodo=periodo) if usuario.puede_gestionar_metas() else None,
+        'form_ponderacion': PonderacionForm(periodo=periodo) if usuario.puede_gestionar_metas() else None,
+        'form_periodo': PeriodoForm() if usuario.puede_gestionar_metas() else None,
+        'periodos': Periodo.objects.order_by('-fecha_inicio') if usuario.puede_gestionar_metas() else [],
+        'ponderaciones': ponderaciones_por_cargo(periodo, usuario),
         'roles_asignables': usuario.roles_asignables(),
         'opciones_delegacion': opciones_delegacion(),
         'pestana': request.GET.get('pestana', ''),
+        'seccion': seccion_administracion(request.GET.get('pestana', ''), usuario),
     }
     return render(request, 'users/administracion.html', data)
+
+
+def seccion_administracion(pestana, usuario):
+    """Sección de Administración que se muestra (?pestana=): panel de inicio, delegaciones, usuarios o
+    "metas y periodos" (metas, ponderación y periodos juntos). Las demás se envían ocultas en la misma página."""
+    if pestana in ('metas', 'periodos'):
+        return 'metas'
+    if pestana == 'delegaciones' and usuario.es_delegado():
+        return 'usuarios'  # el Delegado no administra delegaciones: ve los Funcionarios de la suya
+    if pestana in ('delegaciones', 'usuarios'):
+        return pestana
+    return 'inicio'
 
 @permiso_requerido('UsuarioApp.add_usuario', 'Crear Usuario')
 def usuario_crear(request):
     if request.method != 'POST':
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
     form = UsuarioCrearForm(request.POST, roles_permitidos=request.user.roles_asignables())
     if not form.is_valid():
         for campo, errores in form.errors.items():
             for error in errores:
                 messages.error(request, f"{form.fields[campo].label if campo in form.fields else 'Error'}: {error}")
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
     datos = form.cleaned_data
     cargo = None
@@ -251,7 +333,7 @@ def usuario_crear(request):
 
     registrar_auditoria(request.user, 'CREACION', 'Usuario', usuario.pk, '', resumen_usuario(usuario))
     messages.success(request, f"Usuario {usuario.get_full_name()} creado correctamente.")
-    return redirect('users:administracion')
+    return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
 @permiso_requerido('UsuarioApp.change_usuario', 'Editar Usuario')
 def usuario_editar(request, pk):
@@ -259,7 +341,7 @@ def usuario_editar(request, pk):
     usuario = get_object_or_404(Usuario, pk=pk)
     if not request.user.puede_editar_usuario(usuario):
         messages.error(request, "Un Delegado solo puede modificar a los Funcionarios de su delegación.")
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
     antes = resumen_usuario(usuario)  # se guarda antes de que el formulario modifique el objeto
     rol_actual = usuario.rol()
     if usuario.is_superuser and rol_actual == '':
@@ -290,7 +372,7 @@ def usuario_editar(request, pk):
 
             registrar_auditoria(request.user, 'MODIFICACION', 'Usuario', usuario.pk, antes, resumen_usuario(usuario))
             messages.success(request, f"Usuario {usuario.get_full_name()} actualizado.")
-            return redirect('users:administracion')
+            return redirect(reverse('users:administracion') + '?pestana=usuarios')
     else:
         delegacion = 'GENERAL'
         if usuario.delegacion:
@@ -323,7 +405,7 @@ def usuario_eliminar(request, pk):
     if not request.user.puede_eliminar_usuario(usuario):
         return acceso_denegado(request, 'Eliminar Usuario')
     if request.method != 'POST':
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
     antes = resumen_usuario(usuario)
     nombre = usuario.get_full_name() or usuario.username
     try:
@@ -373,7 +455,7 @@ def delegacion_editar(request, pk):
 def delegacion_eliminar(request, pk):
     delegacion = get_object_or_404(Delegacion, pk=pk)
     if request.method != 'POST':
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=delegaciones')
     nombre = str(delegacion)
     try:
         delegacion.delete()
@@ -390,10 +472,10 @@ def usuario_desactivar(request, pk):
     """Activa o desactiva un usuario (no se borra: conserva su historial de actividades y auditoría)."""
     usuario = get_object_or_404(Usuario, pk=pk)
     if request.method != 'POST':
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
     if usuario.pk == request.user.pk or not request.user.puede_editar_usuario(usuario):
         messages.error(request, "No puede cambiar el estado de ese usuario.")
-        return redirect('users:administracion')
+        return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
     antes = resumen_usuario(usuario)
     usuario.is_active = not usuario.is_active
@@ -401,7 +483,7 @@ def usuario_desactivar(request, pk):
     registrar_auditoria(request.user, 'MODIFICACION', 'Usuario', usuario.pk, antes, resumen_usuario(usuario))
     estado = "activado" if usuario.is_active else "desactivado"
     messages.success(request, f"Usuario {usuario.get_full_name()} {estado}.")
-    return redirect('users:administracion')
+    return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
 @login_required
 def perfil_editar(request):

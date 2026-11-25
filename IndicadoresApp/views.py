@@ -1,7 +1,9 @@
+import csv
 from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse
 from django.db.models import Q
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
@@ -9,9 +11,11 @@ from django.utils import timezone
 
 from ActividadesApp.models import Actividad
 from AuditoriaApp.registro import registrar_auditoria
-from IndicadoresApp.calculos import seguimiento_usuario
-from IndicadoresApp.forms import MetaForm, AusenciaForm
-from IndicadoresApp.models import MetaDesempeno, Ausencia, periodo_vigente, metas_para
+from IndicadoresApp.calculos import seguimiento_usuario, DatosMedicion
+from IndicadoresApp.choices import TIPO_AJUSTE_FELICITACION
+from IndicadoresApp.forms import MetaForm, PonderacionForm, PeriodoForm, AusenciaForm, FelicitacionForm, ReclamoForm, RespuestaReclamoForm
+from IndicadoresApp.models import (MetaDesempeno, Ponderacion, Periodo, Ausencia, AjusteDesempeno, Felicitacion, Reclamo, periodo_vigente,
+                                   metas_para)
 from UsuarioApp.funciones import delegacion_seleccionada, acceso_denegado, permiso_requerido
 from UsuarioApp.models import Usuario, Cargo, Catalogo
 
@@ -44,8 +48,8 @@ def tipo_tablero(usuario):
     return 'administrativo'
 
 
-def resumen_delegacion_tablero(delegacion, periodo, hoy):
-    """Las tres tarjetas de siempre: pendientes, avance promedio y semáforo de la delegación elegida
+def resumen_delegacion_tablero(delegacion, periodo, hoy, filas=None, datos=None):
+    """Tarjetas del tablero: pendientes, avance esperado a la fecha, semáforo y puntaje colectivo de la delegación elegida
     (delegacion=None: toda la municipalidad). semaforo_color guarda el código (VERDE, AMBAR, ROJO o vacío)."""
     # Actividades pendientes = compromisos programados y actividades del Tubo (todavía sin evidencia)
     compromisos = Actividad.objects.filter(estado__in=['PROGRAMADA', 'EN_TUBO'])
@@ -56,10 +60,13 @@ def resumen_delegacion_tablero(delegacion, periodo, hoy):
     semaforo = 'Sin periodo vigente'
     color = ''
     meta_colectiva = Decimal('0')
+    objetivo = Decimal('0')
     if periodo is not None:
-        filas = []
-        for usuario in usuarios_evaluados(delegacion):
-            filas.append(seguimiento_usuario(usuario, periodo, hoy))
+        # Cada funcionario se calcula una sola vez: si el Semáforo ya trae las filas, se reutilizan
+        if filas is None:
+            datos = datos or DatosMedicion(periodo)
+            filas = [seguimiento_usuario(usuario, periodo, hoy, datos) for usuario in usuarios_evaluados(delegacion)]
+        filas = [fila for fila in filas if not fila['sin_medir']]  # sin ponderación completa no cuentan
         if filas:
             suma = Decimal('0')
             for fila in filas:
@@ -80,7 +87,8 @@ def resumen_delegacion_tablero(delegacion, periodo, hoy):
         'cumple_colectivo': periodo is not None and avance >= meta_colectiva,
         'umbral_colectivo': periodo.umbral_colectivo if periodo else None,
         'compromisos_pendientes_count': compromisos.count(),
-        'avance_periodo_porcentaje': f"{avance}%",
+        # Avance esperado a la fecha: porcentaje del trimestre transcurrido (días computables). Es la referencia del semáforo
+        'avance_esperado': objetivo,
         'avance': avance,
         'semaforo_estado': semaforo,
         'semaforo_color': color,
@@ -90,9 +98,9 @@ def resumen_delegacion_tablero(delegacion, periodo, hoy):
 def comparacion_delegaciones(periodo, hoy):
     """Tablero del Coordinador: una fila por delegación activa con su avance, semáforo y pendientes."""
     from UsuarioApp.models import Delegacion
-    filas = []
+    filas, datos = [], (DatosMedicion(periodo) if periodo else None)  # una carga para todas las delegaciones
     for delegacion in Delegacion.objects.filter(estado='ACTIVO').order_by('nombre_visible'):
-        fila = resumen_delegacion_tablero(delegacion, periodo, hoy)
+        fila = resumen_delegacion_tablero(delegacion, periodo, hoy, datos=datos)
         fila['delegacion'] = delegacion
         fila['responsables'] = usuarios_evaluados(delegacion).count()
         fila['por_validar'] = Actividad.objects.filter(estado='EVIDENCIA_INGRESADA', es_gestion=False, usuario__delegacion=delegacion).count()
@@ -191,14 +199,13 @@ def semaforo(request):
     periodo = periodo_vigente(hoy)
 
     q = request.GET.get('q', '').strip()
-    seguimiento = []
+    # Una sola pasada: las filas buscadas van a la tabla y todas a las tarjetas de resumen
+    seguimiento, todas = filas_semaforo(delegacion, periodo, hoy, q, con_todas=True)
     dias_transcurridos = 0
     porcentaje_esperado = 0
     if periodo is not None:
         dias_transcurridos = periodo.calcular_dias_transcurridos(hoy)
         porcentaje_esperado = periodo.porcentaje_transcurrido(hoy)
-        for usuario in filtrar_por_nombre(usuarios_evaluados(delegacion), q):
-            seguimiento.append(seguimiento_usuario(usuario, periodo, hoy))
     else:
         messages.warning(request, "No hay un periodo vigente para la fecha de hoy.")
 
@@ -208,10 +215,88 @@ def semaforo(request):
         'dias_transcurridos': dias_transcurridos,
         'porcentaje_esperado': porcentaje_esperado,
         'periodo': periodo,
-        'resumen': resumen_delegacion_tablero(delegacion, periodo, hoy),
+        'resumen': resumen_delegacion_tablero(delegacion, periodo, hoy, filas=todas),
+    }
+    # Tarjetas y gráficos: cuántos responsables hay en cada color (de toda la delegación, sin la búsqueda)
+    colores = {'VERDE': 0, 'AMBAR': 0, 'ROJO': 0, 'SIN_MEDIR': 0}
+    for fila in todas:
+        colores['SIN_MEDIR' if fila['sin_medir'] else fila['color']] += 1
+    total = len(todas)
+    data['colores'] = {codigo: {'cantidad': cantidad, 'porcentaje': round(cantidad * 100 / total) if total else 0}
+                       for codigo, cantidad in colores.items()}
+    data['total_responsables'] = total
+    resumen = data['resumen']
+    data['graficos'] = {
+        'avance': {'valor': float(resumen['puntaje_colectivo']), 'objetivo': float(porcentaje_esperado),
+                   'color': resumen['semaforo_color']} if periodo else None,
+        'estados': [{'etiqueta': 'Verde', 'valor': colores['VERDE'], 'color': '#2E9E5B'},
+                    {'etiqueta': 'Ámbar', 'valor': colores['AMBAR'], 'color': '#F2A900'},
+                    {'etiqueta': 'Rojo', 'valor': colores['ROJO'], 'color': '#C41230'},
+                    {'etiqueta': 'Sin medir', 'valor': colores['SIN_MEDIR'], 'color': '#B8B0AE'}],
+        'total_estados': total,
+        'barras': None,
     }
     data.update(datos_ausencias(request.user, periodo))
     return render(request, 'indicadores/semaforo.html', data)
+
+
+def filas_semaforo(delegacion, periodo, hoy, q='', con_todas=False):
+    """Filas del Semáforo (una por responsable evaluado). La usan la pantalla y su exportación, así ambas muestran
+    exactamente los mismos datos con los mismos filtros. con_todas=True devuelve además las de toda la delegación
+    (sin la búsqueda), para las tarjetas de resumen, sin calcular a nadie dos veces."""
+    if periodo is None:
+        return ([], []) if con_todas else []
+    datos = DatosMedicion(periodo)  # pocas consultas para todos, en vez de unas 40 por funcionario
+    buscados = set(filtrar_por_nombre(usuarios_evaluados(delegacion), q).values_list('pk', flat=True))
+    filas = []
+    for usuario in usuarios_evaluados(delegacion).select_related('delegacion'):
+        if con_todas or usuario.pk in buscados:
+            fila = seguimiento_usuario(usuario, periodo, hoy, datos)
+            fila['delegacion'] = str(usuario.delegacion) if usuario.delegacion_id else 'Sin delegación'
+            filas.append(fila)
+    elegidas = [fila for fila in filas if fila['id'] in buscados]
+    return (elegidas, filas) if con_todas else elegidas
+
+
+def numero_cl(valor):
+    """Número con coma decimal, como lo lee Excel en Chile."""
+    return str(valor).replace('.', ',')
+
+
+@permiso_requerido('IndicadoresApp.view_metadesempeno', 'Exportar Semáforo')
+def semaforo_exportar(request):
+    """RF-033: exporta el Semáforo a CSV con los mismos filtros de la pantalla (delegación elegida y búsqueda por
+    nombre o RUT). El archivo trae encabezado con el informe, el periodo, los filtros, quién lo generó y cuándo.
+    Separador ';' y BOM UTF-8: Excel en español lo abre con tildes y columnas correctas."""
+    codigo, delegacion, nombre = delegacion_seleccionada(request)
+    hoy = timezone.localdate()
+    periodo = periodo_vigente(hoy)
+    q = request.GET.get('q', '').strip()
+    filas = filas_semaforo(delegacion, periodo, hoy, q)
+
+    generado = timezone.localtime()
+    respuesta = HttpResponse(content_type='text/csv; charset=utf-8')
+    respuesta['Content-Disposition'] = f'attachment; filename="semaforo_{hoy:%Y%m%d}.csv"'
+    respuesta.write('\ufeff')  # BOM: Excel reconoce el archivo como UTF-8
+    escritor = csv.writer(respuesta, delimiter=';')
+    escritor.writerow(['Informe', 'Semáforo: seguimiento de avance al día'])
+    escritor.writerow(['Periodo', str(periodo) if periodo else 'Sin periodo vigente'])
+    escritor.writerow(['Delegación', nombre])
+    escritor.writerow(['Búsqueda', q or 'Sin filtro'])
+    escritor.writerow(['Generado por', request.user.get_full_name() or request.user.username])
+    escritor.writerow(['Fecha de generación', f"{generado:%d/%m/%Y %H:%M}"])
+    escritor.writerow([])
+    escritor.writerow(['Área', 'Responsable', 'Delegación', 'Objetivo hoy (%)', 'Mínimo (%)', 'Avance logrado (%)',
+                       'Días ausente', 'Semáforo', 'Ítems al tope'])
+    for fila in filas:
+        escritor.writerow([fila['area'], fila['responsable'], fila['delegacion'], numero_cl(fila['objetivo_hoy']),
+                           numero_cl(fila['minimo']), numero_cl(fila['avance_logrado']), fila['dias_ausencia'],
+                           {'VERDE': 'Verde', 'AMBAR': 'Ámbar', 'ROJO': 'Rojo'}.get(fila['color'], 'Sin medir'),
+                           ', '.join(fila['items_en_tope'])])
+    # La exportación saca datos de funcionarios del sistema: queda en la auditoría quién la hizo y con qué filtros
+    registrar_auditoria(request.user, 'CREACION', 'Exportación', 'Semáforo', '',
+                        f"Delegación: {nombre} | Búsqueda: {q or '-'} | {len(filas)} filas")
+    return respuesta
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +387,17 @@ def atrasos_validacion(request):
         'filas': filas, 'periodo': periodo, 'dias_alerta': DIAS_ALERTA_VALIDACION})
 
 
+def avance_equipo(integrantes, item, periodo):
+    """Actividades que suman a la meta de un equipo, con la misma regla de calcular_avance (RF-014): validadas, del
+    responsable (el encargado si tiene; si no, quien la registró), sin las gestiones del Delegado (que solo quedan
+    registradas) y sin las que el verificador marcó como coordinación que no suma puntaje."""
+    responsable = Q(encargado__in=integrantes) | Q(encargado__isnull=True, usuario__in=integrantes)
+    actividades = Actividad.objects.filter(responsable, item=item, periodo=periodo, estado='VALIDADA', es_gestion=False)
+    actividades = actividades.exclude(evidencias__validacion__decision='APROBAR',
+                                      evidencias__validacion__otorga_puntaje=False)
+    return actividades.distinct().count()
+
+
 @permiso_requerido('IndicadoresApp.view_metadesempeno', 'Resumen de Delegación')
 def resumen_delegacion(request):
 
@@ -318,7 +414,7 @@ def resumen_delegacion(request):
             cantidad = integrantes.count()
             for meta in metas_para(cargo.pk, periodo, delegacion.pk if delegacion else None):
                 meta_total = meta.valor_objetivo * cantidad
-                avance = Actividad.objects.filter(usuario__in=integrantes, item=meta.item, periodo=periodo, estado='VALIDADA').count()
+                avance = avance_equipo(integrantes, meta.item, periodo)
                 if meta_total > 0:
                     porcentaje = round(Decimal(avance) * 100 / meta_total, 1)
                 else:
@@ -350,7 +446,17 @@ def resumen_delegacion(request):
         'delegacion_nombre': f"Delegación {nombre}",
         'comisiones': comisiones,
         'equipo': integrantes,
+        'total_equipo': equipo.count(),
         'q': q,
+        'periodo': periodo,
+        'comisiones_cumplidas': sum(1 for c in comisiones if c['porcentaje_cumplimiento'] >= 100),
+        'cumplimiento_promedio': round(sum(c['porcentaje_cumplimiento'] for c in comisiones) / len(comisiones), 1)
+                                 if comisiones else Decimal('0'),
+        # Barras de cumplimiento por comisión (static/js/graficos.js), con la meta en 100%
+        'graficos': {'avance': None, 'estados': [], 'total_estados': 0, 'barras': {
+            'titulo': 'Cumplimiento por comisión', 'referencia': 100, 'texto_referencia': 'Meta',
+            'filas': [{'etiqueta': f"{c['nombre']} ({c['cargo']})", 'valor': float(c['porcentaje_cumplimiento'])}
+                      for c in comisiones]} if comisiones else None},
     }
     return render(request, 'indicadores/resumen_delegacion.html', data)
 
@@ -370,24 +476,150 @@ def mostrar_errores(request, form):
             messages.error(request, error)
 
 
+# ---------------------------------------------------------------------------
+# Periodos de medición (RF-005, RF-007): Coordinador y Administrador, desde Administración > Periodos
+# ---------------------------------------------------------------------------
+def url_periodos():
+    return reverse('users:administracion') + '?pestana=periodos'
+
+
+@permiso_requerido('IndicadoresApp.add_periodo', 'Crear periodo')
+def periodo_crear(request):
+    if request.method != 'POST':
+        return redirect(url_periodos())
+    if not request.user.puede_gestionar_metas():
+        return acceso_denegado(request, 'Crear periodo')
+    form = PeriodoForm(request.POST)
+    if not form.is_valid():
+        mostrar_errores(request, form)
+        return redirect(url_periodos())
+    periodo = form.save()
+    registrar_auditoria(request.user, 'CREACION', 'Periodo', periodo.pk, '', resumen_periodo(periodo))
+    messages.success(request, f"Periodo {periodo} creado.")
+    return redirect(url_periodos())
+
+
+def resumen_periodo(periodo):
+    return (f"{periodo.nombre}: {periodo.fecha_inicio:%d/%m/%Y} a {periodo.fecha_termino:%d/%m/%Y}, "
+            f"{periodo.dias_computables} días, verde {periodo.umbral_verde}%, ámbar {periodo.umbral_ambar}%, "
+            f"colectivo {periodo.umbral_colectivo}%, tope {periodo.tope_cumplimiento}%, "
+            f"felicitación {periodo.puntos_felicitacion} pp, {periodo.get_estado_display()}")
+
+
+@permiso_requerido('IndicadoresApp.change_periodo', 'Modificar periodo')
+def periodo_editar(request, pk):
+    periodo = get_object_or_404(Periodo, pk=pk)
+    if not request.user.puede_gestionar_metas():
+        return acceso_denegado(request, 'Modificar periodo')
+    antes = resumen_periodo(periodo)
+    if request.method == 'POST':
+        form = PeriodoForm(request.POST, instance=periodo)
+        if form.is_valid():
+            periodo = form.save()
+            registrar_auditoria(request.user, 'MODIFICACION', 'Periodo', periodo.pk, antes, resumen_periodo(periodo))
+            messages.success(request, f"Periodo {periodo} modificado.")
+            return redirect(url_periodos())
+    else:
+        form = PeriodoForm(instance=periodo)
+    return render(request, 'indicadores/periodo_form.html', {'form': form, 'periodo': periodo})
+
+
+@permiso_requerido('IndicadoresApp.change_periodo', 'Cerrar o reabrir periodo')
+def periodo_estado(request, pk):
+    """Cerrar un periodo impide registrar actividades en él; reabrirlo lo vuelve a permitir. Queda en la auditoría."""
+    periodo = get_object_or_404(Periodo, pk=pk)
+    if not request.user.puede_gestionar_metas():
+        return acceso_denegado(request, 'Cerrar o reabrir periodo')
+    if request.method != 'POST':
+        return redirect(url_periodos())
+    anterior = periodo.get_estado_display()
+    if periodo.periodo_cerrado():
+        periodo.reabrir()
+    else:
+        periodo.cerrar()
+    registrar_auditoria(request.user, 'MODIFICACION', 'Periodo', periodo.pk, f"estado={anterior}",
+                        f"estado={periodo.get_estado_display()}")
+    messages.success(request, f"Periodo {periodo}: {periodo.get_estado_display().lower()}.")
+    return redirect(url_periodos())
+
+
 @permiso_requerido('IndicadoresApp.add_metadesempeno', 'Parametrización de Metas')
 def guardar_metas(request):
     """Crea una meta (o la actualiza si ya existe para ese cargo, ítem y alcance).
-    El Administrador define metas generales o de cualquier delegación; el Delegado, solo de la suya."""
+    La definen el Coordinador y el Administrador: generales o de una delegación."""
     if request.method != 'POST':
         return redirect(url_metas())
+    if not request.user.puede_gestionar_metas():
+        return acceso_denegado(request, 'Parametrización de Metas')
 
     form = MetaForm(request.POST, usuario=request.user, periodo=periodo_vigente())
     if not form.is_valid():
         mostrar_errores(request, form)
         return redirect(url_metas())
     meta, evento, antes = form.guardar()
-    registrar_auditoria(request.user, evento, 'MetaDesempeno', meta.pk, antes, f"{meta} = {meta.valor_objetivo} ({meta.ponderador}%)")
+    registrar_auditoria(request.user, evento, 'MetaDesempeno', meta.pk, antes, f"{meta} = {meta.valor_objetivo}")
     messages.success(request, "Meta guardada correctamente.")
-    if form.total < 100:
-        messages.warning(request, f"Los ponderadores del cargo {meta.cargo} suman {form.total}%. "
-                                  f"Faltan {100 - form.total}% para completar 100%.")
     return redirect(url_metas(meta))
+
+
+@permiso_requerido('IndicadoresApp.add_ponderacion', 'Ponderación')
+def guardar_ponderacion(request):
+    """RF-006: crea o actualiza el ponderador de un ítem para un cargo (Coordinador y Administrador).
+    Si la suma del cargo queda bajo 100% se guarda con aviso: ese cargo no se mide hasta completarla (RN-001)."""
+    if request.method != 'POST':
+        return redirect(url_metas())
+    if not request.user.puede_gestionar_metas():
+        return acceso_denegado(request, 'Ponderación')
+    form = PonderacionForm(request.POST, periodo=periodo_vigente())
+    if not form.is_valid():
+        mostrar_errores(request, form)
+        return redirect(url_metas())
+    ponderacion, evento, antes = form.guardar()
+    registrar_auditoria(request.user, evento, 'Ponderacion', ponderacion.pk, antes, str(ponderacion))
+    messages.success(request, "Ponderación guardada correctamente.")
+    if form.total < 100:
+        messages.warning(request, f"La ponderación del cargo {ponderacion.cargo} suma {form.total}%. Faltan "
+                                  f"{100 - form.total}%: hasta completar 100% los funcionarios de ese cargo no se miden.")
+    return redirect(url_metas())
+
+
+@permiso_requerido('IndicadoresApp.change_ponderacion', 'Modificar ponderación')
+def ponderacion_editar(request, pk):
+    """Cambia el ponderador de un ítem ya ponderado. Cargo, ítem y periodo no cambian."""
+    ponderacion = get_object_or_404(Ponderacion.objects.select_related('cargo', 'item', 'periodo'), pk=pk)
+    if not request.user.puede_gestionar_metas():
+        return acceso_denegado(request, 'Modificar ponderación')
+    if request.method == 'POST':
+        datos = {'cargo': ponderacion.cargo_id, 'item': ponderacion.item_id, 'ponderador': request.POST.get('ponderador', '')}
+        form = PonderacionForm(datos, periodo=ponderacion.periodo)
+        if form.is_valid():
+            ponderacion, evento, antes = form.guardar()
+            registrar_auditoria(request.user, evento, 'Ponderacion', ponderacion.pk, antes, str(ponderacion))
+            messages.success(request, "Ponderación modificada.")
+            if form.total < 100:
+                messages.warning(request, f"La ponderación del cargo {ponderacion.cargo} suma {form.total}%. Faltan "
+                                          f"{100 - form.total}%: hasta completar 100% los funcionarios de ese cargo no se miden.")
+            return redirect(url_metas())
+    else:
+        form = PonderacionForm(initial={'ponderador': ponderacion.ponderador}, periodo=ponderacion.periodo)
+    return render(request, 'indicadores/ponderacion_form.html', {'form': form, 'ponderacion': ponderacion})
+
+
+@permiso_requerido('IndicadoresApp.delete_ponderacion', 'Eliminar ponderación')
+def ponderacion_eliminar(request, pk):
+    ponderacion = get_object_or_404(Ponderacion.objects.select_related('cargo', 'item', 'periodo'), pk=pk)
+    if not request.user.puede_gestionar_metas():
+        return acceso_denegado(request, 'Eliminar ponderación')
+    if request.method != 'POST':
+        return redirect(url_metas())
+    if MetaDesempeno.objects.filter(cargo=ponderacion.cargo, item=ponderacion.item, periodo=ponderacion.periodo).exists():
+        messages.error(request, f"{ponderacion.item} tiene metas para el cargo {ponderacion.cargo}: elimínelas antes "
+                                "de quitar su ponderación.")
+        return redirect(url_metas())
+    registrar_auditoria(request.user, 'ELIMINACION', 'Ponderacion', ponderacion.pk, str(ponderacion), '')
+    ponderacion.delete()
+    messages.success(request, "Ponderación eliminada.")
+    return redirect(url_metas())
 
 
 @permiso_requerido('IndicadoresApp.change_metadesempeno', 'Modificar meta')
@@ -400,8 +632,7 @@ def meta_editar(request, pk):
         form = MetaForm(request.POST, usuario=request.user, periodo=meta.periodo, meta=meta)
         if form.is_valid():
             meta, evento, antes = form.guardar()
-            registrar_auditoria(request.user, evento, 'MetaDesempeno', meta.pk, antes,
-                                f"{meta} = {meta.valor_objetivo} ({meta.ponderador}%)")
+            registrar_auditoria(request.user, evento, 'MetaDesempeno', meta.pk, antes, f"{meta} = {meta.valor_objetivo}")
             messages.success(request, "Meta modificada.")
             return redirect(url_metas(meta))
     else:
@@ -416,8 +647,135 @@ def meta_eliminar(request, pk):
         return acceso_denegado(request, 'Eliminar meta')
     if request.method != 'POST':
         return redirect(url_metas())
-    descripcion = f"{meta} = {meta.valor_objetivo} ({meta.ponderador}%)"
+    descripcion = f"{meta} = {meta.valor_objetivo}"
     registrar_auditoria(request.user, 'ELIMINACION', 'MetaDesempeno', meta.pk, descripcion, '')
     meta.delete()
     messages.success(request, "Meta eliminada.")
     return redirect(url_metas(meta))
+
+
+# ---------------------------------------------------------------------------
+# Felicitaciones y reclamos (solo Delegado y Administrador)
+# Tres capas de protección: 1) @permiso_requerido exige el permiso del grupo (sin él vuelve a Mi Gestión);
+# 2) puede_gestionar_felicitaciones() deja pasar solo al Delegado y al Administrador; 3) cada consulta se limita a
+# funcionarios_para_felicitaciones(), así el Delegado solo ve y registra a los de su delegación.
+# ---------------------------------------------------------------------------
+def pagina_felicitaciones(request, form_felicitacion=None, form_reclamo=None, pestana=None):
+    usuario = request.user
+    periodo = periodo_vigente()
+    funcionarios = usuario.funcionarios_para_felicitaciones()
+    felicitaciones = Felicitacion.objects.filter(funcionario__in=funcionarios).select_related(
+        'funcionario', 'funcionario__delegacion', 'registrado_por', 'ajuste', 'periodo')
+    if periodo is not None:
+        felicitaciones = felicitaciones.filter(periodo=periodo)
+    reclamos = Reclamo.objects.filter(funcionario__in=funcionarios).select_related(
+        'funcionario', 'funcionario__delegacion', 'registrado_por', 'respondido_por')
+    data = {
+        'periodo': periodo,
+        'felicitaciones': felicitaciones,
+        'reclamos': reclamos,
+        'pendientes': reclamos.filter(estado='PENDIENTE').count(),
+        'form_felicitacion': form_felicitacion or FelicitacionForm(registrador=usuario, periodo=periodo, prefix='felicitacion'),
+        'form_reclamo': form_reclamo or ReclamoForm(registrador=usuario, prefix='reclamo'),
+        'pestana': pestana or request.GET.get('pestana', 'felicitaciones'),
+    }
+    return render(request, 'indicadores/felicitaciones_reclamos.html', data)
+
+
+@permiso_requerido('IndicadoresApp.view_felicitacion', 'Felicitaciones y Reclamos')
+def felicitaciones_reclamos(request):
+    if not request.user.puede_gestionar_felicitaciones():
+        return acceso_denegado(request, 'Felicitaciones y Reclamos')
+    return pagina_felicitaciones(request)
+
+
+def tiene_metas(funcionario, periodo):
+    return funcionario.cargo_id is not None and metas_para(funcionario.cargo_id, periodo, funcionario.delegacion_id).exists()
+
+
+@permiso_requerido('IndicadoresApp.add_felicitacion', 'Registrar Felicitación')
+def felicitacion_crear(request):
+    if request.method != 'POST':
+        return redirect('indicadores:felicitaciones_reclamos')
+    if not request.user.puede_gestionar_felicitaciones():
+        return acceso_denegado(request, 'Registrar Felicitación')
+    periodo = periodo_vigente()
+    # prefix: los dos formularios están en la misma página y sus campos no pueden tener el mismo id
+    form = FelicitacionForm(request.POST, registrador=request.user, periodo=periodo, prefix='felicitacion')
+    if not form.is_valid():
+        return pagina_felicitaciones(request, form_felicitacion=form, pestana='felicitaciones')
+    felicitacion = form.save(commit=False)
+    felicitacion.periodo = periodo
+    felicitacion.registrado_por = request.user
+    # Los puntos se suman como un ajuste de desempeño: cuentan aunque el cargo no tenga meta de felicitaciones
+    tipo = Catalogo.objects.get_or_create(tipo='TIPO_AJUSTE', nombre=TIPO_AJUSTE_FELICITACION)[0]
+    felicitacion.ajuste = AjusteDesempeno.objects.create(
+        valor=periodo.puntos_felicitacion, motivo=f"Felicitación de usuario: {felicitacion.motivo}"[:500],
+        registrado_por=request.user, usuario=felicitacion.funcionario, tipo=tipo, periodo=periodo)
+    felicitacion.save()
+    registrar_auditoria(request.user, 'CREACION', 'Felicitacion', felicitacion.pk, '',
+                        f"{felicitacion} (+{periodo.puntos_felicitacion} pp)")
+    nombre = felicitacion.funcionario.get_full_name() or felicitacion.funcionario.username
+    if tiene_metas(felicitacion.funcionario, periodo):
+        puntos = str(periodo.puntos_felicitacion).replace('.', ',')
+        messages.success(request, f"Felicitación registrada: suma {puntos} pp al cumplimiento de {nombre}.")
+    else:
+        messages.warning(request, f"Felicitación registrada, pero {nombre} no tiene metas en el {periodo}: "
+                                  "los puntos se sumarán cuando su cargo tenga metas.")
+    return redirect('indicadores:felicitaciones_reclamos')
+
+
+@permiso_requerido('IndicadoresApp.delete_felicitacion', 'Eliminar Felicitación')
+def felicitacion_eliminar(request, pk):
+    felicitacion = get_object_or_404(Felicitacion, pk=pk)
+    if request.method != 'POST':
+        return redirect('indicadores:felicitaciones_reclamos')
+    if not request.user.funcionarios_para_felicitaciones().filter(pk=felicitacion.funcionario_id).exists():
+        return acceso_denegado(request, 'Eliminar Felicitación')
+    descripcion = str(felicitacion)
+    felicitacion.delete()  # borra también su ajuste: los puntos dejan de sumar
+    registrar_auditoria(request.user, 'ELIMINACION', 'Felicitacion', pk, descripcion, '')
+    messages.success(request, "Felicitación eliminada: sus puntos dejaron de sumar.")
+    return redirect('indicadores:felicitaciones_reclamos')
+
+
+@permiso_requerido('IndicadoresApp.add_reclamo', 'Registrar Reclamo')
+def reclamo_crear(request):
+    if request.method != 'POST':
+        return redirect(reverse('indicadores:felicitaciones_reclamos') + '?pestana=reclamos')
+    if not request.user.puede_gestionar_felicitaciones():
+        return acceso_denegado(request, 'Registrar Reclamo')
+    form = ReclamoForm(request.POST, registrador=request.user, prefix='reclamo')
+    if not form.is_valid():
+        return pagina_felicitaciones(request, form_reclamo=form, pestana='reclamos')
+    reclamo = form.save(commit=False)
+    reclamo.registrado_por = request.user
+    reclamo.save()
+    registrar_auditoria(request.user, 'CREACION', 'Reclamo', reclamo.pk, '', str(reclamo))
+    messages.success(request, "Reclamo registrado: queda pendiente hasta que se responda.")
+    return redirect(reverse('indicadores:felicitaciones_reclamos') + '?pestana=reclamos')
+
+
+@permiso_requerido('IndicadoresApp.change_reclamo', 'Responder Reclamo')
+def reclamo_responder(request, pk):
+    reclamo = get_object_or_404(Reclamo, pk=pk)
+    volver = reverse('indicadores:felicitaciones_reclamos') + '?pestana=reclamos'
+    if request.method != 'POST':
+        return redirect(volver)
+    if not request.user.funcionarios_para_felicitaciones().filter(pk=reclamo.funcionario_id).exists():
+        return acceso_denegado(request, 'Responder Reclamo')
+    if reclamo.estado == 'RESUELTO':
+        messages.error(request, "Ese reclamo ya fue respondido.")
+        return redirect(volver)
+    form = RespuestaReclamoForm(request.POST, instance=reclamo)
+    if not form.is_valid():
+        mostrar_errores(request, form)
+        return redirect(volver)
+    reclamo = form.save(commit=False)
+    reclamo.estado = 'RESUELTO'
+    reclamo.respondido_por = request.user
+    reclamo.fecha_respuesta = timezone.now()
+    reclamo.save()
+    registrar_auditoria(request.user, 'MODIFICACION', 'Reclamo', reclamo.pk, 'PENDIENTE', 'RESUELTO')
+    messages.success(request, "Reclamo respondido: queda resuelto.")
+    return redirect(volver)

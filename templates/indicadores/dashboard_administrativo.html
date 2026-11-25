@@ -1,26 +1,15 @@
 {% comment %}
-Resumen del Funcionario (grupo Administrativo) en Mi Gestión: el puntaje colectivo de su delegación y accesos
-rápidos. Su avance, pendientes y evidencias van en las tarjetas de la cabecera.
+Accesos rápidos del Funcionario (grupo Administrativo). Van sobre las pestañas de Mi Gestión
+(actividades/components/mantenedores.html): el Funcionario no tiene pestaña Resumen. Su avance, pendientes,
+evidencias y el puntaje colectivo de su delegación van en el tablero de arriba.
 {% endcomment %}
-<div class="p-3 p-md-4">
-    {% if umbral_colectivo %}
-    <div class="card border-0 shadow-sm border-start border-4 border-{% if cumple_colectivo %}success{% else %}warning{% endif %} p-3 mb-4">
-        <span class="text-muted small">Puntaje colectivo de mi delegación</span>
-        <h3 class="fw-bold mb-0">{{ puntaje_colectivo }}% <small class="fs-6 text-muted fw-normal">· meta colectiva hoy: {{ meta_colectiva }}%</small></h3>
-        <small class="text-muted">Los puntajes se miran en equipo: el avance de cada uno suma al de la delegación.</small>
-    </div>
-    {% endif %}
-    <h6 class="fw-bold mb-3">Accesos rápidos</h6>
-    <div class="row g-3">
-        {% if request.user.puede_agregar_actividad %}
-        {% url 'actividades:actividad_crear' as url_crear %}
-        {% include 'indicadores/components/acceso.html' with url=url_crear icono='bi-plus-circle' titulo='Agregar actividad' texto='Registrar lo que hizo hoy o un compromiso.' %}
-        {% endif %}
-        {% if request.user.puede_registrar %}
-        {% url 'actividades:atencion_crear' as url_atencion %}
-        {% include 'indicadores/components/acceso.html' with url=url_atencion icono='bi-person-vcard' titulo='Agregar atención' texto='Registrar una solicitud social.' %}
-        {% endif %}
-        {% url 'actividades:tubo_trabajo' as url_tubo %}
-        {% include 'indicadores/components/acceso.html' with url=url_tubo icono='bi-kanban' titulo='Tubo de Trabajo' texto='Lo que depende de factores externos.' %}
-    </div>
-</div>
+{% if request.user.puede_agregar_actividad %}
+{% url 'actividades:actividad_crear' as url_crear %}
+{% include 'indicadores/components/acceso.html' with url=url_crear icono='bi-plus-circle' titulo='Agregar actividad' texto='Registrar lo que hizo hoy o un compromiso.' %}
+{% endif %}
+{% if request.user.puede_registrar %}
+{% url 'actividades:atencion_crear' as url_atencion %}
+{% include 'indicadores/components/acceso.html' with url=url_atencion icono='bi-person-vcard' titulo='Agregar atención' texto='Registrar una solicitud social.' %}
+{% endif %}
+{% url 'actividades:tubo_trabajo' as url_tubo %}
+{% include 'indicadores/components/acceso.html' with url=url_tubo icono='bi-kanban' titulo='Tubo de Trabajo' texto='Lo que depende de factores externos.' %}

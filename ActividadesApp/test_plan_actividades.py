@@ -69,7 +69,7 @@ class PlanActividadesTest(BasePlan):
 
     def test_cp_act_007_actividad_al_tubo(self):
         self.entrar('55555555-5')
-        respuesta = self.registrar(depende_externos='on', fecha_realizacion='')
+        respuesta = self.registrar(tubo=True)
         self.assertRedirects(respuesta, reverse('actividades:tubo_trabajo'))
         actividad = Actividad.objects.get()
         self.assertEqual((actividad.estado, actividad.depende_externos, actividad.fecha_realizacion), ('EN_TUBO', True, None))
@@ -99,7 +99,6 @@ class PlanActividadesTest(BasePlan):
 @override_settings(MEDIA_ROOT='/tmp/sgr_test_media')
 class PlanEvidenciasTest(BasePlan):
     def agregar_evidencia_y_seguir(self, actividad, **datos):
-        datos.setdefault('comentario', 'Trabajo realizado')
         return self.client.post(reverse('actividades:registrar_evidencia', args=[actividad.pk]), datos, follow=True)
 
     def test_cp_evi_001_evidencia_con_foto(self):
@@ -128,12 +127,12 @@ class PlanEvidenciasTest(BasePlan):
         grande = SimpleUploadedFile('grande.png', b'0' * (5 * 1024 * 1024 + 1), content_type='image/png')
         self.assertEqual(validar_imagen(grande), ["La fotografía no puede superar 5 MB."])
 
-    def test_cp_evi_005_sin_foto_es_valido_sin_comentario_no(self):
+    def test_cp_evi_005_sin_foto_es_valido_y_la_descripcion_exige_foto(self):
         actividad = self.crear()
         self.entrar('55555555-5')
-        self.agregar_evidencia_y_seguir(actividad, comentario='')
+        self.agregar_evidencia_y_seguir(actividad, comentario='Se realizó la visita')  # descripción sin foto
         self.assertEqual(actividad.evidencias.count(), 0)
-        self.agregar_evidencia_y_seguir(actividad, comentario='Se realizó la visita')
+        self.agregar_evidencia_y_seguir(actividad)  # sin foto ni descripción: queda realizada y va a validación
         self.assertEqual(actividad.evidencias.count(), 1)
         self.assertFalse(actividad.evidencias.get().imagen)
 

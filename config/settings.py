@@ -46,6 +46,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'AuditoriaApp.origen.OrigenAuditoriaMiddleware',  # IP y canal de cada evento de auditoría (RNF-008)
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -88,6 +89,11 @@ DATABASES = {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES', default_storage_engine=INNODB",
             'charset': 'utf8mb4',
         },
+        # Cada petición es una transacción (OWASP A08 y A10): si algo falla a mitad de camino,
+        # no queda guardada solo una parte (por ejemplo, la validación sin el cambio de estado)
+        'ATOMIC_REQUESTS': True,
+        # Reutiliza la conexión a MySQL durante 60 segundos en vez de abrir una nueva en cada petición
+        'CONN_MAX_AGE': 60,
     }
 }
 
@@ -99,6 +105,35 @@ AUTH_USER_MODEL = 'UsuarioApp.Usuario'
 
 # Si alguien entra sin sesión, se le envía al login
 LOGIN_URL = 'users:login'
+
+# Inicio de sesión (OWASP A07). Ver UsuarioApp/seguridad.py
+LOGIN_MAX_INTENTOS = 5          # fallos seguidos con un mismo RUT...
+LOGIN_MINUTOS_BLOQUEO = 15      # ...lo bloquean durante estos minutos
+# Segundo factor (código por correo). Apagado por defecto: mientras los correos de los usuarios sean de ejemplo,
+# nadie recibiría el código. Se enciende con MFA_ACTIVO=True en el .env cuando los correos sean reales.
+MFA_ACTIVO = os.getenv('MFA_ACTIVO', 'False') == 'True'
+MFA_MINUTOS_VIGENCIA = 10
+MFA_MAX_INTENTOS = 5
+
+# Auditoría: solo con un proxy propio delante (Nginx, balanceador de AWS) se toma la IP de X-Forwarded-For.
+# Sin proxy debe quedar en False: ese encabezado lo puede escribir cualquiera y falsearía la IP de origen.
+AUDITORIA_CONFIAR_PROXY = os.getenv('AUDITORIA_CONFIAR_PROXY', 'False') == 'True'
+
+# La sesión dura una jornada (8 horas) en vez de las 2 semanas que trae Django
+SESSION_COOKIE_AGE = 8 * 60 * 60
+
+# HTTPS (OWASP A02 y A04). Se activa con USAR_HTTPS=True en el .env SOLO cuando el servidor ya tenga
+# certificado: con estas opciones encendidas y sin HTTPS, nadie podría iniciar sesión.
+USAR_HTTPS = os.getenv('USAR_HTTPS', 'False') == 'True'
+if USAR_HTTPS:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = int(os.getenv('HSTS_SEGUNDOS') or '3600')  # subir a 31536000 cuando HTTPS esté probado
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    # Si Nginx recibe el HTTPS y le pasa la petición a Django, este encabezado indica que llegó cifrada
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    CSRF_TRUSTED_ORIGINS = [o for o in os.getenv('CSRF_TRUSTED_ORIGINS', '').split(',') if o]
 
 # Correo (recuperación de contraseña). Usuario y clave se leen del .env: en Gmail es una
 # "contraseña de aplicación" (requiere verificación en dos pasos). Si el .env no trae usuario,
@@ -164,6 +199,11 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # Archivos subidos por los usuarios (fotografías de evidencia)
 MEDIA_URL = 'media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Respaldos (python manage.py respaldar_bd): carpeta, cuántos se guardan y dónde está mysqldump
+RESPALDO_DIR = os.getenv('RESPALDO_DIR') or os.path.join(BASE_DIR, 'respaldos')
+RESPALDO_CANTIDAD = int(os.getenv('RESPALDO_CANTIDAD') or '14')
+MYSQLDUMP = os.getenv('MYSQLDUMP') or 'mysqldump'
 
 # Tamaño máximo de una fotografía de evidencia (5 MB)
 MAX_IMAGEN_EVIDENCIA = 5 * 1024 * 1024

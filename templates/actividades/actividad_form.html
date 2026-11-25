@@ -8,22 +8,10 @@
         <div class="col-lg-9">
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-muni text-white fw-bold py-3 d-flex align-items-center">
-                    <i class="bi bi-journal-plus me-2 fs-5"></i>
-                    <span>{% if modo_edicion %}Modificar Actividad {{ actividad.folio }} {% elif es_delegado %}Registrar Gestión{% else %}Registrar Actividad Territorial{% endif %}</span>
+                    <i class="bi {% if tubo %}bi-kanban{% else %}bi-journal-plus{% endif %} me-2 fs-5"></i>
+                    <span>{% if modo_edicion %}Modificar Actividad {{ actividad.folio }}{% elif tubo %}Agregar al Tubo de Trabajo{% elif es_delegado %}Registrar Gestión{% else %}Registrar Actividad{% endif %}</span>
                 </div>
                 <div class="card-body p-4">
-                    <div class="alert alert-light border small mb-4" role="note">
-                        <strong>¿Cómo se registra?</strong> La fecha de ingreso se guarda sola (hoy, {{ hoy|date:"d/m/Y" }}). Usted elige la <strong>fecha de realización</strong>.
-                        <ul class="mb-0 mt-1">
-                            <li><strong>Hoy (o un día anterior):</strong> se agrega su evidencia. Escriba qué se hizo; la foto es opcional.</li>
-                            <li><strong>Un día posterior:</strong> queda como <strong>compromiso</strong> pendiente hasta que se realice.</li>
-                            <li><strong>Depende de factores externos:</strong> pasa al <strong>Tubo de Trabajo</strong>. La fecha de realización es opcional: si todavía no se sabe, se agrega después.</li>
-                            <li><strong>Reglas de ingreso:</strong> máximo 7 actividades por día. La semana se cierra el lunes siguiente: desde el martes ya no se ingresan actividades realizadas la semana anterior.</li>
-                            <li><strong>Puntaje:</strong> lo da la acción realizada (por ejemplo, el taller), no su coordinación previa. Sin el nombre y el teléfono de la persona atendida, la actividad no tiene puntaje.</li>
-                            {% if es_delegado %}<li><strong>Delegado:</strong> lo que usted ingresa queda como <strong>gestión</strong> y no suma puntaje.</li>{% endif %}
-                        </ul>
-                    </div>
-
                     {% if form.non_field_errors %}
                     <div class="alert alert-danger">{% for error in form.non_field_errors %}<div>{{ error }}</div>{% endfor %}</div>
                     {% endif %}
@@ -32,21 +20,21 @@
                         {% csrf_token %}
                         <div class="row g-3">
                             <div class="col-12">
-                                <label class="form-label fw-semibold" for="{{ form.solicitud_problema.id_for_label }}">{{ form.solicitud_problema.label }}</label>
-                                <textarea name="solicitud_problema" id="{{ form.solicitud_problema.id_for_label }}" rows="3" class="form-control {% if form.solicitud_problema.errors %}is-invalid{% endif %}" placeholder="Detalle los requerimientos o la labor en terreno...">{{ form.solicitud_problema.value|default:'' }}</textarea>
+                                <label class="form-label fw-semibold" for="{{ form.solicitud_problema.id_for_label }}">Descripción</label>
+                                <textarea name="solicitud_problema" id="{{ form.solicitud_problema.id_for_label }}" rows="3" class="form-control {% if form.solicitud_problema.errors %}is-invalid{% endif %}">{{ form.solicitud_problema.value|default:'' }}</textarea>
                                 {% for error in form.solicitud_problema.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                             </div>
 
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold" for="{{ form.accion.id_for_label }}">{{ form.accion.label }}</label>
-                                <input type="text" name="accion" id="{{ form.accion.id_for_label }}" value="{{ form.accion.value|default:'' }}" maxlength="255" class="form-control {% if form.accion.errors %}is-invalid{% endif %}" placeholder="Ej: Gestión en terreno, Inspección, Reunión...">
+                                <input type="text" name="accion" id="{{ form.accion.id_for_label }}" value="{{ form.accion.value|default:'' }}" maxlength="255" class="form-control {% if form.accion.errors %}is-invalid{% endif %}">
                                 {% for error in form.accion.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                             </div>
 
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold" for="{{ form.item.id_for_label }}">{{ form.item.label }}</label>
                                 <select name="item" id="{{ form.item.id_for_label }}" class="form-select {% if form.item.errors %}is-invalid{% endif %}">
-                                    <option value="">Seleccione una opción...</option>
+                                    <option value="">Seleccione...</option>
                                     {% for opcion in form.fields.item.queryset %}
                                     <option value="{{ opcion.pk }}" {% if form.item.value|stringformat:"s" == opcion.pk|stringformat:"s" %}selected{% endif %}>{{ opcion.nombre }}</option>
                                     {% endfor %}
@@ -57,22 +45,29 @@
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold" for="{{ form.territorio.id_for_label }}">{{ form.territorio.label }}</label>
                                 <select name="territorio" id="{{ form.territorio.id_for_label }}" class="form-select {% if form.territorio.errors %}is-invalid{% endif %}">
-                                    <option value="">Seleccione un territorio...</option>
+                                    <option value="">Seleccione...</option>
                                     {% for territorio in form.fields.territorio.queryset %}
                                     <option value="{{ territorio.pk }}" {% if form.territorio.value|stringformat:"s" == territorio.pk|stringformat:"s" %}selected{% endif %}>{{ territorio.nombre }}{% if not request.user.delegacion %} ({{ territorio.delegacion|default:"sin delegación" }}){% endif %}</option>
                                     {% endfor %}
                                 </select>
                                 {% for error in form.territorio.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                                 {% if not form.fields.territorio.queryset %}
-                                <small class="text-danger">Su delegación no tiene territorios registrados. Pida al Administrador que los agregue.</small>
+                                <small class="text-danger">Su delegación no tiene territorios registrados.</small>
                                 {% endif %}
                             </div>
 
-                            <!-- Encargado: se busca entre los Funcionarios registrados. La gestión del Delegado es suya: no lleva -->
-                            {% if not es_delegado %}
+                            <!-- Fecha de realización: en el Tubo es opcional -->
                             <div class="col-md-6">
+                                <label class="form-label fw-semibold" for="id_fecha_realizacion">{{ form.fecha_realizacion.label }}{% if tubo %} <span class="text-muted fw-normal">(opcional)</span>{% endif %}</label>
+                                <input type="date" name="fecha_realizacion" id="id_fecha_realizacion" value="{{ form.fecha_realizacion.value|date:'Y-m-d'|default:form.fecha_realizacion.value|default:'' }}" class="form-control {% if form.fecha_realizacion.errors %}is-invalid{% endif %}">
+                                {% for error in form.fecha_realizacion.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                            </div>
+
+                            <!-- Encargado: la gestión del Delegado es suya, no lleva -->
+                            {% if not es_delegado %}
+                            <div class="col-12">
                                 <label class="form-label fw-semibold" for="buscar_encargado">{{ form.encargado.label }}</label>
-                                <input type="search" id="buscar_encargado" class="form-control form-control-sm mb-1" placeholder="Buscar funcionario por nombre o territorio...">
+                                <input type="search" id="buscar_encargado" class="form-control form-control-sm mb-1" placeholder="Buscar funcionario...">
                                 <select name="encargado" id="id_encargado" class="form-select {% if form.encargado.errors %}is-invalid{% endif %}" size="4">
                                     <option value="" {% if not form.encargado.value %}selected{% endif %}>{{ form.fields.encargado.empty_label }}</option>
                                     {% for funcionario in form.fields.encargado.queryset %}
@@ -80,23 +75,25 @@
                                     {% endfor %}
                                 </select>
                                 {% for error in form.encargado.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
-                                <small class="text-muted">Si lo deja en "Yo mismo", la actividad queda a su cargo.</small>
                             </div>
                             {% endif %}
 
-                            <!-- Vincular a una solicitud social registrada antes -->
+                            <!-- Persona atendida (obligatoria) -->
+                            <div class="col-12"><h6 class="fw-bold mb-0 mt-2">Persona atendida</h6></div>
+                            {% include 'actividades/components/solicitante.html' %}
+
+                            <!-- Vincular a una solicitud social (opcional): plegado para no cargar el formulario -->
                             <div class="col-12">
-                                <div class="border rounded p-3">
-                                    <h6 class="fw-bold mb-1"><i class="bi bi-link-45deg me-1 text-danger"></i>Vincular actividad a solicitud social <small class="text-muted fw-normal">(opcional)</small></h6>
-                                    <p class="small text-muted mb-2">Busque por nombre o RUT de la persona, fecha (dd/mm/aaaa) o funcionario que la ingresó.</p>
-                                    <input type="search" id="buscar_solicitud" class="form-control form-control-sm mb-2" placeholder="Ej: María, 12345678, 22/10/2026...">
+                                <details class="border rounded p-3" {% if form.solicitud.value or form.solicitud.errors %}open{% endif %}>
+                                    <summary class="fw-semibold">Vincular a una solicitud social <span class="text-muted fw-normal">(opcional)</span></summary>
+                                    <input type="search" id="buscar_solicitud" class="form-control form-control-sm my-2" placeholder="Buscar por nombre, RUT o fecha...">
                                     <div class="table-responsive border rounded" style="max-height: 220px; overflow-y: auto;">
                                         <table class="table table-sm table-hover mb-0 small" id="tabla_solicitudes">
-                                            <thead class="table-light"><tr><th></th><th>CÓDIGO</th><th>FECHA</th><th>SOLICITANTE</th><th>RUT</th><th>TIPO</th><th>INGRESADA POR</th><th>ESTADO</th></tr></thead>
+                                            <thead class="table-light"><tr><th></th><th>CÓDIGO</th><th>FECHA</th><th>SOLICITANTE</th><th>RUT</th><th>TIPO</th><th>ESTADO</th></tr></thead>
                                             <tbody>
                                                 <tr class="fila-fija">
                                                     <td><input class="form-check-input" type="radio" name="solicitud" id="solicitud_ninguna" value="" {% if not form.solicitud.value %}checked{% endif %}></td>
-                                                    <td colspan="7"><label for="solicitud_ninguna" class="mb-0">No vincular a ninguna solicitud</label></td>
+                                                    <td colspan="6"><label for="solicitud_ninguna" class="mb-0">No vincular</label></td>
                                                 </tr>
                                                 {% for solicitud in form.fields.solicitud.queryset %}
                                                 <tr>
@@ -106,66 +103,40 @@
                                                     <td>{{ solicitud.solicitante.nombre }}</td>
                                                     <td>{{ solicitud.solicitante.rut }}</td>
                                                     <td>{{ solicitud.tipo_atencion.nombre }}</td>
-                                                    <td>{{ solicitud.usuario.get_full_name|default:solicitud.usuario.username }}</td>
                                                     <td>{{ solicitud.get_estado_display }}</td>
                                                 </tr>
                                                 {% empty %}
-                                                <tr><td colspan="8" class="text-muted text-center">No hay solicitudes sociales registradas en su delegación.</td></tr>
+                                                <tr><td colspan="7" class="text-muted text-center">No hay solicitudes sociales en su delegación.</td></tr>
                                                 {% endfor %}
                                             </tbody>
                                         </table>
                                     </div>
                                     {% for error in form.solicitud.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                                </div>
+                                </details>
                             </div>
 
-                            <!-- Persona atendida (obligatoria): se identifica por su RUT. Si está registrada, nombre y teléfono
-                                 se completan solos; si no, se pregunta si se agrega. Con una solicitud social, se vinculan -->
-                            <div class="col-12"><h6 class="fw-bold mb-0"><i class="bi bi-person me-1 text-danger"></i>Persona atendida</h6></div>
-                            {% include 'actividades/components/solicitante.html' %}
-
-                            <div class="col-12">
-                                <div class="form-check form-switch bg-light p-3 border rounded">
-                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="depende_externos" id="id_depende_externos" {% if form.depende_externos.value %}checked{% endif %}>
-                                    <label class="form-check-label fw-semibold" for="id_depende_externos">{{ form.depende_externos.label }}</label>
-                                    <div class="small text-muted ms-4">Úselo si la actividad depende de otros (respuesta de otra institución, permisos, clima...). La fecha de realización queda opcional.</div>
-                                </div>
-                            </div>
-
-                            <!-- Fechas: la de ingreso es automática; la de realización se elige (en el Tubo es opcional) -->
-                            <div class="col-md-6">
-                                <label class="form-label fw-semibold"><i class="bi bi-calendar me-1"></i>Fecha de ingreso</label>
-                                <input type="text" class="form-control bg-light" value="{{ hoy|date:'d/m/Y' }} (automática)" readonly>
-                            </div>
-                            <div class="col-md-6" id="bloque_fecha">
-                                <label class="form-label fw-semibold" for="id_fecha_realizacion"><i class="bi bi-calendar-check me-1"></i>{{ form.fecha_realizacion.label }}</label>
-                                <input type="date" name="fecha_realizacion" id="id_fecha_realizacion" value="{{ form.fecha_realizacion.value|date:'Y-m-d'|default:form.fecha_realizacion.value|default:'' }}" class="form-control {% if form.fecha_realizacion.errors %}is-invalid{% endif %}">
-                                {% for error in form.fecha_realizacion.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
-                                <small class="text-muted" id="aviso_fecha">Si elige un día posterior a hoy, la actividad queda como compromiso pendiente.</small>
-                                <small class="text-muted d-none" id="aviso_fecha_tubo">Opcional en el Tubo: si aún no se sabe, déjela vacía y agréguela después.</small>
-                            </div>
-
-                            <!-- Evidencia: solo si la fecha es hoy o anterior -->
+                            {% if not tubo and not actividad.evidencia_vigente %}
+                            <!-- Evidencia (opcional): solo si la fecha es hoy o anterior -->
                             <div class="col-12" id="bloque_evidencia">
                                 <div class="border rounded p-3">
-                                    <h6 class="fw-bold mb-3"><i class="bi bi-check2-square me-1 text-danger"></i>Evidencia</h6>
-                                    <label class="form-label fw-semibold" for="id_comentario">{{ form.comentario.label }} <span class="text-danger">*</span></label>
-                                    <textarea name="comentario" id="id_comentario" rows="2" class="form-control {% if form.comentario.errors %}is-invalid{% endif %}" placeholder="Ej: Se realizó la reunión con la junta de vecinos y se acordó...">{{ form.comentario.value|default:'' }}</textarea>
-                                    {% for error in form.comentario.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
-                                    <label class="form-label fw-semibold mt-3" for="id_imagen"><i class="bi bi-camera me-1"></i>{{ form.imagen.label }}</label>
+                                    <h6 class="fw-bold mb-3">Evidencia <span class="text-muted fw-normal">(opcional)</span></h6>
+                                    <label class="form-label fw-semibold" for="id_imagen">Fotografía</label>
                                     <input type="file" name="imagen" id="id_imagen" class="form-control {% if form.imagen.errors %}is-invalid{% endif %}" accept=".jpg,.jpeg,.png">
                                     {% for error in form.imagen.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
-                                    <small class="text-muted">JPG o PNG, máximo 5 MB. No todas las actividades requieren fotografía.</small>
+                                    <label class="form-label fw-semibold mt-3" for="id_comentario">{{ form.comentario.label }}</label>
+                                    <textarea name="comentario" id="id_comentario" rows="2" class="form-control {% if form.comentario.errors %}is-invalid{% endif %}">{{ form.comentario.value|default:'' }}</textarea>
+                                    {% for error in form.comentario.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
                                 </div>
                             </div>
+                            {% endif %}
                         </div>
 
                         <hr class="my-4">
 
                         <div class="d-flex justify-content-end gap-2">
-                            <a href="{% url 'actividades:mi_gestion' %}" class="btn btn-outline-secondary">Cancelar</a>
+                            <a href="{% if tubo %}{% url 'actividades:tubo_trabajo' %}{% else %}{% url 'actividades:mi_gestion' %}{% endif %}" class="btn btn-outline-secondary">Cancelar</a>
                             <button type="submit" class="btn btn-muni-v2 fw-bold px-4">
-                                <i class="bi bi-check-circle me-1"></i> <span id="texto_guardar">Registrar Actividad</span>
+                                <i class="bi bi-check-circle me-1"></i> <span id="texto_guardar">{% if modo_edicion %}Guardar cambios{% elif tubo %}Agregar al Tubo{% else %}Registrar Actividad{% endif %}</span>
                             </button>
                         </div>
                     </form>
@@ -178,32 +149,23 @@
 
 {% block extra_js %}
 <script>
-    // Muestra u oculta los bloques según la opción elegida. Es solo ayuda visual: el servidor valida igual.
+    // Solo ayuda visual: el servidor valida igual.
     (function () {
+        // Con fecha posterior a hoy es un compromiso: la evidencia se agrega cuando se realice
         var hoy = '{{ hoy|date:"Y-m-d" }}';
-        var tubo = document.getElementById('id_depende_externos');
         var fecha = document.getElementById('id_fecha_realizacion');
-        var avisoFecha = document.getElementById('aviso_fecha');
-        var avisoTubo = document.getElementById('aviso_fecha_tubo');
         var bloqueEvidencia = document.getElementById('bloque_evidencia');
         var texto = document.getElementById('texto_guardar');
-        function actualizar() {
-            var alTubo = tubo.checked;
-            var futura = fecha.value && fecha.value > hoy;
-            avisoFecha.classList.toggle('d-none', alTubo);
-            avisoTubo.classList.toggle('d-none', !alTubo);
-            bloqueEvidencia.style.display = (alTubo || futura) ? 'none' : '';
-            if (alTubo) { texto.textContent = 'Ingresar al Tubo de Trabajo'; }
-            else if (futura) { texto.textContent = 'Programar compromiso'; }
-            else { texto.textContent = '{% if modo_edicion %}Guardar cambios{% else %}Registrar Actividad {% endif %}'; }
-        }
-        // Al marcar el Tubo, la fecha de hoy que viene por defecto se borra (la fecha es opcional ahí)
-        tubo.addEventListener('change', function () {
-            if (tubo.checked && fecha.value === hoy) { fecha.value = ''; }
+        if (bloqueEvidencia) {
+            var textoInicial = texto.textContent;
+            var actualizar = function () {
+                var futura = fecha.value && fecha.value > hoy;
+                bloqueEvidencia.style.display = futura ? 'none' : '';
+                texto.textContent = futura && textoInicial !== 'Guardar cambios' ? 'Programar actividad' : textoInicial;
+            };
+            fecha.addEventListener('change', actualizar);
             actualizar();
-        });
-        fecha.addEventListener('change', actualizar);
-        actualizar();
+        }
 
         // Filtro de texto para buscar encargado y solicitud social
         function filtrar(entrada, filas) {

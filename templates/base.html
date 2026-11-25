@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}SGR — Ilustre Municipalidad de La Serena{% endblock %}</title>
+    {% include 'components/favicon.html' %}
 
     <!-- Hojas de Estilo Oficiales Framework La Serena & Bootstrap v5.3 -->
     <link href="https://framework.laserena.cl/css/frameworkV1.css" rel="stylesheet" />
@@ -12,6 +13,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" integrity="sha512-dPXYcDub/aeb08c63jRq/k6GaKccl256JQy/AnOq7CAnEZ9FzSL9wSbcZkMp4R26vBsMLFYH4kQ67/bbV8XaCQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
     <!-- Definición de Clases de Paleta Municipal (Proyecto/static/css/styles.css). ?v= cambia cuando se modifica la hoja: obliga al navegador a descargar la versión nueva -->
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=2026-11-17c">
+    <!-- Capa visual moderna (animaciones, sombras, tablas y formularios). Va después de styles.css para que sus reglas manden. Quitar esta línea vuelve al diseño anterior -->
+    <link rel="stylesheet" href="{% static 'css/sgr-moderno.css' %}?v=2026-11-24c">
     <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=2026-11-07">
     {% if user.puede_usar_chatbot %}
     <!-- Asistente de chat con IA: solo Admin, Coordinador, Delegado y superusuario -->
@@ -127,10 +131,12 @@
     </div>
 </nav>
 
-<!-- 3. SUB-NAVBAR DE PESTAÑAS PRINCIPALES SGR (RESTRINGIDO POR ROL) -->
-<div class="bg-gris-10 border-bottom overflow-x-auto">
+<!-- 3. SUB-NAVBAR DE PESTAÑAS PRINCIPALES SGR (RESTRINGIDO POR ROL).
+     Las pantallas de Administración reemplazan este bloque por su propia barra roja (users/components/barra_admin.html) -->
+{% block barra_pestanas %}
+<div class="sgr-barra-pestanas">
     <div class="container-fluid p-0">
-        <ul class="nav nav-tabs ls-nav-tabs flex-nowrap border-0 text-uppercase fw-semibold" id="sgrTabs" style="font-size: 0.78rem;">
+        <ul class="nav nav-tabs ls-nav-tabs flex-nowrap border-0 text-uppercase fw-semibold" id="sgrTabs" style="font-size: 0.82rem;">
             
             <!-- 1. Mi Gestión: tablero, actividades, metas y mantenedores del perfil (todos los roles) -->
             <li class="nav-item">
@@ -166,45 +172,52 @@
             </li>
             {% endif %}
 
-            <!-- 5. Semáforo (Supervisores / Control) -->
+            <!-- 5. Seguimiento (Admin, Coordinador y Delegado): Semáforo y Resumen en un menú, para que la barra quepa en una línea.
+                 strategy fixed: el menú se dibuja sobre la página y no lo corta el desplazamiento horizontal de la barra -->
             {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Delegado' or request.user.is_superuser %}
+            {% with nombre=request.resolver_match.url_name %}
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle border-0 py-2 px-3 {% if nombre == 'semaforo' or nombre == 'resumen_delegacion' %}active{% else %}text-dark{% endif %}" href="#" role="button" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false">
+                    <i class="bi bi-graph-up-arrow me-1 text-danger"></i> Seguimiento
+                </a>
+                <ul class="dropdown-menu shadow-sm">
+                    <li><a class="dropdown-item {% if nombre == 'semaforo' %}active{% endif %}" href="{% url 'indicadores:semaforo' %}"><i class="bi bi-stoplights me-2 text-danger"></i>Semáforo</a></li>
+                    <li><a class="dropdown-item {% if nombre == 'resumen_delegacion' %}active{% endif %}" href="{% url 'indicadores:resumen_delegacion' %}"><i class="bi bi-pie-chart me-2 text-danger"></i>Resumen</a></li>
+                </ul>
+            </li>
+            {% endwith %}
+            {% endif %}
+
+            <!-- 6. Felicitaciones y Reclamos (Delegado y Admin) y Administración (usuarios, delegaciones, metas, periodos y
+                 auditoría, en su propia parte del sistema). Ocultar un enlace no protege la pantalla: cada vista revisa
+                 también el permiso -->
+            {% with nombre=request.resolver_match.url_name %}
+            {% if request.user.puede_gestionar_felicitaciones %}
             <li class="nav-item">
-                <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'semaforo' %}active{% else %}text-dark{% endif %}" href="{% url 'indicadores:semaforo' %}">
-                    <i class="bi bi-stoplights me-1 text-danger"></i> Semáforo
+                <a class="nav-link border-0 py-2 px-3 {% if nombre == 'felicitaciones_reclamos' %}active{% else %}text-dark{% endif %}" href="{% url 'indicadores:felicitaciones_reclamos' %}">
+                    <i class="bi bi-chat-square-heart me-1 text-danger"></i> Felicitaciones y Reclamos
                 </a>
             </li>
             {% endif %}
-
-            <!-- 6. Resumen Delegación (Directivos / Control) -->
-            {% if request.user.rol == 'Admin' or request.user.rol == 'Coordinador' or request.user.rol == 'Delegado' or request.user.is_superuser %}
-            <li class="nav-item">
-                <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'resumen_delegacion' %}active{% else %}text-dark{% endif %}" href="{% url 'indicadores:resumen_delegacion' %}">
-                    <i class="bi bi-pie-chart me-1 text-danger"></i> Resumen
-                </a>
-            </li>
-            {% endif %}
-
-            <!-- 7. Administración (Admin gestiona; Coordinador visualiza; el Delegado ve los Funcionarios de su delegación) -->
             {% if request.user.puede_ver_usuarios %}
             <li class="nav-item">
-                <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'administracion' %}active{% else %}text-dark{% endif %}" href="{% url 'users:administracion' %}">
+                <a class="nav-link border-0 py-2 px-3 text-dark" href="{% url 'users:administracion' %}">
                     <i class="bi bi-gear-fill me-1 text-danger"></i> {% if request.user.es_delegado %}Mi Delegación{% else %}Administración{% endif %}
                 </a>
             </li>
-            {% endif %}
-
-            <!-- 8. Auditoría (Administrador y Coordinador: misma regla que la vista auditoria:logs) -->
-            {% if request.user.puede_administrar %}
+            {% elif request.user.puede_administrar %}
             <li class="nav-item">
-                <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'logs' %}active{% else %}text-dark{% endif %}" href="{% url 'auditoria:logs' %}">
-                    <i class="bi bi-clock-history me-1 text-danger"></i> Auditoría
+                <a class="nav-link border-0 py-2 px-3 text-dark" href="{% url 'auditoria:logs' %}">
+                    <i class="bi bi-gear-fill me-1 text-danger"></i> Administración
                 </a>
             </li>
             {% endif %}
+            {% endwith %}
 
         </ul>
     </div>
 </div>
+{% endblock %}
 
 <!-- Mensajes del sistema (éxito / error). administracion.html ya los muestra dentro de su contenido. -->
 {# Alerta de validación para el Delegado: evidencias de su delegación que llevan días sin validar #}
@@ -259,9 +272,21 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 <!-- SweetAlert2: confirmación antes de eliminar. Todo formulario con data-confirmar="mensaje" pide confirmar -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js" integrity="sha384-YB/DdIkloKoRpclWB8bNcYXWakt57USgtQPDzvnIDHYU0lasD5eWlXVo1S4ODukY" crossorigin="anonymous"></script>
 <!-- Validación de RUT y teléfono al escribir (data-rut, data-telefono) -->
 <script src="{% static 'js/validaciones.js' %}?v=2026-11-06"></script>
+<!-- Tooltips de Bootstrap en todo el sistema: cualquier elemento con title (botones de íconos, enlaces, íconos de
+     aviso) muestra su texto en el recuadro negro de Bootstrap, en vez del recuadro propio del navegador, que cambia
+     según el navegador y el sistema operativo. Bootstrap no los activa solo: hay que crearlos con bootstrap.Tooltip -->
+<script>
+    document.querySelectorAll('[data-bs-toggle="tooltip"], [title]').forEach(function (elemento) {
+        if (elemento.getAttribute('title')) {
+            new bootstrap.Tooltip(elemento);
+        }
+    });
+</script>
+<!-- Animaciones: aparición al desplazar y conteo de números (static/js/animaciones.js) -->
+<script src="{% static 'js/animaciones.js' %}?v=2026-11-24"></script>
 <script>
     document.addEventListener('submit', function (evento) {
         var form = evento.target;
