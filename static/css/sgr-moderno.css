@@ -480,3 +480,83 @@ main hr {
     }
     .tarjeta-tabla:has(.tabla-sgr) { background: transparent; box-shadow: none; }
 }
+
+/* 16. HITOS Y SEGUIMIENTO DEL TUBO ----------------------------------------------------------------------------
+   Hitos (actividades/hitos.html): cada compromiso (actividad PROGRAMADA, no las del Tubo) es una tarjeta con la fecha límite en un bloque de color y el
+   responsable con sus iniciales. El color del bloque dice la urgencia: rojo vencido, ámbar esta semana. */
+.hito-tarjeta { border-left: 4px solid transparent !important; }
+.hitos-vencidos .hito-tarjeta { border-left-color: #C41230 !important; }
+.hitos-semana .hito-tarjeta { border-left-color: #F2A900 !important; }
+.hito-fecha {
+    flex: 0 0 76px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: .8rem; padding: .5rem .25rem; background: #f6f1f0; color: #1F1A1A; line-height: 1;
+}
+.hitos-vencidos .hito-fecha { background: #C41230; color: #ffffff; }
+.hitos-semana .hito-fecha { background: #FFF1CC; color: #7A5300; }
+.hito-dia { font-size: 1.9rem; font-weight: 800; }
+.hito-mes { font-size: .78rem; font-weight: 700; letter-spacing: .08em; margin-top: .2rem; }
+.hito-semana { font-size: .7rem; opacity: .8; margin-top: .15rem; text-transform: capitalize; }
+.hito-responsable {
+    flex: 0 0 auto; display: flex; align-items: center; gap: .6rem; min-width: 230px;
+    padding: .45rem .8rem .45rem .45rem; border-radius: 999px; background: #faf7f6;
+}
+.hito-responsable.es-mio { background: #fde8eb; }
+.hito-avatar {
+    width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    background: #8B1D19; color: #ffffff; font-weight: 700; font-size: .85rem; flex-shrink: 0;
+}
+.hito-plazo { flex: 0 0 150px; }
+.hito-etiqueta { background: #f1ecea; color: #5f5656; font-weight: 600; }
+.hitos-contador { background: #f1ecea; color: #5f5656; }
+.min-w-0 { min-width: 0; }
+@media (max-width: 767.98px) {
+    .hito-responsable, .hito-plazo { flex: 1 1 100%; min-width: 0; }
+}
+
+/* Seguimiento del Tubo: un color por estado (Ingresado gris, Pendiente ámbar, En proceso azul, Realizado verde) */
+.estado-tubo { font-weight: 700; letter-spacing: .03em; }
+.estado-tubo-ingresado { background: #e9e6e5; color: #4d4646; }
+.estado-tubo-pendiente { background: #FFF1CC; color: #7A5300; }
+.estado-tubo-en_proceso { background: #DCE9FB; color: #1D4E9E; }
+.estado-tubo-realizado { background: #D9F2E3; color: #1E6B3F; }
+.tubo-porcentaje { font-size: 2.4rem; font-weight: 800; color: #1F1A1A; line-height: 1.1; margin: .25rem 0 .5rem; }
+.tubo-progreso { height: .5rem; background: #f1ecea; border-radius: 999px; }
+.tubo-progreso .progress-bar { background: #2E9E5B; border-radius: 999px; }
+.tubo-estado-tarjeta { border-top: 3px solid transparent !important; }
+.tubo-estado-tarjeta.seleccionada { box-shadow: 0 0 0 2px #C41230 !important; }
+.tubo-por-funcionario summary { cursor: pointer; list-style-position: inside; }
+
+/* 17. Tendencia semanal de Mi Gestión: alto fijo para que el gráfico de líneas no crezca con el ancho */
+.grafico-tendencia { position: relative; height: 260px; }
+@media (max-width: 767.98px) { .grafico-tendencia { height: 220px; } }
+
+/* 18. Encargado de la actividad: quien registra por defecto, con lista desplegable y buscador para elegir otro */
+.encargado-chip { display: inline-flex; align-items: center; gap: .15rem; padding: .45rem .85rem; border-radius: 999px; background: #faf7f6; border: 1px solid #f1ecea; font-weight: 600; }
+.encargado-actual.is-invalid .encargado-chip { border-color: #C41230; }
+.encargado-panel { box-shadow: var(--sgr-sombra) !important; }
+.encargado-lista { max-height: 240px; overflow-y: auto; }
+.encargado-lista .list-group-item.active { background: #fde8eb; color: #1F1A1A; border-color: #f1ecea; box-shadow: inset 3px 0 0 #C41230; }
+
+/* 19. Mi Gestión: banner de la sección de actividades y datos del Resumen con línea roja al inicio */
+.sgr-banner-actividades { border-radius: 18px 18px 0 0; padding-top: 1.6rem; padding-bottom: 1.6rem; }
+.sgr-banner-actividades + .perfil-pestanas { background: #fff; border-radius: 0; padding-top: .35rem; }
+.sgr-dato {
+    position: relative; display: flex; flex-direction: column; justify-content: center; gap: .35rem;
+    min-height: 104px; padding: 1.1rem 1.2rem 1.1rem 1.55rem; background: #fff; border-radius: 16px;
+    box-shadow: 0 6px 18px rgba(31, 26, 26, .07); overflow: hidden; transition: transform .2s ease, box-shadow .2s ease;
+}
+.sgr-dato::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: #C41230;
+    transform-origin: top; animation: sgr-linea-roja .6s ease-out both;
+}
+.sgr-dato:hover { transform: translateY(-3px); box-shadow: 0 12px 26px rgba(196, 18, 48, .14); }
+.sgr-dato:hover::before { width: 9px; }
+.sgr-dato-etiqueta { color: #6b6262; font-size: .85rem; font-weight: 500; }
+.sgr-dato-valor { color: #1F1A1A; font-size: 1.75rem; font-weight: 800; line-height: 1; }
+@keyframes sgr-linea-roja { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .sgr-dato::before { animation: none; } .sgr-dato { transition: none; } }
+
+/* 20. Paginación con los colores del sistema (Auditoría y demás listados paginados) */
+.sgr-paginacion .page-link { color: #1F1A1A; border-color: #f1ecea; border-radius: 10px !important; margin: 0 .15rem; }
+.sgr-paginacion .page-link:hover { color: #C41230; background: #fdf3f4; }
+.sgr-paginacion .page-item.disabled .page-link { color: #8a8080; background: #fff; }

@@ -203,3 +203,29 @@ class AvisosPorCorreoTest(BaseActividades):
         self.assertEqual(len(para_compania), 1)
         self.assertIn(self.func.get_full_name(), para_compania[0].body)
         self.assertEqual(para_compania[0].body.count('\n- '), 2)  # sus 2 funcionarios; el de Rural va a su Delegado
+
+
+class SesionCerradaTest(TestCase):
+    """Al cerrar sesión se pasa por una página intermedia con el logo animado antes de volver al inicio."""
+    def setUp(self):
+        datos = crear_datos_base()
+        self.func = crear_usuario('55555555-5', 'Funcionario', datos['delegacion'], datos['cargo'])
+        self.client.force_login(self.func)
+
+    def test_cerrar_sesion_pasa_por_la_pagina_intermedia(self):
+        respuesta = self.client.post(reverse('users:logout'))
+        self.assertRedirects(respuesta, reverse('users:sesion_cerrada'))
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_pagina_intermedia_despide_y_vuelve_al_inicio(self):
+        self.client.post(reverse('users:logout'))
+        respuesta = self.client.get(reverse('users:sesion_cerrada'))
+        self.assertContains(respuesta, 'Sesión cerrada')
+        self.assertContains(respuesta, 'Hasta pronto, Nombre.')
+        self.assertContains(respuesta, 'img/marca/vertical-blanco.svg')
+        self.assertContains(respuesta, f'url={reverse("users:login")}')
+        # El nombre se usa una sola vez
+        self.assertNotContains(self.client.get(reverse('users:sesion_cerrada')), ', Nombre')
+
+    def test_con_sesion_iniciada_no_muestra_la_despedida(self):
+        self.assertRedirects(self.client.get(reverse('users:sesion_cerrada')), reverse('actividades:mi_gestion'), fetch_redirect_response=False)

@@ -116,6 +116,8 @@ class Usuario(AbstractUser):
     date_joined = models.DateTimeField(default=timezone.now, db_column='creado', verbose_name="Creado")
     cargo = models.ForeignKey(Cargo, on_delete=models.PROTECT, null=True, blank=True, related_name='usuarios', verbose_name="Cargo")
     delegacion = models.ForeignKey(Delegacion, on_delete=models.PROTECT, null=True, blank=True, related_name='usuarios', verbose_name="Delegación")
+    # Contraseña temporal (settings.CONTRASENA_TEMPORAL): True hasta que el usuario elige su propia contraseña
+    debe_cambiar_clave = models.BooleanField(default=False, verbose_name="Debe cambiar la contraseña")
     telefono = models.CharField(max_length=20, blank=True, default="", verbose_name="Teléfono")
     foto = models.ImageField(upload_to='perfiles/', blank=True, default="", verbose_name="Foto de perfil")
     # Solo los Funcionarios tienen territorio (uno, dentro de su delegación). El Delegado es de toda su delegación.
@@ -316,6 +318,8 @@ class Usuario(AbstractUser):
         verbose_name = "Usuario"
         verbose_name_plural = "Usuarios"
         ordering = ["first_name", "last_name"]
+        # Las listas de usuarios se ordenan por nombre y apellido; los buscadores filtran por ellos
+        indexes = [models.Index(fields=["first_name", "last_name"], name="usuario_nombre_idx")]
 
 
 class UsuarioRol(models.Model):

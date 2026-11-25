@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from ActividadesApp.choices import (estados_actividad, estados_evidencia, decisiones,
                                     ESTADOS_PENDIENTES, cargos_representante, tipos_organizacion,
-                                    MAX_GESTIONES_ATENCION)
+                                    MAX_GESTIONES_ATENCION, estados_tubo)
 from UsuarioApp.choices import estados_registro
 
 # Días antes de la fecha de realización en que un compromiso se marca "por vencer"
@@ -44,6 +44,9 @@ class Actividad(models.Model):
     depende_externos = models.BooleanField(default=False, verbose_name="¿Depende de factores externos? (Tubo de Trabajo)")
     # Fecha de realización: la elige quien registra. En el Tubo puede quedar vacía y agregarse después
     fecha_realizacion = models.DateField(null=True, blank=True, verbose_name="Fecha de realización")
+    # Seguimiento en el Tubo (solo si depende de factores externos): Ingresado, Pendiente o En proceso los elige
+    # el responsable; Realizado lo calcula seguimiento_tubo() cuando ya se registró la ejecución
+    estado_tubo = models.CharField(max_length=10, choices=estados_tubo, default='INGRESADO', verbose_name="Seguimiento en el Tubo")
     estado = models.CharField(max_length=20, choices=estados_actividad, default='EVIDENCIA_INGRESADA', verbose_name="Estado")
     item = models.ForeignKey('UsuarioApp.Catalogo', on_delete=models.PROTECT, related_name='actividades_item', limit_choices_to={'tipo': 'ITEM_GESTION'}, verbose_name="Ítem de gestión")
     periodo = models.ForeignKey('IndicadoresApp.Periodo', on_delete=models.PROTECT, related_name='actividades', verbose_name="Periodo")
@@ -75,6 +78,18 @@ class Actividad(models.Model):
 
     def en_tubo(self):
         return self.estado == 'EN_TUBO'
+
+    def seguimiento_tubo(self):
+        """Etapa de la actividad en el Tubo: Realizado si ya tiene la ejecución registrada (evidencia ingresada o
+        validada); si no, el que eligió su responsable. None si la actividad no es del Tubo."""
+        if not self.depende_externos:
+            return None
+        if self.estado in ('EVIDENCIA_INGRESADA', 'VALIDADA'):
+            return 'REALIZADO'
+        return self.estado_tubo if self.estado_tubo != 'REALIZADO' else 'EN_PROCESO'
+
+    def get_seguimiento_tubo_display(self):
+        return dict(estados_tubo).get(self.seguimiento_tubo(), '')
 
     def vencido(self):
         """Pendiente (compromiso o del Tubo) con la fecha de realización ya pasada."""
@@ -145,6 +160,10 @@ class Actividad(models.Model):
         verbose_name = "Actividad"
         verbose_name_plural = "Actividades"
         ordering = ["-fecha"]
+        # Filtros frecuentes: pendientes, compromisos de Hitos y Tubo por estado y fecha de realización;
+        # listas ordenadas por fecha de ingreso
+        indexes = [models.Index(fields=["estado", "fecha_realizacion"], name="actividad_estado_fecha_idx"),
+                   models.Index(fields=["fecha"], name="actividad_fecha_idx")]
         permissions = [
             ("asignar_encargado", "Puede asignar encargado")
         ]
@@ -260,6 +279,8 @@ class Solicitante(models.Model):
         verbose_name = "Solicitante"
         verbose_name_plural = "Solicitantes"
         ordering = ["nombre"]
+        # Sugerencias al escribir el nombre (búsqueda por inicio) y orden alfabético de las listas
+        indexes = [models.Index(fields=["nombre"], name="solicitante_nombre_idx")]
 
 
 class Representante(models.Model):

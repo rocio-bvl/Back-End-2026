@@ -65,16 +65,34 @@
 
                             <!-- Encargado: la gestión del Delegado es suya, no lleva -->
                             {% if not es_delegado %}
+                            {# Por defecto el encargado es quien registra (valor vacío). "Seleccionar otro encargado" abre la lista con buscador #}
                             <div class="col-12">
-                                <label class="form-label fw-semibold" for="buscar_encargado">{{ form.encargado.label }}</label>
-                                <input type="search" id="buscar_encargado" class="form-control form-control-sm mb-1" placeholder="Buscar funcionario...">
-                                <select name="encargado" id="id_encargado" class="form-select {% if form.encargado.errors %}is-invalid{% endif %}" size="4">
-                                    <option value="" {% if not form.encargado.value %}selected{% endif %}>{{ form.fields.encargado.empty_label }}</option>
-                                    {% for funcionario in form.fields.encargado.queryset %}
-                                    <option value="{{ funcionario.pk }}" {% if form.encargado.value|stringformat:"s" == funcionario.pk|stringformat:"s" %}selected{% endif %}>{{ funcionario.get_full_name|default:funcionario.username }} · {{ funcionario.territorio|default:"sin territorio" }}{% if request.user.es_administrador %} · {{ funcionario.delegacion|default:"sin delegación" }}{% endif %}</option>
-                                    {% endfor %}
-                                </select>
-                                {% for error in form.encargado.errors %}<div class="invalid-feedback">{{ error }}</div>{% endfor %}
+                                <label class="form-label fw-semibold d-block">{{ form.encargado.label }}</label>
+                                <input type="hidden" name="encargado" id="id_encargado" value="{{ form.encargado.value|default_if_none:'' }}">
+                                <div class="encargado-actual d-flex flex-wrap align-items-center gap-2 {% if form.encargado.errors %}is-invalid{% endif %}">
+                                    <span class="encargado-chip"><i class="bi bi-person-check me-1"></i><span id="nombre_encargado">{% if modo_edicion %}{{ actividad.usuario.get_full_name|default:actividad.usuario.username }}{% else %}{{ request.user.get_full_name|default:request.user.username }}{% endif %}</span> <small class="text-muted" id="detalle_encargado">(quien registra)</small></span>
+                                    {% if form.fields.encargado.queryset %}
+                                    <button type="button" class="btn btn-sm btn-outline-dark" id="abrir_encargado" aria-expanded="false" aria-controls="panel_encargado"><i class="bi bi-people me-1"></i>Seleccionar otro encargado</button>
+                                    <button type="button" class="btn btn-sm btn-link text-muted d-none" id="quitar_encargado">Volver a quien registra</button>
+                                    {% endif %}
+                                </div>
+                                {% for error in form.encargado.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                                {% if form.fields.encargado.queryset %}
+                                <div class="encargado-panel card border-0 mt-2" id="panel_encargado" hidden>
+                                    <div class="card-body p-2">
+                                        <input type="search" id="buscar_encargado" class="form-control form-control-sm mb-2" placeholder="Buscar funcionario por nombre o territorio..." aria-label="Buscar funcionario">
+                                        <div class="list-group list-group-flush encargado-lista" role="listbox" aria-label="Funcionarios">
+                                            {% for funcionario in form.fields.encargado.queryset %}
+                                            <button type="button" role="option" class="list-group-item list-group-item-action py-2" data-id="{{ funcionario.pk }}" data-nombre="{{ funcionario.get_full_name|default:funcionario.username }}">
+                                                <span class="fw-semibold">{{ funcionario.get_full_name|default:funcionario.username }}</span>
+                                                <small class="text-muted d-block">{{ funcionario.territorio|default:"sin territorio" }}{% if request.user.es_administrador %} · {{ funcionario.delegacion|default:"sin delegación" }}{% endif %}</small>
+                                            </button>
+                                            {% endfor %}
+                                        </div>
+                                        <p class="text-muted small m-2 d-none" id="sin_encargados">Ningún funcionario coincide con la búsqueda.</p>
+                                    </div>
+                                </div>
+                                {% endif %}
                             </div>
                             {% endif %}
 
@@ -177,9 +195,41 @@
                 });
             });
         }
-        filtrar(document.getElementById('buscar_encargado'), function () {
-            return Array.prototype.filter.call(document.getElementById('id_encargado').options, function (o) { return o.value; });
-        });
+        // Encargado: por defecto quien registra; "Seleccionar otro encargado" abre la lista con buscador
+        (function () {
+            var campo = document.getElementById('id_encargado'), panel = document.getElementById('panel_encargado');
+            var abrir = document.getElementById('abrir_encargado'), quitar = document.getElementById('quitar_encargado');
+            if (!campo || !panel) { return; }
+            var nombre = document.getElementById('nombre_encargado'), detalle = document.getElementById('detalle_encargado');
+            var registra = nombre.textContent, opciones = panel.querySelectorAll('[data-id]');
+            function mostrar(id) {
+                var elegido = Array.prototype.find.call(opciones, function (o) { return o.dataset.id === id; });
+                campo.value = elegido ? id : '';
+                nombre.textContent = elegido ? elegido.dataset.nombre : registra;
+                detalle.textContent = elegido ? '(encargado)' : '(quien registra)';
+                quitar.classList.toggle('d-none', !elegido);
+                Array.prototype.forEach.call(opciones, function (o) { o.classList.toggle('active', o === elegido); o.setAttribute('aria-selected', o === elegido); });
+            }
+            abrir.addEventListener('click', function () {
+                panel.hidden = !panel.hidden;
+                abrir.setAttribute('aria-expanded', String(!panel.hidden));
+                if (!panel.hidden) { document.getElementById('buscar_encargado').focus(); }
+            });
+            quitar.addEventListener('click', function () { mostrar(''); });
+            Array.prototype.forEach.call(opciones, function (o) {
+                o.addEventListener('click', function () { mostrar(o.dataset.id); panel.hidden = true; abrir.setAttribute('aria-expanded', 'false'); });
+            });
+            var buscar = document.getElementById('buscar_encargado'), vacio = document.getElementById('sin_encargados');
+            buscar.addEventListener('input', function () {
+                var texto = buscar.value.toLowerCase().trim(), visibles = 0;
+                Array.prototype.forEach.call(opciones, function (o) {
+                    var ver = texto === '' || o.textContent.toLowerCase().indexOf(texto) !== -1;
+                    o.classList.toggle('d-none', !ver); visibles += ver;
+                });
+                vacio.classList.toggle('d-none', visibles > 0);
+            });
+            mostrar(campo.value);
+        })();
         filtrar(document.getElementById('buscar_solicitud'), function () {
             return document.querySelectorAll('#tabla_solicitudes tbody tr:not(.fila-fija)');
         });

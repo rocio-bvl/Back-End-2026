@@ -695,6 +695,11 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                                 {% endfor %}
                             </select>
                         </div>
+                        {% if contrasena_temporal %}
+                        <div class="col-12">
+                            <div class="alert alert-info small mb-0"><i class="bi bi-key me-1"></i>El sistema generará una contraseña temporal y se la mostrará al guardar. El usuario deberá cambiarla en su primer ingreso.</div>
+                        </div>
+                        {% else %}
                         <div class="col-md-6">
                             <label class="form-label fw-semibold">Contraseña</label>
                             <input type="password" name="password1" class="form-control" required>
@@ -704,6 +709,7 @@ Los formularios de eliminar llevan data-confirmar: base.html pide la confirmaci�
                             <label class="form-label fw-semibold">Confirmar Contraseña</label>
                             <input type="password" name="password2" class="form-control" required>
                         </div>
+                        {% endif %}
                     </div>
                 </div>
                 <div class="modal-footer bg-light">

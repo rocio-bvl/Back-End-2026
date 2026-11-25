@@ -95,8 +95,9 @@ class DatosMedicion:
     hacía unas 40 consultas; ahora son unas 6 por pantalla, más una por funcionario con ausencias.
     Aplica las mismas reglas que calcular_avance, metas_aplicables y estado_medicion (models.py)."""
 
-    def __init__(self, periodo):
-        from django.db.models import Count, Sum
+    def __init__(self, periodo, hasta=None):
+        """hasta (fecha): mide como si fuera ese día, contando solo lo realizado hasta entonces (tendencia semanal)."""
+        from django.db.models import Count, Q, Sum
         from django.db.models.functions import Coalesce
         from ActividadesApp.models import Actividad
         from IndicadoresApp.models import Ponderacion, MetaDesempeno, Ausencia, AjusteDesempeno
@@ -113,15 +114,31 @@ class DatosMedicion:
         # Avance: la misma regla de calcular_avance, agrupada por responsable (encargado o quien registró) e ítem
         validas = Actividad.objects.filter(periodo=periodo, estado='VALIDADA', es_gestion=False).exclude(
             evidencias__validacion__decision='APROBAR', evidencias__validacion__otorga_puntaje=False)
+        limite = None
+        if hasta is not None:
+            # Fin del día de corte como fecha y hora local (no se usa __date: en MySQL depende de sus tablas de
+            # zonas horarias, que WAMP no trae cargadas)
+            from datetime import datetime, time, timedelta
+            from django.utils import timezone
+            limite = timezone.make_aware(datetime.combine(hasta + timedelta(days=1), time.min))
+            # Cuenta en la semana en que se realizó (validada después o no); sin fecha de realización, la de ingreso
+            validas = validas.filter(Q(fecha_realizacion__lte=hasta) |
+                                     Q(fecha_realizacion__isnull=True, fecha__lt=limite))
         self.avances = {(f['responsable'], f['item_id']): f['n'] for f in validas.annotate(
             responsable=Coalesce('encargado_id', 'usuario_id')).values('responsable', 'item_id').annotate(
             n=Count('id', distinct=True))}
         # Ajustes (felicitaciones): suma por funcionario
-        self.ajustes = {f['usuario_id']: f['total'] for f in AjusteDesempeno.objects.filter(periodo=periodo)
-                        .values('usuario_id').annotate(total=Sum('valor'))}
-        # Solo quienes tienen alguna ausencia en el periodo necesitan contar sus días
-        self.con_ausencia = set(Ausencia.objects.filter(desde__lte=periodo.fecha_termino, hasta__gte=periodo.fecha_inicio)
-                                .values_list('usuario_id', flat=True))
+        ajustes = AjusteDesempeno.objects.filter(periodo=periodo)
+        if limite is not None:
+            ajustes = ajustes.filter(fecha__lt=limite)
+        self.ajustes = {f['usuario_id']: f['total'] for f in ajustes.values('usuario_id').annotate(total=Sum('valor'))}
+        # Solo quienes tienen alguna ausencia en el periodo necesitan contar sus días. Con hasta, solo las ausencias
+        # ya registradas al cierre de ese día (fecha_registro): la meta ajustada queda como el semáforo la mostró
+        ausencias = Ausencia.objects.filter(desde__lte=periodo.fecha_termino, hasta__gte=periodo.fecha_inicio)
+        if limite is not None:
+            ausencias = ausencias.filter(fecha_registro__lt=limite)
+        self.con_ausencia = set(ausencias.values_list('usuario_id', flat=True))
+        self.limite = limite
         self.dias = {}
 
     def metas_aplicables(self, cargo_id, delegacion_id):
@@ -160,7 +177,48 @@ class DatosMedicion:
         indicador._avance = self.avances.get((usuario.pk, meta.item_id), 0)
         indicador._ajustes = self.ajustes.get(usuario.pk, Decimal('0'))
         if usuario.pk not in self.dias:  # los días de ausencia se cuentan una vez por funcionario
-            self.dias[usuario.pk] = dias_ausencia(usuario, self.periodo) if usuario.pk in self.con_ausencia else 0
+            self.dias[usuario.pk] = (dias_ausencia(usuario, self.periodo, self.limite)
+                                     if usuario.pk in self.con_ausencia else 0)
         indicador._dias_ausencia = self.dias[usuario.pk]
         return indicador
 
+
+
+# ---------------------------------------------------------------------------
+# Tendencia semanal (Mi Gestión): avance contra lo esperado al cierre de cada semana del periodo
+# ---------------------------------------------------------------------------
+def cortes_semanales(periodo, hoy):
+    """Fechas de corte: cada domingo del periodo hasta hoy, más hoy (o el término, si el periodo ya terminó)."""
+    from datetime import timedelta
+    ultimo = min(hoy, periodo.fecha_termino)
+    if ultimo < periodo.fecha_inicio:
+        return []
+    cortes = []
+    dia = periodo.fecha_inicio + timedelta(days=(6 - periodo.fecha_inicio.weekday()))  # primer domingo
+    while dia < ultimo:
+        cortes.append(dia)
+        dia += timedelta(days=7)
+    cortes.append(ultimo)
+    return cortes
+
+
+def tendencia_semanal(periodo, hoy, usuarios):
+    """Una fila por corte semanal: avance (cumplimiento ponderado del funcionario, o el promedio de los usuarios
+    medidos si son varios, igual que el puntaje colectivo) y esperado (porcentaje del periodo transcurrido).
+    Cada corte usa las mismas reglas del semáforo: una actividad cuenta en la semana en que se realizó (aunque se haya
+    validado después), y las ausencias y felicitaciones, desde el día en que se registraron. El último punto (hoy)
+    es igual al avance que muestran Mi Gestión y el Semáforo."""
+    if periodo is None:
+        return []
+    usuarios = list(usuarios)
+    puntos = []
+    for corte in cortes_semanales(periodo, hoy):
+        datos = DatosMedicion(periodo, hasta=corte)
+        filas = [seguimiento_usuario(u, periodo, corte, datos) for u in usuarios if u.cargo_id]
+        filas = [f for f in filas if not f['sin_medir']]
+        if not filas:
+            continue
+        avance = round(sum((f['avance_logrado'] for f in filas), Decimal('0')) / len(filas), 1)
+        puntos.append({'fecha': corte.isoformat(), 'etiqueta': corte.strftime('%d/%m'), 'avance': float(avance),
+                       'esperado': float(periodo.porcentaje_transcurrido(corte))})
+    return puntos

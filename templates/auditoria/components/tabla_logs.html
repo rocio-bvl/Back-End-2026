@@ -1,12 +1,7 @@
-<div class="card shadow-sm border-0 p-3">
-    <div class="d-flex justify-content-end align-items-center mb-3">
-        <div class="d-flex flex-wrap align-items-center gap-2">
-            <span class="badge bg-muni-b5">Trazabilidad Total</span>
-        </div>
-    </div>
+<div class="card shadow-sm border-0">
 
         <div class="tarjeta-tabla table-responsive">
-            <table class="table table-hover tabla-sgr">
+            <table class="table table-hover tabla-sgr tabla-compacta mb-0">
                 <thead class="text-center">
                 <tr>
                     <th>FECHA / HORA</th>
@@ -39,8 +34,8 @@
                     </td>
                     <td data-cell="ENTIDAD">{{ log.entidad }}</td>
                     <td class="text-center fw-bold" data-cell="ID">{{ log.id_entidad }}</td>
-                    <td class="text-muted text-truncate" style="max-width: 180px;" data-cell="ANTERIOR">{{ log.valor_anterior|default:"-" }}</td>
-                    <td class="fw-semibold text-truncate" style="max-width: 180px;" data-cell="NUEVO">{{ log.valor_nuevo|default:"-" }}</td>
+                    <td class="text-muted text-truncate" style="max-width: 180px;" data-cell="ANTERIOR" title="{{ log.valor_anterior|default:'' }}">{{ log.valor_anterior|default:"-" }}</td>
+                    <td class="fw-semibold text-truncate" style="max-width: 180px;" data-cell="NUEVO" title="{{ log.valor_nuevo|default:'' }}">{{ log.valor_nuevo|default:"-" }}</td>
                     <td class="text-center text-nowrap" data-cell="ORIGEN">
                         <span class="fw-semibold">{{ log.get_canal_display|default:"No registrado" }}</span><br>
                         <small class="text-muted">{{ log.ip|default:"IP no detectada" }}</small>

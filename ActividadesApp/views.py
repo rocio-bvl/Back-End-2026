@@ -10,7 +10,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 
-from ActividadesApp.choices import ESTADOS_PENDIENTES, MAX_GESTIONES_ATENCION
+from ActividadesApp.choices import ESTADOS_PENDIENTES, MAX_GESTIONES_ATENCION, estados_tubo, ESTADOS_TUBO_ELEGIBLES
 # validar_imagen se importa aquí porque las pruebas la usan como ActividadesApp.views.validar_imagen
 from ActividadesApp.forms import (ActividadForm, EvidenciaForm, FechaRealizacionForm, ComentarioForm, EncargadoForm,
                                 AtencionForm, solicitudes_para, validar_imagen)
@@ -97,6 +97,8 @@ def fila_actividad(actividad, usuario):
         'encargado': actividad.encargado,
         'delegacion': actividad.usuario.delegacion or 'General',
         'depende_externos': actividad.depende_externos,
+        'seguimiento': actividad.seguimiento_tubo(),
+        'seguimiento_texto': actividad.get_seguimiento_tubo_display(),
         'estado_codigo': actividad.estado,
         'estado': actividad.get_estado_display(),
         'vencido': actividad.vencido(),
@@ -227,6 +229,8 @@ def mi_gestion(request):
     if data['tipo_tablero'] == 'admin':
         data['delegaciones'] = comparacion_delegaciones(periodo, hoy)  # para el gráfico por delegación
     data['graficos'] = datos_graficos(data)
+    data.update(datos_tendencia(request, usuario, periodo, hoy, data['tipo_tablero'], delegacion, data['delegacion_actual']))
+    data['graficos']['tendencia'] = data['tendencia']
     return render(request, 'actividades/mi_gestion.html', data)
 
 
@@ -238,6 +242,30 @@ ESTADOS_GRAFICO = [
     ('RECHAZADA', 'Rechazadas', '#DB3334'),
     ('VALIDADA', 'Completadas', '#2E9E5B'),
 ]
+
+
+def datos_tendencia(request, usuario, periodo, hoy, tipo, delegacion, delegacion_actual):
+    """Tendencia semanal de Mi Gestión (avance contra lo esperado al cierre de cada semana).
+    - Funcionario: la suya.
+    - Delegado, Coordinador y Admin: el puntaje colectivo de la delegación elegida (toda la municipalidad en GENERAL)
+      o, si eligen a alguien en ?tendencia=, la de ese funcionario."""
+    from IndicadoresApp.calculos import tendencia_semanal
+    from IndicadoresApp.views import usuarios_evaluados
+    if tipo == 'administrativo':
+        return {'tendencia': {'titulo': 'Mi avance semana a semana', 'puntos': tendencia_semanal(periodo, hoy, [usuario])},
+                'opciones_tendencia': [], 'tendencia_de': ''}
+    equipo = usuarios_evaluados(delegacion).order_by('first_name', 'last_name')
+    elegido = request.GET.get('tendencia', '')
+    persona = equipo.filter(pk=elegido).first() if elegido.isdigit() else None
+    if persona is not None:
+        titulo = f"Avance de {persona.get_full_name() or persona.username} semana a semana"
+        puntos = tendencia_semanal(periodo, hoy, [persona])
+    else:
+        lugar = 'toda la municipalidad' if delegacion is None else delegacion_actual
+        titulo = f"Puntaje colectivo de {lugar} semana a semana"
+        puntos = tendencia_semanal(periodo, hoy, equipo)
+    return {'tendencia': {'titulo': titulo, 'puntos': puntos}, 'opciones_tendencia': list(equipo),
+            'tendencia_de': str(persona.pk) if persona else ''}
 
 
 def datos_graficos(data):
@@ -552,6 +580,7 @@ def actividad_detalle(request, pk):
         'puede_registrar_evidencia': actividad.puede_registrar_evidencia(usuario),
         'puede_comentar': puede_comentar(usuario, actividad),
         'puede_programar': puede_programar(usuario, actividad),
+        'estados_tubo_elegibles': [(c, t) for c, t in estados_tubo if c in ESTADOS_TUBO_ELEGIBLES],
         'puede_asignar': puede_asignar_encargado(usuario, actividad),
         'puede_cambiar_puntaje': puede_cambiar_puntaje(usuario, actividad),
         'otorga_puntaje': actividad.otorga_puntaje(),
@@ -635,6 +664,36 @@ def asignar_fecha(request, pk):
     return redirect('actividades:actividad_detalle', pk=actividad.pk)
 
 
+@permiso_requerido('ActividadesApp.view_actividad', 'Seguimiento del Tubo')
+def cambiar_estado_tubo(request, pk):
+    """Etapa de una actividad del Tubo (Ingresado, Pendiente, En proceso). Lo cambian quienes pueden programarla
+    (sus responsables, su Delegado y el Admin) mientras esté pendiente. Realizado no se elige: llega al registrar la
+    ejecución. La observación opcional queda en la bitácora (guía 4.2: observaciones de avance)."""
+    actividad = get_object_or_404(Actividad, pk=pk)
+    volver = request.POST.get('volver') or ''
+    destino = volver if volver.startswith('/actividades/') else reverse('actividades:actividad_detalle', args=[actividad.pk])
+    if request.method != 'POST':
+        return redirect(destino)
+    nuevo = request.POST.get('estado_tubo', '')
+    if not actividad.depende_externos or not puede_programar(request.user, actividad):
+        messages.error(request, "No puede cambiar el seguimiento de esta actividad.")
+        return redirect(destino)
+    if nuevo not in ESTADOS_TUBO_ELEGIBLES:
+        messages.error(request, "Elija Ingresado, Pendiente o En proceso. Realizado se marca al registrar la ejecución.")
+        return redirect(destino)
+    anterior = actividad.estado_tubo
+    if nuevo != anterior:
+        actividad.estado_tubo = nuevo
+        actividad.save(update_fields=['estado_tubo'])
+        registrar_auditoria(request.user, 'MODIFICACION', 'Actividad', actividad.pk, f"Tubo: {anterior}", f"Tubo: {nuevo}")
+    observacion = (request.POST.get('observacion') or '').strip()
+    if observacion:
+        ComentarioActividad.objects.create(actividad=actividad, usuario=request.user,
+                                           texto=f"[{dict(estados_tubo)[nuevo]}] {observacion}"[:2000])
+    messages.success(request, f"{actividad.folio()}: seguimiento {dict(estados_tubo)[nuevo]}.")
+    return redirect(destino)
+
+
 @permiso_requerido('ActividadesApp.asignar_encargado', 'Asignar Encargado')
 def asignar_encargado(request, pk):
     if not request.user.is_authenticated:
@@ -697,6 +756,39 @@ ESTADOS_FILTRO_TUBO = [
 ]
 
 
+# Estados en que la actividad del Tubo ya está realizada (ejecución registrada)
+REALIZADAS_TUBO = ['EVIDENCIA_INGRESADA', 'VALIDADA']
+
+
+def resumen_tubo(actividades, periodo, por_funcionario=True):
+    """Consolidado del Tubo (guía 4.2, punto 5): cuántas actividades del Tubo hay en cada etapa y qué porcentaje
+    está realizado, en la delegación y por funcionario (responsable = encargado o quien la registró). Se cuentan los
+    actividades del Tubo del periodo vigente; sin periodo, todas."""
+    if periodo is not None:
+        actividades = actividades.filter(periodo=periodo)
+    conteo = Counter()
+    personas = {}
+    for actividad in actividades.select_related('usuario', 'encargado'):
+        estado = actividad.seguimiento_tubo()
+        conteo[estado] += 1
+        if por_funcionario:
+            persona = actividad.responsable()
+            fila = personas.setdefault(persona.pk, {'nombre': persona.get_full_name() or persona.username, 'total': 0, 'realizados': 0})
+            fila['total'] += 1
+            fila['realizados'] += estado == 'REALIZADO'
+    total = sum(conteo.values())
+    filas = sorted(personas.values(), key=lambda f: (f['realizados'] / f['total'], f['nombre']))
+    for fila in filas:
+        fila['porcentaje'] = round(100 * fila['realizados'] / fila['total'], 1)
+    return {
+        'total': total,
+        'estados': [{'codigo': c, 'texto': t, 'cantidad': conteo.get(c, 0)} for c, t in estados_tubo],
+        'porcentaje': round(100 * conteo.get('REALIZADO', 0) / total, 1) if total else None,
+        'por_funcionario': filas,
+        'periodo': periodo,
+    }
+
+
 @permiso_requerido('ActividadesApp.view_actividad', 'Tubo de Trabajo')
 def tubo_trabajo(request):
     if not request.user.is_authenticated:
@@ -706,33 +798,38 @@ def tubo_trabajo(request):
 
     codigo, delegacion, nombre = delegacion_seleccionada(request)
     usuario = request.user
-    # El Funcionario solo ve lo suyo (lo que registró o donde es encargado), igual que en Mi Gestión,
-    # y solo filtra por estado. Admin y Coordinador ven todo o la delegación elegida; el Delegado, la suya.
-    solo_lo_suyo = not usuario.tiene_rol(['Admin', 'Coordinador', 'Delegado'])
-    # El Tubo son las actividades que dependen de factores externos
+    # Agenda colectiva: todos los funcionarios de la delegación consultan su Tubo (si uno falta, otro ve en qué
+    # está), pero cada uno modifica solo lo suyo (puede_programar y puede_registrar_evidencia lo controlan).
+    # Admin y Coordinador ven todo o la delegación elegida arriba; Delegado y Funcionario, la de ellos.
     actividades = Actividad.objects.filter(depende_externos=True).select_related('usuario', 'encargado', 'territorio', 'item')
-    if solo_lo_suyo:
-        actividades = actividades.filter(Q(usuario=usuario) | Q(encargado=usuario))
-    elif delegacion is not None:
-        actividades = actividades.filter(usuario__delegacion=delegacion)
-    elif not usuario.tiene_rol(['Admin', 'Coordinador']):
-        # Delegado sin delegación asignada: solo lo propio
+    solo_lo_suyo = False
+    if usuario.tiene_rol(['Admin', 'Coordinador']):
+        if delegacion is not None:
+            actividades = actividades.filter(usuario__delegacion=delegacion)
+    elif usuario.delegacion_id is not None:
+        actividades = actividades.filter(usuario__delegacion_id=usuario.delegacion_id)
+    else:
+        # Sin delegación asignada: solo lo propio
+        solo_lo_suyo = True
         actividades = actividades.filter(Q(usuario=usuario) | Q(encargado=usuario))
 
+    alcance = actividades  # lo que este usuario ve del Tubo, antes de los filtros (para el resumen)
     filtros = {
         'responsable': request.GET.get('responsable', '').strip(),
         'estado': request.GET.get('estado', ''),
+        'seguimiento': request.GET.get('seguimiento', ''),
         'territorio': request.GET.get('territorio', ''),
         'mios': request.GET.get('mios', '')
     }
     if solo_lo_suyo:
-        # Aunque lleguen en la dirección, el Funcionario no usa estos filtros
         filtros.update({'responsable': '', 'territorio': '', 'mios': ''})
 
     # Territorios del filtro: los de la delegación elegida, o los de todas si está en GENERAL
     territorios = Territorio.objects.filter(estado='ACTIVO').select_related('delegacion')
     if delegacion is not None:
         territorios = territorios.filter(delegacion=delegacion)
+    elif not usuario.tiene_rol(['Admin', 'Coordinador']) and usuario.delegacion_id is not None:
+        territorios = territorios.filter(delegacion_id=usuario.delegacion_id)
     territorios = territorios.order_by('delegacion__nombre_visible', 'nombre')
 
     hoy = timezone.localdate()
@@ -753,8 +850,13 @@ def tubo_trabajo(request):
         actividades = actividades.filter(estado__in=['EVIDENCIA_INGRESADA', 'RECHAZADA'])
     elif filtros['estado'] == 'COMPLETADAS':
         actividades = actividades.filter(estado='VALIDADA')
-    elif filtros['estado'] != 'TODOS':
+    elif filtros['estado'] != 'TODOS' and filtros['seguimiento'] != 'REALIZADO':
         actividades = actividades.filter(estado__in=ESTADOS_PENDIENTES)
+    # Etapa de la actividad del Tubo (Ingresado, Pendiente, En proceso, Realizado): ver Actividad.seguimiento_tubo()
+    if filtros['seguimiento'] == 'REALIZADO':
+        actividades = actividades.filter(estado__in=REALIZADAS_TUBO)
+    elif filtros['seguimiento'] in ESTADOS_TUBO_ELEGIBLES:
+        actividades = actividades.exclude(estado__in=REALIZADAS_TUBO).filter(estado_tubo=filtros['seguimiento'])
     if filtros['territorio'].isdigit():
         actividades = actividades.filter(territorio_id=filtros['territorio'])
     if filtros['mios'] == '1':
@@ -762,7 +864,11 @@ def tubo_trabajo(request):
 
     # Primero las que tienen fecha (la más próxima arriba); al final, las que aún no tienen fecha de realización
     actividades = actividades.select_related('solicitud').order_by(F('fecha_realizacion').asc(nulls_last=True), 'fecha')
-    lista = [fila_actividad(a, request.user) for a in actividades]
+    lista = []
+    for a in actividades:
+        fila = fila_actividad(a, request.user)
+        fila['puede_seguimiento'] = puede_programar(request.user, a)
+        lista.append(fila)
     data = {
         'actividades': lista,
         'delegacion_actual': f"Delegación {nombre}",
@@ -770,10 +876,68 @@ def tubo_trabajo(request):
         'filtros': filtros,
         'territorios': territorios,
         'estados_filtro': ESTADOS_FILTRO_TUBO,
+        'estados_tubo': estados_tubo,
+        'estados_tubo_elegibles': [(c, t) for c, t in estados_tubo if c in ESTADOS_TUBO_ELEGIBLES],
+        'resumen_tubo': resumen_tubo(alcance, periodo_vigente(hoy), por_funcionario=not solo_lo_suyo),
         'solo_lo_suyo': solo_lo_suyo,
         'por_delegacion': delegacion is None,  # en GENERAL los territorios se agrupan por delegación
     }
     return render(request, 'actividades/tubo_trabajo.html', data)
+
+
+# ---------------------------------------------------------------------------
+# Hitos: los compromisos (actividades PROGRAMADA) ordenados por fecha límite, con su responsable
+# ---------------------------------------------------------------------------
+DIAS_HITOS_PROXIMOS = 7  # "Esta semana": compromisos que vencen dentro de este número de días
+
+
+@permiso_requerido('ActividadesApp.view_actividad', 'Hitos')
+def hitos(request):
+    """Fechas importantes de la delegación: cada compromiso con su fecha límite y su responsable, agrupados en
+    vencidos, esta semana y más adelante. Admin y Coordinador ven todo o la delegación elegida arriba; el Delegado
+    y el Funcionario, los de su delegación (los mismos que pueden abrir: puede_ver_actividad)."""
+    usuario = request.user
+    codigo, delegacion, nombre = delegacion_seleccionada(request)
+    compromisos = Actividad.objects.filter(estado='PROGRAMADA', fecha_realizacion__isnull=False).select_related(
+        'usuario', 'usuario__delegacion', 'encargado', 'territorio', 'item')
+    if usuario.tiene_rol(['Admin', 'Coordinador']):
+        if delegacion is not None:
+            compromisos = compromisos.filter(usuario__delegacion=delegacion)
+    elif usuario.delegacion_id is not None:
+        compromisos = compromisos.filter(usuario__delegacion_id=usuario.delegacion_id)
+    else:
+        compromisos = compromisos.filter(Q(usuario=usuario) | Q(encargado=usuario))
+    solo_mios = request.GET.get('mios') == '1'
+    if solo_mios:
+        compromisos = compromisos.filter(Q(usuario=usuario) | Q(encargado=usuario))
+
+    hoy = timezone.localdate()
+    grupos = {'vencidos': [], 'semana': [], 'despues': []}
+    for actividad in compromisos.order_by('fecha_realizacion', 'fecha'):
+        dias = (actividad.fecha_realizacion - hoy).days
+        responsable = actividad.responsable()
+        hito = {
+            'actividad': actividad,
+            'responsable': responsable,
+            'es_encargado': actividad.encargado_id is not None,
+            'iniciales': f"{responsable.first_name[:1]}{responsable.last_name[:1]}".upper() or responsable.username[:2],
+            'dias': dias,
+            'dias_abs': abs(dias),
+            'es_mio': actividad.es_responsable(usuario),
+        }
+        grupos['vencidos' if dias < 0 else 'semana' if dias <= DIAS_HITOS_PROXIMOS else 'despues'].append(hito)
+    data = {
+        'grupos': [
+            {'clave': 'vencidos', 'titulo': 'Vencidos', 'icono': 'bi-exclamation-octagon', 'hitos': grupos['vencidos']},
+            {'clave': 'semana', 'titulo': f'Próximos {DIAS_HITOS_PROXIMOS} días', 'icono': 'bi-hourglass-split', 'hitos': grupos['semana']},
+            {'clave': 'despues', 'titulo': 'Más adelante', 'icono': 'bi-calendar-event', 'hitos': grupos['despues']},
+        ],
+        'total': sum(len(g) for g in grupos.values()),
+        'delegacion_actual': f"Delegación {nombre}",
+        'codigo_delegacion': codigo,
+        'solo_mios': solo_mios,
+    }
+    return render(request, 'actividades/hitos.html', data)
 
 
 # ---------------------------------------------------------------------------

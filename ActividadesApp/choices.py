@@ -12,6 +12,17 @@ estados_actividad = (
     ('VALIDADA', 'Validada (completada)'),
 )
 
+# «enumeration» EstadoTubo: etapas de una actividad del Tubo de Trabajo, la que depende de factores externos
+# (aprobaciones, organizaciones, otras entidades). No aplica a los compromisos (PROGRAMADA), que solo esperan su fecha.
+# Guía del proyecto 4.2 y presentación de la matriz: Ingresado, Pendiente, En proceso y Realizado. Realizado no se elige: lo marca el sistema cuando se registra la ejecución.
+estados_tubo = (
+    ('INGRESADO', 'Ingresado'),
+    ('PENDIENTE', 'Pendiente'),
+    ('EN_PROCESO', 'En proceso'),
+    ('REALIZADO', 'Realizado'),
+)
+ESTADOS_TUBO_ELEGIBLES = ['INGRESADO', 'PENDIENTE', 'EN_PROCESO']
+
 # Estados en que la actividad todavía no se ha realizado
 ESTADOS_PENDIENTES = ['PROGRAMADA', 'EN_TUBO']
 
@@ -41,6 +52,7 @@ cargos_representante = (
 
 # «enumeration» TipoOrganizacion: tipos de organización comunitaria (tabla organizacion)
 tipos_organizacion = (
+    ('JUNTA_VECINOS', 'Junta de vecinos'),
     ('FUNCIONAL', 'Organización comunitaria funcional'),
     ('ADULTO_MAYOR', 'Club de adulto mayor'),
     ('DEPORTIVA', 'Organización deportiva'),

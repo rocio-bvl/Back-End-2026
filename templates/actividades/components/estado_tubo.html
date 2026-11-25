@@ -1,0 +1,2 @@
+{# Etiqueta del seguimiento de una actividad del Tubo. Recibe estado (código) y texto #}
+<span class="badge estado-tubo estado-tubo-{{ estado|lower }}">{% if estado == 'INGRESADO' %}<i class="bi bi-inbox me-1"></i>{% elif estado == 'PENDIENTE' %}<i class="bi bi-pause-circle me-1"></i>{% elif estado == 'EN_PROCESO' %}<i class="bi bi-arrow-repeat me-1"></i>{% elif estado == 'REALIZADO' %}<i class="bi bi-check2-circle me-1"></i>{% endif %}{{ texto|upper }}</span>
