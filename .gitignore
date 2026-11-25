@@ -3,6 +3,9 @@ venv/
 
 # Configuración sensible (usar .env.example como plantilla)
 .env
+*.key
+*.pem
+*.crt
 
 # Python
 __pycache__/
@@ -16,6 +19,16 @@ db.sqlite3
 .vscode/
 .idea/
 
+
 staticfiles/
 # Respaldos de la base de datos (python manage.py respaldar_bd)
 respaldos/
+
+#ChatBot
+tmp/
+models/
+logs/
+base datos JJVV sin verificar.xlsx
+ChatbotApp/
+reportes_LLM/
+

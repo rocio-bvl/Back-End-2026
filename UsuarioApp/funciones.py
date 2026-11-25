@@ -1,6 +1,9 @@
 """Funciones de apoyo que usan las views de todas las apps."""
 from django.contrib import messages
-from django.shortcuts import redirect
+from django.http import HttpResponseForbidden
+from django.shortcuts import redirect, render
+from django.template import TemplateDoesNotExist
+from django.urls import reverse
 
 from AuditoriaApp.registro import registrar_auditoria
 from UsuarioApp.models import Delegacion
@@ -85,6 +88,19 @@ def acceso_denegado(request, pantalla):
     registrar_auditoria(request.user, 'ACCESO_DENEGADO', 'Vista', request.path[:50],
                         '', f"Intento de acceso a {pantalla}")
     messages.error(request, f"No tienes permisos para acceder a {pantalla}.")
+    # Mi Gestión es la pantalla de destino de todos los "sin permiso": si justamente es ella la que se
+    # deniega (usuario sin el permiso view_actividad, por ejemplo porque no se ejecutó crear_grupos),
+    # redirigirla a sí misma produce un bucle 302 infinito. En ese caso se responde 403.
+    if request.path == reverse('actividades:mi_gestion'):
+        try:
+            return render(request, '403.html', {'pantalla': pantalla}, status=403)
+        except TemplateDoesNotExist:
+            # La plantilla puede no estar desplegada: se responde igual un 403, nunca un 500.
+            return HttpResponseForbidden(
+                "<meta charset='utf-8'><h1>Acceso denegado</h1>"
+                f"<p>Tu perfil no tiene permisos para acceder a {pantalla}.</p>"
+                "<p>Pide al Administrador que ejecute <code>python manage.py crear_grupos</code>.</p>"
+            )
     return redirect('actividades:mi_gestion')
 
 def permiso_requerido(permiso, pantalla):

@@ -863,6 +863,12 @@ class ProteccionVistasTest(TestCase):
         self.assertEqual(self.client.get(reverse('users:administracion')).status_code, 200)
         self.assertRedirects(self.client.get(reverse('actividades:actividad_crear')), reverse('actividades:mi_gestion'))
 
+    def test_sin_permiso_en_mi_gestion_responde_403_sin_bucle(self):
+        self.func.groups.clear()  # usuario autenticado pero sin el permiso ActividadesApp.view_actividad
+        self.client.login(username='55555555-5', password=CLAVE)
+        respuesta = self.client.get(reverse('actividades:mi_gestion'))
+        self.assertEqual(respuesta.status_code, 403)
+
 
 class RecuperacionContrasenaTest(TestCase):
     """J3: recuperar la contraseña por correo con las vistas de Django."""
