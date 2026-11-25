@@ -46,6 +46,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'AuditoriaApp.origen.OrigenAuditoriaMiddleware',  # IP y canal de cada evento de auditoría (RNF-008)
+    'UsuarioApp.middleware.CambioClaveObligatorioMiddleware',  # contraseña temporal: cambio en el primer ingreso
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -112,6 +113,13 @@ LOGIN_MINUTOS_BLOQUEO = 15      # ...lo bloquean durante estos minutos
 # nadie recibiría el código. Se enciende con MFA_ACTIVO=True en el .env cuando los correos sean reales.
 MFA_ACTIVO = os.getenv('MFA_ACTIVO', 'False') == 'True'
 MFA_MINUTOS_VIGENCIA = 10
+# Contraseña temporal: al crear un usuario el sistema genera su contraseña, se la muestra una sola vez a quien lo
+# creó y el usuario debe cambiarla en su primer ingreso. Apagado por defecto: se enciende con
+# CONTRASENA_TEMPORAL=True en el .env. No necesita correos reales (la contraseña se entrega en persona).
+CONTRASENA_TEMPORAL = os.getenv('CONTRASENA_TEMPORAL', 'False') == 'True'
+# Los mensajes se guardan en la sesión (base de datos) y no en una cookie: la contraseña temporal se muestra con un
+# mensaje y no debe viajar en una cookie firmada, que se puede leer aunque no se pueda alterar
+MESSAGE_STORAGE = 'django.contrib.messages.storage.session.SessionStorage'
 MFA_MAX_INTENTOS = 5
 
 # Auditoría: solo con un proxy propio delante (Nginx, balanceador de AWS) se toma la IP de X-Forwarded-For.

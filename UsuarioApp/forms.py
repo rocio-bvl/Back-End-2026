@@ -1,4 +1,5 @@
 from django import forms
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
@@ -44,6 +45,10 @@ class UsuarioCrearForm(forms.Form):
         # El Coordinador no puede crear Coordinadores ni Administradores
         if roles_permitidos is not None:
             self.fields['rol'].choices = roles_permitidos
+        # Con contraseña temporal la genera el sistema: quien crea el usuario no la escribe
+        if settings.CONTRASENA_TEMPORAL:
+            self.fields['password1'].required = False
+            self.fields['password2'].required = False
 
     def clean_rut(self):
         rut = limpiar_rut(self.cleaned_data['rut'])
@@ -72,6 +77,8 @@ class UsuarioCrearForm(forms.Form):
             self.add_error('territorio', error)
         clave1 = datos.get('password1')
         clave2 = datos.get('password2')
+        if settings.CONTRASENA_TEMPORAL:
+            return datos
         if clave1 and clave2:
             if clave1 != clave2:
                 self.add_error('password2', "Las contraseñas no coinciden.")

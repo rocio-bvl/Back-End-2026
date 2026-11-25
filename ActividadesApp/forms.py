@@ -183,7 +183,7 @@ class ActividadForm(SolicitanteMixin, forms.Form):
                                 widget=forms.Textarea(attrs={'rows': 2}))
     imagen = forms.ImageField(required=False, label="Fotografía (opcional)")
     encargado = forms.ModelChoiceField(queryset=Usuario.objects.none(), required=False, label="Encargado de la actividad",
-                                    empty_label="Yo mismo (quien registra)")
+                                    empty_label="Quien registra")
     solicitud = forms.ModelChoiceField(queryset=AtencionSocial.objects.none(), required=False,
                                     label="Vincular a una solicitud social")
     # Persona atendida: los campos del solicitante (RUT obligatorio) los agrega SolicitanteMixin

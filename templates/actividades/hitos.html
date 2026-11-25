@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block title %}Hitos | Ilustre Municipalidad de La Serena{% endblock %}
+
+{% block content %}
+{% comment %}
+Hitos: los compromisos (actividades PROGRAMADA) de la delegación ordenados por fecha límite, con el responsable
+destacado. Cada tarjeta abre el detalle de la actividad (?desde=hitos para volver aquí). Vista: ActividadesApp.views.hitos
+{% endcomment %}
+<main class="container-fluid p-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <h3 class="fw-bold m-0"><i class="bi bi-flag text-danger me-2"></i>Hitos</h3>
+            <p class="text-muted small m-0">Compromisos por fecha límite · {{ delegacion_actual }} · {{ total }} compromiso{{ total|pluralize }}</p>
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Mostrar">
+            <a href="?{% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}delegacion={{ codigo_delegacion }}{% endif %}" class="btn {% if not solo_mios %}btn-muni{% else %}btn-outline-secondary{% endif %}">Todos</a>
+            <a href="?mios=1{% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}&delegacion={{ codigo_delegacion }}{% endif %}" class="btn {% if solo_mios %}btn-muni{% else %}btn-outline-secondary{% endif %}">Mis Hitos</a>
+        </div>
+    </div>
+
+    {% for grupo in grupos %}
+    <section class="mb-4 hitos-grupo hitos-{{ grupo.clave }}" aria-labelledby="titulo-{{ grupo.clave }}">
+        <h6 class="fw-bold d-flex align-items-center gap-2 mb-3" id="titulo-{{ grupo.clave }}">
+            <i class="bi {{ grupo.icono }}"></i>{{ grupo.titulo }}
+            <span class="badge hitos-contador">{{ grupo.hitos|length }}</span>
+        </h6>
+        {% if grupo.hitos %}
+        <div class="d-flex flex-column gap-2">
+            {% for h in grupo.hitos %}
+            {% with a=h.actividad %}
+            <a href="{% url 'actividades:actividad_detalle' a.pk %}?desde=hitos" class="card border-0 text-decoration-none hito-tarjeta">
+                <div class="card-body p-3 d-flex flex-wrap flex-md-nowrap align-items-center gap-3">
+                    <!-- Fecha límite destacada -->
+                    <div class="hito-fecha" aria-label="Fecha límite {{ a.fecha_realizacion|date:'d/m/Y' }}">
+                        <span class="hito-dia">{{ a.fecha_realizacion|date:"d" }}</span>
+                        <span class="hito-mes">{{ a.fecha_realizacion|date:"M"|upper }}</span>
+                        <span class="hito-semana">{{ a.fecha_realizacion|date:"D" }}</span>
+                    </div>
+                    <!-- Qué se comprometió -->
+                    <div class="flex-grow-1 min-w-0">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                            <span class="fw-bold text-dark">{{ a.accion }}</span>
+                            <span class="text-muted small">{{ a.folio }}</span>
+                        </div>
+                        <div class="text-muted small text-truncate">{{ a.solicitud_problema }}</div>
+                        <div class="d-flex flex-wrap gap-2 mt-2 small">
+                            <span class="badge hito-etiqueta">{{ a.item.nombre }}</span>
+                            {% if a.territorio %}<span class="text-muted"><i class="bi bi-geo-alt me-1"></i>{{ a.territorio }}</span>{% endif %}
+                            {% if not codigo_delegacion or codigo_delegacion == 'GENERAL' %}<span class="text-muted"><i class="bi bi-building me-1"></i>{{ a.usuario.delegacion|default:"General" }}</span>{% endif %}
+                        </div>
+                    </div>
+                    <!-- Responsable destacado -->
+                    <div class="hito-responsable {% if h.es_mio %}es-mio{% endif %}">
+                        <span class="hito-avatar" aria-hidden="true">{{ h.iniciales }}</span>
+                        <span class="d-flex flex-column lh-sm">
+                            <span class="fw-bold text-dark">{{ h.responsable.get_full_name|default:h.responsable.username }}</span>
+                            <span class="small text-muted">{% if h.es_mio %}Usted · {% endif %}{% if h.es_encargado %}Encargado{% else %}Registró el compromiso{% endif %}</span>
+                        </span>
+                    </div>
+                    <!-- Plazo -->
+                    <div class="hito-plazo text-md-end">
+                        {% if h.dias < 0 %}<span class="badge bg-danger">Venció hace {{ h.dias_abs }} día{{ h.dias_abs|pluralize }}</span>
+                        {% elif h.dias == 0 %}<span class="badge bg-danger">Vence hoy</span>
+                        {% elif h.dias == 1 %}<span class="badge bg-warning text-dark">Vence mañana</span>
+                        {% else %}<span class="badge {% if grupo.clave == 'semana' %}bg-warning text-dark{% else %}bg-light text-dark border{% endif %}">Faltan {{ h.dias }} días</span>{% endif %}
+                    </div>
+                </div>
+            </a>
+            {% endwith %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted small ms-1">{% if grupo.clave == 'vencidos' %}No hay compromisos vencidos.{% else %}Sin compromisos en este plazo.{% endif %}</p>
+        {% endif %}
+    </section>
+    {% endfor %}
+</main>
+{% endblock %}

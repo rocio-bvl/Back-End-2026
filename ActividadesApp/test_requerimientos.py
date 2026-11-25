@@ -556,3 +556,204 @@ class RequerimientosPendientesTest(BaseActividades):
         self.entrar('55555555-5')
         respuesta = self.client.get(reverse('indicadores:semaforo_exportar'))
         self.assertEqual(respuesta.status_code, 302)
+
+
+class HitosTest(BaseActividades):
+    """Hitos: los compromisos (PROGRAMADA) por fecha límite, con su responsable."""
+
+    def test_muestra_compromisos_de_la_delegacion_agrupados(self):
+        vencido = self.crear(dias=-2)
+        semana = self.crear(dias=3, encargado=self.companero)
+        despues = self.crear(dias=20)
+        self.crear(estado='EN_TUBO')                                  # el Tubo no es un hito
+        self.crear(usuario=self.otro, territorio=self.territorio_rural)  # otra delegación
+        self.entrar('77777777-7')
+        respuesta = self.client.get(reverse('actividades:hitos'))
+        self.assertEqual(respuesta.status_code, 200)
+        grupos = {g['clave']: [h['actividad'] for h in g['hitos']] for g in respuesta.context['grupos']}
+        self.assertEqual(grupos, {'vencidos': [vencido], 'semana': [semana], 'despues': [despues]})
+        self.assertContains(respuesta, reverse('actividades:actividad_detalle', args=[semana.pk]) + '?desde=hitos')
+        self.assertEqual(respuesta.context['grupos'][1]['hitos'][0]['responsable'], self.companero)
+
+    def test_solo_los_mios(self):
+        mio = self.crear(dias=4)
+        self.crear(dias=4, usuario=self.companero)
+        self.entrar('55555555-5')
+        respuesta = self.client.get(reverse('actividades:hitos'), {'mios': '1'})
+        self.assertEqual([h['actividad'] for g in respuesta.context['grupos'] for h in g['hitos']], [mio])
+
+    def test_detalle_vuelve_a_hitos(self):
+        actividad = self.crear(dias=4)
+        self.entrar('55555555-5')
+        respuesta = self.client.get(reverse('actividades:actividad_detalle', args=[actividad.pk]), {'desde': 'hitos'})
+        self.assertContains(respuesta, 'title="Volver a Hitos"')
+
+
+class SeguimientoTuboTest(BaseActividades):
+    """Etapas de las actividades del Tubo: Ingresado, Pendiente, En proceso y Realizado (guía 4.2)."""
+
+    def cambiar(self, actividad, estado, **extra):
+        return self.client.post(reverse('actividades:cambiar_estado_tubo', args=[actividad.pk]),
+                                {'estado_tubo': estado, **extra})
+
+    def test_parte_ingresado_y_el_responsable_lo_cambia_con_observacion(self):
+        actividad = self.crear(estado='EN_TUBO')
+        self.assertEqual(actividad.seguimiento_tubo(), 'INGRESADO')
+        self.entrar('55555555-5')
+        self.cambiar(actividad, 'PENDIENTE', observacion='Esperando respuesta de la empresa eléctrica')
+        actividad.refresh_from_db()
+        self.assertEqual(actividad.seguimiento_tubo(), 'PENDIENTE')
+        self.assertTrue(actividad.comentarios.filter(texto__contains='Esperando respuesta').exists())
+        self.assertTrue(Auditoria.objects.filter(entidad='Actividad', id_entidad=str(actividad.pk),
+                                                 valor_nuevo='Tubo: PENDIENTE').exists())
+
+    def test_realizado_no_se_elige_y_llega_con_la_ejecucion(self):
+        actividad = self.crear(estado='EN_TUBO')
+        self.entrar('55555555-5')
+        self.cambiar(actividad, 'REALIZADO')
+        actividad.refresh_from_db()
+        self.assertEqual(actividad.estado_tubo, 'INGRESADO')
+        actividad.estado = 'EVIDENCIA_INGRESADA'
+        actividad.save()
+        self.assertEqual(actividad.seguimiento_tubo(), 'REALIZADO')
+
+    def test_otro_funcionario_ni_otra_delegacion_lo_cambian(self):
+        actividad = self.crear(estado='EN_TUBO')
+        for rut in ['77777777-7', '44444444-4']:
+            self.entrar(rut)
+            self.cambiar(actividad, 'EN_PROCESO')
+        actividad.refresh_from_db()
+        self.assertEqual(actividad.estado_tubo, 'INGRESADO')
+        self.entrar('33333333-3')  # su Delegado sí
+        self.cambiar(actividad, 'EN_PROCESO')
+        actividad.refresh_from_db()
+        self.assertEqual(actividad.estado_tubo, 'EN_PROCESO')
+
+    def test_actividad_normal_no_tiene_seguimiento(self):
+        actividad = self.crear(dias=3)
+        self.assertIsNone(actividad.seguimiento_tubo())
+        self.entrar('55555555-5')
+        self.cambiar(actividad, 'PENDIENTE')
+        actividad.refresh_from_db()
+        self.assertEqual(actividad.estado_tubo, 'INGRESADO')
+
+    def test_resumen_y_filtro_en_el_tubo(self):
+        uno = self.crear(estado='EN_TUBO')
+        dos = self.crear(estado='EN_TUBO', usuario=self.companero)
+        Actividad.objects.filter(pk=dos.pk).update(estado_tubo='EN_PROCESO')
+        tres = self.crear(estado='EN_TUBO')
+        Actividad.objects.filter(pk=tres.pk).update(estado='VALIDADA')
+        self.entrar('33333333-3')
+        respuesta = self.client.get(reverse('actividades:tubo_trabajo'))
+        resumen = respuesta.context['resumen_tubo']
+        self.assertEqual(resumen['total'], 3)
+        self.assertEqual({e['codigo']: e['cantidad'] for e in resumen['estados']},
+                         {'INGRESADO': 1, 'PENDIENTE': 0, 'EN_PROCESO': 1, 'REALIZADO': 1})
+        self.assertEqual(resumen['porcentaje'], 33.3)
+        filtrado = self.client.get(reverse('actividades:tubo_trabajo'), {'seguimiento': 'REALIZADO'})
+        self.assertEqual([a['id'] for a in filtrado.context['actividades']], [tres.pk])
+        filtrado = self.client.get(reverse('actividades:tubo_trabajo'), {'seguimiento': 'INGRESADO'})
+        self.assertEqual([a['id'] for a in filtrado.context['actividades']], [uno.pk])
+
+
+class JuntaDeVecinosTest(BaseActividades):
+    def test_junta_de_vecinos_es_un_tipo_de_organizacion(self):
+        organizacion = Organizacion.objects.create(nombre='Junta de Vecinos Villa Ejemplo', tipo='JUNTA_VECINOS', fecha_inscripcion=self.hoy)
+        self.assertEqual(organizacion.get_tipo_display(), 'Junta de vecinos')
+
+
+class TendenciaSemanalTest(BaseActividades):
+    """Tendencia semanal de Mi Gestión: avance contra lo esperado al cierre de cada semana del periodo."""
+
+    def validada(self, usuario, dias_atras):
+        return Actividad.objects.create(
+            solicitud_problema='Atención', accion='Atención realizada', item=self.datos['item'], periodo=self.datos['periodo'],
+            usuario=usuario, estado='VALIDADA', fecha_realizacion=self.hoy - timedelta(days=dias_atras), territorio=self.territorio)
+
+    def test_cortes_semanales_terminan_hoy(self):
+        from IndicadoresApp.calculos import cortes_semanales
+        cortes = cortes_semanales(self.datos['periodo'], self.hoy)
+        self.assertEqual(cortes[-1], self.hoy)
+        self.assertTrue(all(c.weekday() == 6 for c in cortes[:-1]))  # domingos
+        self.assertTrue(all(self.datos['periodo'].fecha_inicio <= c <= self.hoy for c in cortes))
+
+    def test_cuenta_en_la_semana_en_que_se_realizo(self):
+        from IndicadoresApp.calculos import tendencia_semanal
+        self.validada(self.func, dias_atras=5)
+        puntos = tendencia_semanal(self.datos['periodo'], self.hoy, [self.func])
+        hace_cinco = (self.hoy - timedelta(days=5)).isoformat()
+        antes = [p for p in puntos if p['fecha'] < hace_cinco]
+        despues = [p for p in puntos if p['fecha'] >= hace_cinco]
+        self.assertTrue(all(p['avance'] == 0 for p in antes))
+        self.assertTrue(despues and all(p['avance'] > 0 for p in despues))  # meta 10: una actividad = 10%
+        self.assertEqual(puntos[-1]['avance'], 10.0)
+        self.assertEqual(puntos[-1]['esperado'], float(self.datos['periodo'].porcentaje_transcurrido(self.hoy)))
+
+    def test_funcionario_ve_la_suya_y_no_puede_elegir_otra(self):
+        self.validada(self.companero, dias_atras=2)
+        self.entrar('55555555-5')
+        contexto = self.client.get(reverse('actividades:mi_gestion'), {'tendencia': self.companero.pk}).context
+        self.assertEqual(contexto['tendencia']['titulo'], 'Mi avance semana a semana')
+        self.assertEqual(contexto['tendencia']['puntos'][-1]['avance'], 0.0)
+        self.assertEqual(contexto['opciones_tendencia'], [])
+
+    def test_delegado_ve_el_colectivo_y_elige_un_funcionario(self):
+        self.validada(self.func, dias_atras=2)
+        self.entrar('33333333-3')
+        colectivo = self.client.get(reverse('actividades:mi_gestion')).context
+        self.assertIn('Puntaje colectivo', colectivo['tendencia']['titulo'])
+        self.assertEqual(colectivo['tendencia']['puntos'][-1]['avance'], 5.0)  # promedio de 10% y 0%
+        self.assertNotIn(self.otro, colectivo['opciones_tendencia'])  # otra delegación
+        uno = self.client.get(reverse('actividades:mi_gestion'), {'tendencia': self.func.pk}).context
+        self.assertEqual(uno['tendencia']['puntos'][-1]['avance'], 10.0)
+        ajeno = self.client.get(reverse('actividades:mi_gestion'), {'tendencia': self.otro.pk}).context
+        self.assertIn('Puntaje colectivo', ajeno['tendencia']['titulo'])  # fuera de su delegación: se ignora
+
+    def test_ultimo_punto_cuadra_con_mi_gestion_y_el_semaforo(self):
+        from IndicadoresApp.calculos import tendencia_semanal, seguimiento_usuario
+        self.validada(self.func, dias_atras=3)
+        Ausencia.objects.create(usuario=self.func, tipo='VACACIONES', desde=self.hoy + timedelta(days=2),
+                                hasta=self.hoy + timedelta(days=4), registrado_por=self.delegado)
+        hoy = seguimiento_usuario(self.func, self.datos['periodo'], self.hoy)
+        puntos = tendencia_semanal(self.datos['periodo'], self.hoy, [self.func])
+        self.assertEqual(puntos[-1]['avance'], float(hoy['avance_logrado']))
+        self.assertEqual(puntos[-1]['esperado'], float(hoy['objetivo_hoy']))
+        self.entrar('55555555-5')
+        mi_gestion = self.client.get(reverse('actividades:mi_gestion')).context
+        self.assertEqual(mi_gestion['tendencia']['puntos'][-1]['avance'], float(mi_gestion['mi_avance']['avance_logrado']))
+
+    def test_la_ausencia_cuenta_desde_que_se_registro(self):
+        from IndicadoresApp.calculos import tendencia_semanal
+        self.validada(self.func, dias_atras=8)
+        sin_ausencia = tendencia_semanal(self.datos['periodo'], self.hoy, [self.func])
+        # Vacaciones registradas hoy: las semanas anteriores no cambian; el punto de hoy sube (la meta baja)
+        Ausencia.objects.create(usuario=self.func, tipo='VACACIONES', desde=self.hoy, hasta=self.hoy + timedelta(days=4),
+                                registrado_por=self.delegado)
+        con_ausencia = tendencia_semanal(self.datos['periodo'], self.hoy, [self.func])
+        self.assertEqual([p['avance'] for p in sin_ausencia[:-1]], [p['avance'] for p in con_ausencia[:-1]])
+        self.assertGreater(con_ausencia[-1]['avance'], sin_ausencia[-1]['avance'])
+
+
+class EncargadoPorDefectoTest(BaseActividades):
+    """El encargado es quien registra, salvo que elija otro en la lista con buscador."""
+    def test_formulario_muestra_a_quien_registra_y_la_opcion_de_elegir_otro(self):
+        self.entrar('55555555-5')
+        for url in (reverse('actividades:actividad_crear'), reverse('actividades:actividad_crear_tubo')):
+            respuesta = self.client.get(url)
+            self.assertContains(respuesta, 'Seleccionar otro encargado')
+            self.assertContains(respuesta, '(quien registra)')
+            self.assertContains(respuesta, f'data-id="{self.companero.pk}"')
+            self.assertNotContains(respuesta, f'data-id="{self.func.pk}"')
+            self.assertNotContains(respuesta, 'Yo mismo')
+
+    def test_sin_elegir_otro_el_encargado_es_quien_registra(self):
+        self.entrar('55555555-5')
+        self.registrar(encargado='')
+        actividad = Actividad.objects.latest('pk')
+        self.assertEqual(actividad.usuario, self.func)
+        self.assertIsNone(actividad.encargado)
+
+    def test_puede_elegir_a_otro_encargado(self):
+        self.entrar('55555555-5')
+        self.registrar(encargado=str(self.companero.pk))
+        self.assertEqual(Actividad.objects.latest('pk').encargado, self.companero)

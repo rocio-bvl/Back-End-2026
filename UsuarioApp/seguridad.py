@@ -111,3 +111,15 @@ def revisar_codigo(request, codigo):
     if datos['intentos'] >= settings.MFA_MAX_INTENTOS:
         return 'agotado'
     return 'incorrecto'
+
+
+def generar_clave_temporal(largo=12):
+    """Contraseña temporal aleatoria (módulo secrets) que cumple ContrasenaSeguraValidator: al menos una mayúscula,
+    una minúscula, un número y un símbolo. Se excluyen caracteres que se confunden al dictarla (O/0, l/1, I)."""
+    import secrets
+    grupos = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '#$%&*+?!@']
+    clave = [secrets.choice(grupo) for grupo in grupos]
+    todos = ''.join(grupos)
+    clave += [secrets.choice(todos) for _ in range(largo - len(clave))]
+    secrets.SystemRandom().shuffle(clave)
+    return ''.join(clave)

@@ -123,8 +123,9 @@ class RegistroActividadTest(BaseActividades):
         self.assertEqual((actividad.estado, actividad.fecha_realizacion, actividad.depende_externos), ('EN_TUBO', None, True))
         self.assertEqual(actividad.evidencias.count(), 0)
         self.assertEqual(self.folios_tubo(), [actividad.folio()])  # quien la registró la ve en su Tubo
-        self.entrar('77777777-7')  # el compañero de delegación no: el Funcionario ve solo lo suyo
-        self.assertEqual(self.folios_tubo(), [])
+        self.entrar('77777777-7')  # el compañero de delegación también la ve (agenda colectiva), pero no la modifica
+        self.assertEqual(self.folios_tubo(), [actividad.folio()])
+        self.assertFalse(self.client.get(reverse('actividades:tubo_trabajo')).context['actividades'][0]['puede_seguimiento'])
         self.entrar('33333333-3')  # el Delegado sí, porque supervisa su delegación
         self.assertEqual(self.folios_tubo(), [actividad.folio()])
 
@@ -381,13 +382,14 @@ class TuboYMiGestionTest(BaseActividades):
         con_fecha.depende_externos, con_fecha.estado = True, 'EN_TUBO'  # del Tubo, con fecha (vencida)
         con_fecha.save()
         self.crear(dias=3)  # compromiso común: no es del Tubo
-        # El Funcionario ve solo lo suyo y solo filtra por estado (los otros filtros se ignoran)
+        # Agenda colectiva: el Funcionario ve el Tubo de toda su delegación y usa los mismos filtros
         self.entrar('55555555-5')
-        self.assertEqual(sorted(self.folios_tubo()), sorted([propio.folio(), con_fecha.folio()]))
-        self.assertEqual(self.folios_tubo(estado='SIN_FECHA'), [propio.folio()])
+        self.assertEqual(sorted(self.folios_tubo()), sorted([propio.folio(), ajeno.folio(), con_fecha.folio()]))
+        self.assertEqual(sorted(self.folios_tubo(estado='SIN_FECHA')), sorted([propio.folio(), ajeno.folio()]))
         self.assertEqual(self.folios_tubo(estado='VENCIDOS'), [con_fecha.folio()])
-        self.assertEqual(sorted(self.folios_tubo(territorio=self.territorio_bajo.pk)), sorted([propio.folio(), con_fecha.folio()]))
-        self.assertNotContains(self.client.get(reverse('actividades:tubo_trabajo')), 'name="responsable"')
+        self.assertEqual(self.folios_tubo(territorio=self.territorio_bajo.pk), [ajeno.folio()])
+        self.assertEqual(sorted(self.folios_tubo(mios='1')), sorted([propio.folio(), con_fecha.folio()]))
+        self.assertContains(self.client.get(reverse('actividades:tubo_trabajo')), 'name="responsable"')
         # El Delegado ve el Tubo de su delegación y filtra por funcionario (buscador) y territorio
         self.entrar('33333333-3')
         self.assertEqual(sorted(self.folios_tubo()), sorted([propio.folio(), ajeno.folio(), con_fecha.folio()]))

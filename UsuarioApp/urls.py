@@ -9,6 +9,7 @@ urlpatterns = [
     path('login/', vusuario.iniciar_sesion, name="login"),
     path('login/codigo/', vusuario.verificar_codigo, name="verificar_codigo"),
     path('logout/', vusuario.cerrar_sesion, name="logout"),
+    path('sesion-cerrada/', vusuario.sesion_cerrada, name="sesion_cerrada"),
     path('administracion/', vusuario.administracion, name="administracion"),
     path('crear/', vusuario.usuario_crear, name="usuario_crear"),
     path('<int:pk>/editar/', vusuario.usuario_editar, name="usuario_editar"),
@@ -18,6 +19,7 @@ urlpatterns = [
     path('delegaciones/<int:pk>/editar/', vusuario.delegacion_editar, name="delegacion_editar"),
     path('delegaciones/<int:pk>/eliminar/', vusuario.delegacion_eliminar, name="delegacion_eliminar"),
     path('perfil/', vusuario.perfil_editar, name="perfil_editar"),
+    path('cambiar-clave/', vusuario.cambiar_clave, name="cambiar_clave"),
 
     # Recuperación de contraseña por correo (vistas que trae Django). success_url es obligatorio:
     # las rutas llevan el prefijo users: y Django buscaría los nombres sin él.

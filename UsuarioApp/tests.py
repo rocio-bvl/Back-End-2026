@@ -994,6 +994,7 @@ class ValidadorContrasenaTest(TestCase):
             with self.assertRaises(ValidationError, msg=clave):
                 validate_password(clave)
 
+    @override_settings(CONTRASENA_TEMPORAL=False)  # con contraseña temporal no se escribe clave al crear
     def test_crear_usuario_con_clave_debil_no_se_guarda(self):
         crear_datos_base()
         crear_usuario('11111111-1', 'Admin')
@@ -1016,3 +1017,62 @@ class ValidadorContrasenaTest(TestCase):
         self.assertEqual(respuesta.status_code, 200)  # vuelve al formulario con el error
         self.assertContains(respuesta, 'una letra mayúscula')
         self.assertTrue(self.client.login(username='55555555-5', password=CLAVE))  # la clave anterior sigue vigente
+
+
+class ContrasenaTemporalTest(TestCase):
+    """Contraseña temporal y cambio obligatorio en el primer ingreso (settings.CONTRASENA_TEMPORAL)."""
+    def setUp(self):
+        crear_datos_base()
+        self.admin = crear_usuario('11111111-1', 'Admin')
+
+    def crear(self):
+        from django.contrib.messages import get_messages
+        self.client.login(username='11111111-1', password=CLAVE)
+        respuesta = self.client.post(reverse('users:usuario_crear'), {
+            'rut': '12.345.678-5', 'email': 'nuevo@laserena.cl', 'first_name': 'Nuevo', 'last_name': 'Usuario',
+            'rol': 'Funcionario', 'cargo': 'Territorial'})
+        textos = [str(m) for m in get_messages(respuesta.wsgi_request)]
+        self.client.logout()
+        return textos
+
+    @override_settings(CONTRASENA_TEMPORAL=False)  # independiente del .env de quien ejecuta las pruebas
+    def test_apagada_exige_escribir_la_contrasena(self):
+        self.crear()
+        self.assertFalse(Usuario.objects.filter(username='12345678-5').exists())
+
+    @override_settings(CONTRASENA_TEMPORAL=True)
+    def test_genera_la_contrasena_y_la_muestra_una_vez(self):
+        textos = self.crear()
+        nuevo = Usuario.objects.get(username='12345678-5')
+        self.assertTrue(nuevo.debe_cambiar_clave)
+        clave = re.search(r'Contraseña temporal de .+?: (\S+)\.', ' '.join(textos)).group(1)
+        self.assertTrue(nuevo.check_password(clave))
+
+    @override_settings(CONTRASENA_TEMPORAL=True)
+    def test_primer_ingreso_obliga_a_cambiarla(self):
+        textos = self.crear()
+        clave = re.search(r'Contraseña temporal de .+?: (\S+)\.', ' '.join(textos)).group(1)
+        self.client.post(reverse('users:login'), {'username': '12345678-5', 'password': clave})
+        self.assertRedirects(self.client.get(reverse('actividades:mi_gestion')), reverse('users:cambiar_clave'))
+        # Una contraseña que no cumple los validadores no se acepta
+        self.client.post(reverse('users:cambiar_clave'), {'new_password1': '123', 'new_password2': '123'})
+        self.assertTrue(Usuario.objects.get(username='12345678-5').debe_cambiar_clave)
+        respuesta = self.client.post(reverse('users:cambiar_clave'),
+                                     {'new_password1': 'MiClave#Propia26', 'new_password2': 'MiClave#Propia26'})
+        self.assertRedirects(respuesta, reverse('actividades:mi_gestion'))
+        nuevo = Usuario.objects.get(username='12345678-5')
+        self.assertFalse(nuevo.debe_cambiar_clave)
+        self.assertTrue(nuevo.check_password('MiClave#Propia26'))
+        self.assertEqual(self.client.get(reverse('actividades:mi_gestion')).status_code, 200)
+
+    @override_settings(CONTRASENA_TEMPORAL=False)
+    def test_apagada_no_redirige_aunque_tenga_la_marca(self):
+        Usuario.objects.filter(pk=self.admin.pk).update(debe_cambiar_clave=True)
+        self.client.login(username='11111111-1', password=CLAVE)
+        self.assertEqual(self.client.get(reverse('actividades:mi_gestion')).status_code, 200)
+
+    def test_clave_temporal_cumple_el_validador(self):
+        from django.contrib.auth.password_validation import validate_password
+        from UsuarioApp.seguridad import generar_clave_temporal
+        for _ in range(50):
+            validate_password(generar_clave_temporal())

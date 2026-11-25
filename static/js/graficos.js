@@ -3,7 +3,8 @@
    Django, que escapa el contenido): aquí solo se dibujan, no se calcula nada.
    - #grafico-avance: medidor semicircular del avance contra lo esperado a hoy (marca negra).
    - #grafico-estados: anillo con las actividades por estado.
-   - #grafico-barras: barras horizontales con una línea de referencia (meta). */
+   - #grafico-barras: barras horizontales con una línea de referencia (meta).
+   - #grafico-tendencia: avance contra lo esperado al cierre de cada semana del periodo. */
 (function () {
     var fuente = document.getElementById('datos-graficos');
     if (!fuente || !window.Chart) { return; }
@@ -129,6 +130,38 @@
                 }
             },
             plugins: [lineaReferencia]
+        });
+    }
+
+    // 4. Tendencia semanal: línea del avance (rojo, con relleno suave) y lo esperado a esa fecha (gris punteada)
+    lienzo = document.getElementById('grafico-tendencia');
+    if (lienzo && datos.tendencia && datos.tendencia.puntos.length) {
+        var puntos = datos.tendencia.puntos;
+        new Chart(lienzo, {
+            type: 'line',
+            data: {
+                labels: puntos.map(function (p) { return p.etiqueta; }),
+                datasets: [
+                    { label: 'Avance', data: puntos.map(function (p) { return p.avance; }),
+                      borderColor: '#C41230', backgroundColor: 'rgba(196, 18, 48, .10)', fill: true,
+                      tension: .25, borderWidth: 2.5, pointRadius: 3.5, pointBackgroundColor: '#C41230' },
+                    { label: 'Esperado a la fecha', data: puntos.map(function (p) { return p.esperado; }),
+                      borderColor: '#6b6262', borderDash: [6, 5], borderWidth: 1.5, pointRadius: 0, fill: false }
+                ]
+            },
+            options: {
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: { min: 0, suggestedMax: 100, grid: { color: '#F1ECEA' },
+                         ticks: { callback: function (v) { return v + '%'; } } },
+                    x: { grid: { display: false } }
+                },
+                plugins: {
+                    legend: { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'line', padding: 16 } },
+                    tooltip: { callbacks: { label: function (c) { return ' ' + c.dataset.label + ': ' + numero(c.parsed.y) + '%'; } } }
+                }
+            }
         });
     }
 })();

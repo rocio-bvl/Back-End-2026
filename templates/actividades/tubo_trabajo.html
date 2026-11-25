@@ -17,7 +17,55 @@
         si aún no se sabe, se agrega después desde el detalle de la actividad.-->
     </p>
 
-    <!-- Filtros: el Funcionario ve solo lo suyo y filtra por estado; los demás también por funcionario y territorio -->
+    <!-- Resumen del seguimiento (guía 4.2): actividades del Tubo por estado y porcentaje realizado, del periodo vigente -->
+    {% with r=resumen_tubo %}
+    <div class="row g-3 mb-4">
+        <div class="col-lg-3">
+            <div class="card border-0 h-100 tubo-resumen-total">
+                <div class="card-body p-4">
+                    <span class="text-muted small fw-semibold">Actividades del Tubo realizadas</span>
+                    <div class="tubo-porcentaje">{% if r.porcentaje is not None %}{{ r.porcentaje|floatformat:1 }}%{% else %}-{% endif %}</div>
+                    <div class="progress tubo-progreso" role="progressbar" aria-label="Porcentaje realizado" aria-valuenow="{{ r.porcentaje|default:0|floatformat:0 }}" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar" style="width: {{ r.porcentaje|default:0|floatformat:0 }}%"></div>
+                    </div>
+                    <small class="text-muted d-block mt-2">{{ r.total }} actividad{{ r.total|pluralize:"es" }} en el Tubo{% if r.periodo %} · {{ r.periodo }}{% endif %}</small>
+                </div>
+            </div>
+        </div>
+        {% for e in r.estados %}
+        <div class="col-6 col-lg">
+            <a href="?seguimiento={{ e.codigo }}&estado=TODOS{% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}&delegacion={{ codigo_delegacion }}{% endif %}" class="card border-0 h-100 text-decoration-none tubo-estado-tarjeta tubo-estado-{{ e.codigo|lower }} {% if filtros.seguimiento == e.codigo %}seleccionada{% endif %}">
+                <div class="card-body p-3">
+                    {% include 'actividades/components/estado_tubo.html' with estado=e.codigo texto=e.texto %}
+                    <div class="fs-3 fw-bold text-dark mt-2">{{ e.cantidad }}</div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+    {% if r.por_funcionario %}
+    <details class="card border-0 mb-4 tubo-por-funcionario">
+        <summary class="card-body py-3 fw-bold">Realizado por funcionario <small class="text-muted fw-normal">(de menor a mayor)</small></summary>
+        <div class="tarjeta-tabla table-responsive">
+            <table class="table tabla-sgr tabla-compacta mb-0">
+                <thead><tr><th>RESPONSABLE</th><th class="text-center">ACTIVIDADES</th><th class="text-center">REALIZADOS</th><th>AVANCE</th></tr></thead>
+                <tbody>
+                    {% for f in r.por_funcionario %}
+                    <tr>
+                        <td class="fw-semibold">{{ f.nombre }}</td>
+                        <td class="text-center">{{ f.total }}</td>
+                        <td class="text-center">{{ f.realizados }}</td>
+                        <td><div class="d-flex align-items-center gap-2"><div class="progress tubo-progreso flex-grow-1"><div class="progress-bar" style="width: {{ f.porcentaje|floatformat:0 }}%"></div></div><span class="fw-bold small">{{ f.porcentaje|floatformat:1 }}%</span></div></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+    {% endif %}
+    {% endwith %}
+
+    <!-- Filtros: todos ven el Tubo de su delegación y filtran por funcionario, estado, etapa y territorio -->
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body py-3">
             <form method="get" class="row g-2 align-items-end" style="font-size: 0.9rem;">
@@ -36,6 +84,15 @@
                     <select name="estado" id="f_estado" class="form-select form-select-sm">
                         {% for valor, texto in estados_filtro %}
                         <option value="{{ valor }}" {% if filtros.estado == valor %}selected{% endif %}>{{ texto }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold mb-1" for="f_seguimiento">Seguimiento</label>
+                    <select name="seguimiento" id="f_seguimiento" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for valor, texto in estados_tubo %}
+                        <option value="{{ valor }}" {% if filtros.seguimiento == valor %}selected{% endif %}>{{ texto }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -62,6 +119,14 @@
                     </select>
                 </div>
                 {% endif %}
+                {% if not solo_lo_suyo %}
+                <div class="col-auto pb-1">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="mios" value="1" id="f_mios" {% if filtros.mios == '1' %}checked{% endif %}>
+                        <label class="form-check-label" for="f_mios">Mi Tubo de Trabajo</label>
+                    </div>
+                </div>
+                {% endif %}
                 <div class="col-md d-flex gap-2 justify-content-end">
                     <a href="{% url 'actividades:tubo_trabajo' %}{% if codigo_delegacion and codigo_delegacion != 'GENERAL' %}?delegacion={{ codigo_delegacion }}{% endif %}" class="btn btn-sm btn-outline-secondary">Limpiar</a>
                     <button type="submit" class="btn btn-sm btn-muni"><i class="bi bi-funnel me-1"></i>Filtrar</button>
@@ -85,6 +150,7 @@
                         <th>TERRITORIO</th>
                         <th>FECHA DE REALIZACIÓN</th>
                         <th>RESPONSABLE</th>
+                        <th>SEGUIMIENTO</th>
                         <th>ESTADO</th>
                         <th>ACCIONES</th>
                     </tr>
@@ -119,6 +185,32 @@
                                 <small class="d-block text-muted">Sin encargado asignado</small>
                             {% endif %}
                         </td>
+                        <td class="text-center">
+                            {% if act.puede_seguimiento %}
+                            {# Lo cambian sus responsables, su Delegado y el Admin mientras esté pendiente #}
+                            <div class="dropdown">
+                                <button class="btn btn-sm p-0 border-0 dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" aria-label="Cambiar seguimiento de {{ act.folio }}">
+                                    {% include 'actividades/components/estado_tubo.html' with estado=act.seguimiento texto=act.seguimiento_texto %}
+                                </button>
+                                <ul class="dropdown-menu shadow-sm">
+                                    {% for codigo, texto in estados_tubo_elegibles %}
+                                    <li>
+                                        <form method="post" action="{% url 'actividades:cambiar_estado_tubo' act.id %}">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="estado_tubo" value="{{ codigo }}">
+                                            <input type="hidden" name="volver" value="{{ request.get_full_path }}">
+                                            <button type="submit" class="dropdown-item {% if act.seguimiento == codigo %}active{% endif %}">{{ texto }}</button>
+                                        </form>
+                                    </li>
+                                    {% endfor %}
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><span class="dropdown-item-text small text-muted">Realizado se marca al registrar la ejecución.</span></li>
+                                </ul>
+                            </div>
+                            {% else %}
+                            {% include 'actividades/components/estado_tubo.html' with estado=act.seguimiento texto=act.seguimiento_texto %}
+                            {% endif %}
+                        </td>
                         <td class="text-center">{% include 'actividades/components/estado_actividad.html' with estado=act.estado_codigo %}</td>
                         <td class="text-center">
                             <div class="d-flex flex-nowrap gap-1 justify-content-center align-items-center">
@@ -144,7 +236,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-3">No hay actividades que cumplan los filtros en esta delegación.</td>
+                        <td colspan="9" class="text-center text-muted py-3">No hay actividades que cumplan los filtros en esta delegación.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

@@ -1,0 +1,71 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# Respaldo sin JavaScript: vuelve al inicio a los 3 segundos #}
+    <meta http-equiv="refresh" content="3;url={% url 'users:login' %}">
+    <title>Sesión cerrada | Ilustre Municipalidad de La Serena</title>
+    {% include 'components/favicon.html' %}
+    {% comment %}Página intermedia al cerrar sesión: logo de la Municipalidad con animación y paso suave al inicio (login.html).
+    Colores institucionales: laserena.cl/conocenos/normas-graficas{% endcomment %}
+    <style>
+        :root { --muni-heraldico: #C41230; --muni-oscuro: #8B1D19; --curva: cubic-bezier(.65, 0, .25, 1); }
+        html, body { height: 100%; margin: 0; }
+        body {
+            display: flex; align-items: center; justify-content: center; overflow: hidden;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff;
+            background: linear-gradient(160deg, var(--muni-heraldico) 0%, var(--muni-oscuro) 100%);
+        }
+        /* Halos difuminados, como en el banner del sistema */
+        body::before, body::after { content: ""; position: fixed; border-radius: 50%; filter: blur(70px); pointer-events: none; }
+        body::before { width: 46vmax; height: 46vmax; top: -18vmax; right: -10vmax; background: rgba(255, 255, 255, .18); animation: halo 3s ease-in-out both; }
+        body::after { width: 40vmax; height: 40vmax; bottom: -20vmax; left: -12vmax; background: rgba(60, 5, 5, .45); }
+        .salida { position: relative; text-align: center; padding: 1rem; }
+        .logo-caja { position: relative; display: inline-flex; align-items: center; justify-content: center; width: clamp(190px, 32vw, 250px); aspect-ratio: 1; }
+        /* Anillo que se dibuja alrededor del logo */
+        .anillo { position: absolute; inset: 0; width: 100%; height: 100%; }
+        .anillo circle { fill: none; stroke: rgba(255, 255, 255, .85); stroke-width: 1.4; stroke-dasharray: 302; stroke-dashoffset: 302; stroke-linecap: round; animation: trazo 1.4s var(--curva) .25s forwards; }
+        .logo { display: block; width: 62%; height: auto; opacity: 0; transform: scale(.82); animation: aparece .9s var(--curva) .1s forwards; }
+        .mensaje { margin: 1.6rem 0 .3rem; font-size: clamp(1.4rem, 1rem + 1.6vw, 2rem); font-weight: 800; letter-spacing: -.01em; opacity: 0; animation: sube .7s ease-out .7s forwards; }
+        .detalle { margin: 0; font-size: .95rem; opacity: 0; animation: sube .7s ease-out .95s forwards; }
+        .barra { width: 160px; height: 3px; margin: 1.6rem auto 0; border-radius: 3px; background: rgba(255, 255, 255, .25); overflow: hidden; opacity: 0; animation: sube .4s ease-out 1s forwards; }
+        .barra::after { content: ""; display: block; height: 100%; width: 100%; background: #fff; transform-origin: left; transform: scaleX(0); animation: carga 1.5s linear 1.05s forwards; }
+        .volver { display: inline-block; margin-top: 1.4rem; color: #fff; font-size: .85rem; opacity: .75; }
+        /* Salida: se desvanece antes de pasar al inicio */
+        body.saliendo .salida { transition: opacity .45s ease, transform .45s ease; opacity: 0; transform: scale(.97); }
+        @keyframes aparece { to { opacity: 1; transform: scale(1); } }
+        @keyframes trazo { to { stroke-dashoffset: 0; } }
+        @keyframes sube { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        @keyframes carga { to { transform: scaleX(1); } }
+        @keyframes halo { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <main class="salida" role="status" aria-live="polite">
+        <div class="logo-caja">
+            <svg class="anillo" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48"></circle></svg>
+            <img src="{% static 'img/marca/vertical-blanco.svg' %}" alt="Ilustre Municipalidad de La Serena" class="logo">
+        </div>
+        <p class="mensaje">Sesión cerrada</p>
+        <p class="detalle">Hasta pronto{% if nombre %}, {{ nombre }}{% endif %}.</p>
+        <div class="barra" aria-hidden="true"></div>
+        <noscript><a class="volver" href="{% url 'users:login' %}">Volver al inicio</a></noscript>
+    </main>
+    <script>
+        // Tras la animación (unos 2,6 s) se desvanece y pasa al inicio
+        (function () {
+            var destino = "{% url 'users:login' %}";
+            var reducido = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            setTimeout(function () {
+                document.body.classList.add('saliendo');
+                setTimeout(function () { window.location.replace(destino); }, reducido ? 0 : 450);
+            }, reducido ? 900 : 2600);
+        })();
+    </script>
+</body>
+</html>

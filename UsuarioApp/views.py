@@ -89,8 +89,19 @@ def verificar_codigo(request):
 
 
 def cerrar_sesion(request):
+    # Guarda el primer nombre para despedir en la página intermedia y luego cierra la sesión
+    nombre = request.user.first_name if request.user.is_authenticated else ''
     logout(request)
-    return redirect('users:login')
+    request.session['nombre_despedida'] = nombre
+    return redirect('users:sesion_cerrada')
+
+
+def sesion_cerrada(request):
+    # Página intermedia con el logo animado; pasa sola al inicio (login) a los pocos segundos
+    if request.user.is_authenticated:
+        return redirect('actividades:mi_gestion')
+    nombre = request.session.pop('nombre_despedida', '')
+    return render(request, 'users/sesion_cerrada.html', {'nombre': nombre})
 
 
 def resumen_usuario(usuario):
@@ -275,6 +286,7 @@ def administracion(request):
         'opciones_delegacion': opciones_delegacion(),
         'pestana': request.GET.get('pestana', ''),
         'seccion': seccion_administracion(request.GET.get('pestana', ''), usuario),
+        'contrasena_temporal': settings.CONTRASENA_TEMPORAL,
     }
     return render(request, 'users/administracion.html', data)
 
@@ -327,12 +339,23 @@ def usuario_crear(request):
         usuario.delegacion_id = request.user.delegacion_id
         if usuario.territorio is not None and usuario.territorio.delegacion_id != usuario.delegacion_id:
             usuario.territorio = None
-    usuario.set_password(datos['password1'])
+    clave_temporal = None
+    if settings.CONTRASENA_TEMPORAL:
+        # El sistema genera la contraseña y el usuario debe cambiarla en su primer ingreso
+        clave_temporal = seguridad.generar_clave_temporal()
+        usuario.set_password(clave_temporal)
+        usuario.debe_cambiar_clave = True
+    else:
+        usuario.set_password(datos['password1'])
     usuario.save()
     asignar_rol(usuario, datos['rol'], request.user)
 
     registrar_auditoria(request.user, 'CREACION', 'Usuario', usuario.pk, '', resumen_usuario(usuario))
     messages.success(request, f"Usuario {usuario.get_full_name()} creado correctamente.")
+    if clave_temporal:
+        # Se muestra una sola vez: no queda guardada en texto plano en ninguna parte
+        messages.info(request, f"Contraseña temporal de {usuario.get_full_name()}: {clave_temporal}. Entréguela "
+                               "al usuario: deberá cambiarla en su primer ingreso. No se volverá a mostrar.")
     return redirect(reverse('users:administracion') + '?pestana=usuarios')
 
 @permiso_requerido('UsuarioApp.change_usuario', 'Editar Usuario')
@@ -502,3 +525,24 @@ def perfil_editar(request):
     else:
         form = PerfilForm(instance=usuario)
     return render(request, 'users/perfil_form.html', {'form': form})
+
+
+@login_required
+def cambiar_clave(request):
+    """Primer ingreso con contraseña temporal (settings.CONTRASENA_TEMPORAL): el usuario elige su contraseña.
+    SetPasswordForm aplica los validadores de AUTH_PASSWORD_VALIDATORS; la sesión sigue abierta después del cambio."""
+    from django.contrib.auth import update_session_auth_hash
+    from django.contrib.auth.forms import SetPasswordForm
+    if not request.user.debe_cambiar_clave:
+        return redirect('actividades:mi_gestion')
+    form = SetPasswordForm(request.user, request.POST or None)
+    if request.method == 'POST' and form.is_valid():
+        usuario = form.save(commit=False)
+        usuario.debe_cambiar_clave = False
+        usuario.save()
+        update_session_auth_hash(request, usuario)
+        registrar_auditoria(usuario, 'MODIFICACION', 'Usuario', usuario.pk, 'Contraseña temporal',
+                            'Contraseña cambiada en el primer ingreso')
+        messages.success(request, "Contraseña actualizada. Bienvenido al SGR.")
+        return redirect('actividades:mi_gestion')
+    return render(request, 'users/cambiar_clave.html', {'form': form})

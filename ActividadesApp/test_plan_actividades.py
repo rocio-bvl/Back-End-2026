@@ -252,11 +252,12 @@ class PlanCompromisosTest(BasePlan):
     def test_cp_com_005_tubo_filtro_por_responsable(self):
         propio = self.crear('EN_TUBO')
         ajeno = self.crear('EN_TUBO', usuario=self.companero)
-        # Filtra quien supervisa (el Delegado): el Funcionario ya ve solo lo suyo
+        # El Tubo es una agenda colectiva: Delegado y Funcionario ven el de su delegación y filtran por responsable
         self.entrar('33333333-3')
         self.assertEqual(self.folios_tubo(responsable='77777777'), [ajeno.folio()])  # buscador por RUT o nombre
         self.entrar('55555555-5')
-        self.assertEqual(self.folios_tubo(), [propio.folio()])
+        self.assertEqual(sorted(self.folios_tubo()), sorted([propio.folio(), ajeno.folio()]))
+        self.assertEqual(self.folios_tubo(responsable='77777777'), [ajeno.folio()])
 
     def test_cp_com_006_tubo_filtro_por_estado(self):
         pendiente = self.crear('EN_TUBO')

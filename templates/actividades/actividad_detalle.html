@@ -9,7 +9,9 @@
         <h3 class="fw-bold m-0">Actividad {{ actividad.folio }}
             {% if actividad.es_compromiso %}<small class="text-muted fs-6">(compromiso)</small>{% elif actividad.en_tubo %}<small class="text-muted fs-6">(en el Tubo de Trabajo)</small>{% endif %}
         </h3>
-        {% if actividad.depende_externos %}
+        {% if request.GET.desde == 'hitos' %}
+        <a href="{% url 'actividades:hitos' %}" class="btn btn-muni btn-sm px-3" title="Volver a Hitos"><i class="bi bi-arrow-left me-1"></i>Volver</a>
+        {% elif actividad.depende_externos %}
         <a href="{% url 'actividades:tubo_trabajo' %}" class="btn btn-muni btn-sm px-3" title="Volver al Tubo de Trabajo"><i class="bi bi-arrow-left me-1"></i>Volver</a>
         {% else %}
         <a href="{% url 'actividades:mi_gestion' %}" class="btn btn-muni btn-sm px-3" title="Volver a Mi Gestión"><i class="bi bi-arrow-left me-1"></i>Volver</a>
@@ -27,6 +29,23 @@
                         <span class="text-muted">ESTADO:</span>
                         {% if actividad.estado == 'PROGRAMADA' %}PROGRAMADA{% elif actividad.estado == 'EN_TUBO' %}EN TUBO{% elif actividad.estado == 'EVIDENCIA_INGRESADA' %}EVIDENCIA INGRESADA{% elif actividad.estado == 'RECHAZADA' %}RECHAZADA{% elif actividad.estado == 'VALIDADA' %}COMPLETADA{% else %}{{ actividad.estado }}{% endif %}
                     </p>
+                    {% if actividad.depende_externos %}
+                    {# Seguimiento de la actividad en el Tubo (guía 4.2): Realizado llega solo al registrar la ejecución #}
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-4">
+                        <span class="text-muted small fw-semibold">SEGUIMIENTO EN EL TUBO:</span>
+                        {% include 'actividades/components/estado_tubo.html' with estado=actividad.seguimiento_tubo texto=actividad.get_seguimiento_tubo_display %}
+                        {% if puede_programar %}
+                        <form method="post" action="{% url 'actividades:cambiar_estado_tubo' actividad.pk %}" class="d-flex flex-wrap gap-2 ms-md-auto">
+                            {% csrf_token %}
+                            <select name="estado_tubo" class="form-select form-select-sm w-auto" aria-label="Nuevo estado de seguimiento">
+                                {% for codigo, texto in estados_tubo_elegibles %}<option value="{{ codigo }}" {% if actividad.estado_tubo == codigo %}selected{% endif %}>{{ texto }}</option>{% endfor %}
+                            </select>
+                            <input type="text" name="observacion" class="form-control form-control-sm w-auto" maxlength="500" placeholder="Observación de avance (opcional)">
+                            <button type="submit" class="btn btn-sm btn-outline-dark">Actualizar</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     {% if actividad.es_gestion %}
                     <div class="alert alert-secondary small py-2"><i class="bi bi-info-circle me-1"></i>Gestión del Delegado: queda registrada, pero no suma puntaje ni pasa por verificación.</div>
                     {% elif actividad.estado == 'VALIDADA' %}
@@ -152,7 +171,7 @@
                         <input type="date" name="fecha_realizacion" min="{{ hoy|date:'Y-m-d' }}" value="{{ actividad.fecha_realizacion|date:'Y-m-d' }}" class="form-control mb-2" required>
                         <button type="submit" class="btn btn-sm btn-muni w-100">Guardar fecha</button>
                     </form>
-                    {% if actividad.en_tubo %}<small class="text-muted d-block mt-2">Con fecha asignada, la actividad pasa a ser un compromiso programado.</small>{% endif %}
+                    {% if actividad.en_tubo %}<small class="text-muted d-block mt-2">Con fecha asignada, la actividad sigue en el Tubo hasta que se registre su ejecución.</small>{% endif %}
                 </div>
             </div>
             {% endif %}

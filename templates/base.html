@@ -15,7 +15,7 @@
     <!-- Definición de Clases de Paleta Municipal (Proyecto/static/css/styles.css). ?v= cambia cuando se modifica la hoja: obliga al navegador a descargar la versión nueva -->
     <link rel="stylesheet" href="{% static 'css/styles.css' %}?v=2026-11-17c">
     <!-- Capa visual moderna (animaciones, sombras, tablas y formularios). Va después de styles.css para que sus reglas manden. Quitar esta línea vuelve al diseño anterior -->
-    <link rel="stylesheet" href="{% static 'css/sgr-moderno.css' %}?v=2026-11-24c">
+    <link rel="stylesheet" href="{% static 'css/sgr-moderno.css' %}?v=2026-11-25c">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
@@ -137,6 +137,13 @@
             <li class="nav-item">
                 <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'mi_gestion' %}active{% else %}text-dark{% endif %}" href="{% url 'actividades:mi_gestion' %}">
                     <i class="bi bi-journal-check me-1 text-danger"></i> Mi Gestión
+                </a>
+            </li>
+
+            <!-- Hitos: compromisos con su fecha límite y responsable (todos los roles) -->
+            <li class="nav-item">
+                <a class="nav-link border-0 py-2 px-3 {% if request.resolver_match.url_name == 'hitos' %}active{% else %}text-dark{% endif %}" href="{% url 'actividades:hitos' %}">
+                    <i class="bi bi-flag me-1 text-danger"></i> Hitos
                 </a>
             </li>
 

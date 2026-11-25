@@ -1,17 +1,14 @@
 # SGR: Sistema de Gestión de Resultados, Municipalidad de La Serena
 
-Aplicación web en Django para registrar la gestión territorial de los funcionarios municipales: actividades con evidencia, compromisos del Tubo de Trabajo, registro de atenciones sociales, verificación de la ejecución, metas trimestrales con semáforo de cumplimiento y auditoría de cambios.
+Aplicación web en Django para registrar y medir la gestión territorial de los funcionarios municipales: actividades con evidencia, compromisos con fecha, Tubo de Trabajo para lo que depende de terceros, atenciones sociales, verificación, metas trimestrales con semáforo y auditoría de cambios.
 
-Todas las operaciones se hacen desde pantallas propias del sistema (Django Templates). Django Admin queda solo como herramienta técnica del superusuario.
-
-Asignatura: Programación Back End (TI3041), INACAP La Serena.
-Integrantes: Juliet Araya (UsuarioApp, IndicadoresApp, configuración y AWS) y Rocío Vásquez (ActividadesApp, AuditoriaApp).
+Todas las operaciones se hacen desde pantallas propias del sistema. Django Admin queda solo como herramienta técnica del superusuario.
 
 ## Tecnologías
 
 - Python 3.12 y Django 4.2 LTS
-- MySQL / MariaDB (mysqlclient, motor InnoDB)
-- Bootstrap 5.3, Bootstrap Icons, SweetAlert2 y framework visual de la Municipalidad de La Serena
+- MySQL / MariaDB (mysqlclient, motor InnoDB, utf8mb4, modo estricto)
+- Bootstrap 5.3, Bootstrap Icons, Chart.js, SweetAlert2 y framework visual de la Municipalidad de La Serena
 - python-dotenv para las variables de entorno
 - Despliegue en AWS EC2 (Ubuntu Server, Gunicorn y Nginx)
 
@@ -30,7 +27,7 @@ Integrantes: Juliet Araya (UsuarioApp, IndicadoresApp, configuración y AWS) y R
 
 2. Crear la base de datos vacía `municipalidad` (utf8mb4) en MySQL o phpMyAdmin.
 
-3. Copiar `.env.example` como `.env`, en la misma carpeta que `manage.py`, y completar los valores: `SECRET_KEY`, datos de la base (`DB_*`) y, si se quiere enviar correos reales, los datos de correo (ver más abajo). El archivo `.env` no se sube a GitHub.
+3. Copiar `.env.example` como `.env`, en la misma carpeta que `manage.py`, y completar los valores (ver "Variables de entorno"). El archivo `.env` no se sube a GitHub.
 
 4. Crear las tablas, cargar los datos de ejemplo y crear los grupos, en este orden:
 
@@ -45,7 +42,7 @@ Integrantes: Juliet Araya (UsuarioApp, IndicadoresApp, configuración y AWS) y R
    python manage.py runserver
    ```
 
-   `crear_grupos` crea los cuatro grupos de Django, les asigna sus permisos y deja a cada usuario en el grupo de su rol. Se puede ejecutar las veces que sea necesario; conviene repetirlo después de cada `migrate` que agregue permisos.
+   `crear_grupos` crea los cuatro grupos de Django, les asigna sus permisos y deja a cada usuario en el grupo de su rol. Conviene repetirlo después de cada `migrate` que agregue permisos.
 
 5. Entrar en http://127.0.0.1:8000 con un usuario de prueba. Todos usan la contraseña `Serena2026!`:
 
@@ -57,79 +54,71 @@ Integrantes: Juliet Araya (UsuarioApp, IndicadoresApp, configuración y AWS) y R
    | 55555555-5 | Funcionaria de Las Compañías |
    | 66666666-6 | Funcionario de Las Compañías |
 
+## Variables de entorno
+
+| Variable | Uso |
+|---|---|
+| `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS` | Configuración de Django |
+| `DB_ENGINE`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | Conexión a MySQL / MariaDB |
+| `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`, `EMAIL_PORT` | Correo de recuperación de contraseña. Sin usuario, el correo se muestra en la terminal |
+| `CONTRASENA_TEMPORAL` | `True`: el sistema genera la contraseña de cada usuario nuevo y exige cambiarla en el primer ingreso |
+| `MFA_ACTIVO` | `True`: segundo factor con código por correo. Activar solo con correos reales |
+| `USAR_HTTPS`, `HSTS_SEGUNDOS`, `CSRF_TRUSTED_ORIGINS` | HTTPS en producción. Activar solo con certificado instalado |
+| `AUDITORIA_CONFIAR_PROXY` | `True` solo con Nginx u otro proxy propio delante: toma la IP de `X-Forwarded-For` |
+| `RESPALDO_DIR`, `RESPALDO_CANTIDAD`, `MYSQLDUMP` | Respaldos con `respaldar_bd` |
+
 ## Roles, grupos y permisos
 
-Cada rol del negocio queda unido a un grupo de Django con el nombre de perfil que pide la evaluación. Los permisos de cada grupo están en `PERMISOS_POR_GRUPO` (`UsuarioApp/choices.py`).
+Cada rol del negocio queda unido a un grupo de Django. Los permisos de cada grupo están en `PERMISOS_POR_GRUPO` (`UsuarioApp/choices.py`).
 
-| Rol del SGR | Grupo de Django | Nivel |
+| Rol del SGR | Grupo de Django | Alcance |
 |---|---|---|
 | Admin | Administrador | Acceso total (superusuario) |
-| Coordinador | Supervisor | Define metas y ponderaciones; supervisa todas las delegaciones |
-| Delegado | Delegado | Gestiona su delegación |
-| Funcionario | Administrativo | Solo lo propio |
+| Coordinador | Supervisor | Metas y ponderaciones; supervisa todas las delegaciones |
+| Delegado | Delegado | Su delegación: funcionarios, verificación, ausencias, felicitaciones y reclamos |
+| Funcionario | Administrativo | Registra y gestiona sus actividades; consulta el Tubo y los Hitos de su delegación |
 
-Además de los permisos que Django crea por modelo (`add_`, `change_`, `delete_`, `view_`), hay dos permisos propios: `ActividadesApp.validar_evidencia` y `ActividadesApp.asignar_encargado`.
-
-Las vistas se protegen con `@login_required` o con `@permiso_requerido(permiso, pantalla)` (`UsuarioApp/funciones.py`). Sin sesión, el usuario vuelve al login; sin permiso, vuelve a Mi Gestión con un mensaje y el intento queda en la auditoría como ACCESO_DENEGADO.
-
-| Acción | Admin | Coordinador | Delegado | Funcionario |
-|---|:-:|:-:|:-:|:-:|
-| Ver actividades | Todas (filtra por delegación) | Todas (filtra por delegación) | Su delegación | Su delegación |
-| Registrar actividades y atenciones sociales | Sí | No | No | Sí |
-| Modificar y eliminar actividades | Sí | No | No | No |
-| Validar o rechazar la ejecución | Sí | No | Sí (su delegación) | No |
-| Asignar encargado a una actividad pendiente | Sí | Sí | Sí (su delegación) | Al registrar, de su delegación |
-| Ver usuarios y delegaciones (Administración) | Sí | Solo visualiza | Funcionarios de su delegación | No |
-| Crear, editar y desactivar usuarios | Sí | No | Funcionarios de su delegación | No |
-| Eliminar usuarios (con confirmación) | Sí, si no tienen registros | No | No | No |
-| Agregar, modificar y eliminar delegaciones y territorios | Sí | No | No | No |
-| Ponderación de cada ítem por cargo (una para toda la municipalidad) | Agrega y edita | Agrega y edita | Visualiza | No |
-| Metas generales de la municipalidad | Agrega y edita | Agrega y edita | Visualiza | No |
-| Metas propias de una delegación (cambian el valor objetivo de un ítem) | Agrega y edita | Agrega y edita | Visualiza | No |
-| Auditoría (solo lectura) | Sí | Sí | No | No |
-| Entrar a Django Admin | Sí (superusuario) | No | No | No |
+Las vistas se protegen con `@login_required` o `@permiso_requerido(permiso, pantalla)` (`UsuarioApp/funciones.py`). Sin sesión, el usuario vuelve al login; sin permiso, vuelve a Mi Gestión y el intento queda en la auditoría como ACCESO_DENEGADO.
 
 ## Funcionalidades
 
-- **Tablero por perfil:** cada grupo tiene su panel de inicio (`dashboard_admin`, `dashboard_coordinador`, `dashboard_delegado` y `dashboard_administrativo`).
-- **Mantenedores con crear, buscar, listar, modificar y eliminar:** Usuarios (búsqueda por nombre, RUT o correo), Delegaciones con sus territorios (búsqueda por nombre, ámbito o territorio), Metas (búsqueda por cargo o ítem) y Registro de Atenciones (búsqueda por nombre o RUT). Eliminar siempre pide confirmación.
-- **Selector de delegación** en la barra superior: filtra la información por delegación. En Metas, General muestra las metas de toda la municipalidad y una delegación muestra las suyas; el Delegado elige entre General y la suya. Un cargo cuya ponderación no suma 100% no se mide hasta completarla.
-- **Transacciones:** registrar una actividad (con su ejecución, si corresponde) y validar o rechazar la ejecución.
-- **Auditoría de solo lectura**, con filtros por usuario, evento y fechas.
-- **Perfil propio:** cada usuario edita su foto, teléfono y correo desde Editar perfil.
+- **Mi Gestión:** tablero de cada perfil con su avance contra lo esperado, actividades por estado, cumplimiento por ítem, tendencia semanal del avance y accesos a sus pantallas.
+- **Actividades y compromisos:** una actividad con fecha de realización futura queda como compromiso (Programada) hasta que se registra su ejecución.
+- **Hitos:** los compromisos de la delegación ordenados por fecha límite (vencidos, próximos 7 días y más adelante), con su responsable.
+- **Tubo de Trabajo:** actividades que dependen de factores externos (aprobaciones, organizaciones u otras entidades). Avanzan por etapas: Ingresado, Pendiente y En proceso, que cambia su responsable, y Realizado, que marca el sistema al registrar la ejecución. Todos los funcionarios de la delegación lo consultan; cada uno modifica solo lo suyo.
+- **Registro de Atenciones (Gestión Social):** solicitudes de vecinos identificados por RUT, con hasta tres gestiones vinculadas.
+- **Verificación:** el Delegado aprueba o rechaza la evidencia de su delegación y decide si suma puntaje. Un rechazo exige observación y permite volver a subir fotos.
+- **Metas y semáforo:** metas y ponderaciones por cargo, ítem, periodo y delegación; tope de 120% por ítem; ausencias que ajustan la meta; semáforo exportable a CSV.
+- **Felicitaciones y reclamos:** los registra el Delegado o el Administrador.
+- **Administración:** delegaciones con sus territorios, usuarios, metas y periodos, y auditoría de solo lectura.
 
-## Recuperación de contraseña por correo
+## Reglas de la Municipalidad
 
-En el login, "¿Olvidaste tu contraseña?" envía un enlace con un token de un solo uso que vence en 2 horas. Se usan las vistas de recuperación de Django con plantillas propias (`templates/users/recuperar*`).
+- Máximo de 7 actividades por día por funcionario.
+- La semana se cierra el lunes siguiente: desde el martes no se ingresa lo de la semana anterior.
+- Sin nombre y teléfono de la persona atendida, la actividad no suma puntaje.
+- Las gestiones del Delegado quedan registradas, pero no suman puntaje.
+- Una vez alcanzado el 120% de un ítem, nuevas actividades de ese ítem no suben el puntaje.
+- Las felicitaciones las registra el Delegado, con respaldo formal.
+- Vacaciones, días administrativos y licencias ajustan la meta desde que se registran.
 
-Para enviar correos reales con Gmail se usa una contraseña de aplicación (no la clave normal) en el `.env`:
+## Seguridad
 
-```
-EMAIL_HOST_USER=cuenta@gmail.com
-EMAIL_HOST_PASSWORD='contraseña de aplicación'
-EMAIL_PORT=587
-```
+- Contraseñas con PBKDF2 y validadores de Django, más mayúscula, minúscula, número y símbolo (`ContrasenaSeguraValidator`).
+- Bloqueo de 15 minutos tras 5 intentos fallidos con un mismo RUT.
+- Contraseña temporal con cambio obligatorio en el primer ingreso (`CONTRASENA_TEMPORAL`).
+- Recuperación de contraseña por correo con un enlace de un solo uso que vence en 2 horas.
+- Autorización por rol y por propiedad del registro en el servidor; protección CSRF; fotos de evidencia entregadas solo a quien puede ver la actividad.
+- Auditoría inmutable con usuario, IP y canal de origen.
+- Una transacción por petición y llaves foráneas con `PROTECT`.
 
-`EMAIL_PORT=587` usa TLS. Si la red bloquea ese puerto, `EMAIL_PORT=465` usa SSL. Si `EMAIL_HOST_USER` queda vacío, el correo se muestra en la terminal en vez de enviarse.
+## Comandos de mantenimiento
 
-Las contraseñas nuevas deben tener mayúscula, minúscula, número y símbolo (`ContrasenaSeguraValidator`, en `UsuarioApp/validators.py`).
-
-## Flujo de una actividad
-
-La **fecha de ingreso** se guarda sola; quien registra elige la **fecha de ejecución**, el **territorio**, opcionalmente un **encargado** (Funcionario de su delegación) y opcionalmente la **solicitud social** a la que responde.
-
-| Caso | Estado inicial |
+| Comando | Uso |
 |---|---|
-| Fecha de ejecución hoy o anterior | `REGISTRADA` (en revisión). Comentario obligatorio, foto opcional. |
-| Fecha de ejecución posterior a hoy | `PROGRAMADA` (compromiso). |
-| Depende de factores externos, sin fecha | `EN_TUBO`. La fecha se agrega después y pasa a `PROGRAMADA`. |
-| Depende de factores externos, con fecha | `PROGRAMADA`, y sigue en el Tubo de Trabajo. |
-
-Luego se registra la ejecución, el Delegado valida (`VALIDADA`) o rechaza con motivo (`RECHAZADA`), y se pueden agregar comentarios con fecha en la bitácora. El Administrador puede modificar una actividad no validada (el estado se recalcula) o eliminarla.
-
-## Registro de Atenciones (Gestión Social)
-
-Un funcionario registra la solicitud de una persona natural (fecha y funcionario automáticos). La persona (solicitante) se identifica por su RUT: si ya está registrada, el sistema completa nombre y teléfono; si no, pregunta "¿Desea agregar solicitante al sistema?" y la registra, opcionalmente como presidente, secretario o tesorero de una organización. Sus datos se guardan una sola vez, en la tabla `solicitante`, y las atenciones y actividades la referencian. Las acciones para atenderla son actividades vinculadas a ella. Estado de la solicitud: **Pendiente** (sin actividades), **En proceso** (con actividades) y **Atendida** (todas sus actividades vinculadas fueron validadas).
+| `python manage.py crear_grupos` | Crea los grupos y asigna permisos y usuarios |
+| `python manage.py respaldar_bd` | Respalda la base y las fotos en `RESPALDO_DIR` y conserva los últimos `RESPALDO_CANTIDAD`. Se programa una vez al día |
+| `python manage.py alerta_semaforo` | Envía a cada Delegado los funcionarios en rojo de su delegación. Se programa una vez por semana |
 
 ## Pruebas automatizadas
 
@@ -137,18 +126,15 @@ Un funcionario registra la solicitud de una persona natural (fecha y funcionario
 python manage.py test
 ```
 
-175 pruebas con `django.test`, sobre una base temporal. Cubren login, grupos y permisos, protección de vistas, recuperación de contraseña, tableros por perfil, mantenedores, buscadores, transacciones y auditoría.
+300 pruebas con `django.test`, sobre una base temporal. Cubren login y bloqueo, contraseña temporal, grupos y permisos, protección de vistas, recuperación de contraseña, tableros por perfil, mantenedores, reglas de la Municipalidad, Hitos, Tubo de Trabajo, tendencia semanal, transacciones y auditoría.
 
 ## Estructura del proyecto
 
 | App | Contenido |
 |---|---|
-| `UsuarioApp` | Usuarios, roles, delegaciones, cargos, catálogos, login, recuperación de contraseña, Administración y comando `crear_grupos` |
-| `IndicadoresApp` | Periodos, metas, semáforo, resumen por delegación y tableros |
-| `ActividadesApp` | Actividades, evidencias, validación, territorios, Tubo de Trabajo y gestión social: organizaciones, solicitantes, representantes y atenciones sociales |
+| `UsuarioApp` | Usuarios, roles, delegaciones, cargos, catálogos, login, contraseña temporal, recuperación de contraseña, Administración y comando `crear_grupos` |
+| `IndicadoresApp` | Periodos, metas, ponderaciones, semáforo, tendencia semanal, resumen por delegación, ausencias, felicitaciones y reclamos, y comandos `respaldar_bd` y `alerta_semaforo` |
+| `ActividadesApp` | Actividades, compromisos, Hitos, Tubo de Trabajo, evidencias, verificación, territorios y gestión social: organizaciones, solicitantes, representantes y atenciones |
 | `AuditoriaApp` | Bitácora de cambios y accesos denegados |
 | `config` | Configuración del proyecto (lee el `.env`) |
 
-## Ramas
-
-Cada integrante trabaja en su rama (`juliet` y `rocío`) y los cambios llegan a `main` mediante Pull Requests, después de correr las pruebas.

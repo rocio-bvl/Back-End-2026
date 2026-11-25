@@ -5,110 +5,60 @@
 
 {% block content %}
 <main class="container-fluid p-4">
-    <h3 class="fw-bold mb-3"><i class="bi bi-clock-history me-2 text-danger"></i>Auditoría de Registros</h3>
-    <form method="get" class="card card-body mb-3">
-        <div class="row g-2">
-            <div class="col-md-3">
-                <label class="form-label">
-                    Usuario
-                </label>
-
-                <select
-                    name="usuario"
-                    class="form-select">
-                    <option value="">
-                        Todos
-                    </option>
-                    {% for u in usuarios %}
-                        <option
-                            value="{{ u.id }}"
-                            {% if usuario_actual == u.id|stringformat:"s" %}
-                                selected
-                            {% endif %}
-                        >
-                            {{ u }}
-                        </option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="col-md-3">
-                <label class="form-label">
-                    Evento
-                </label>
-
-                <select
-                    name="evento"
-                    class="form-select">
-                    <option value="">
-                        Todos
-                    </option>
-
-                    <option value="CREACION" {% if evento_actual == "CREACION" %}selected{% endif %}>
-                        Creación
-                    </option>
-
-                    <option value="MODIFICACION" {% if evento_actual == "MODIFICACION" %}selected{% endif %}>
-                        Modificación
-                    </option>
-
-                    <option value="ELIMINACION" {% if evento_actual == "ELIMINACION" %}selected{% endif %}>
-                        Eliminación
-                    </option>
-
-                    <option value="ACCESO_DENEGADO" {% if evento_actual == "ACCESO_DENEGADO" %}selected{% endif %}>
-                        Acceso denegado
-                    </option>
-
-                    <option value="LOGIN_FALLIDO" {% if evento_actual == "LOGIN_FALLIDO" %}selected{% endif %}>
-                        Inicio de sesión fallido
-                    </option>
-
-                    <option value="LOGIN_BLOQUEADO" {% if evento_actual == "LOGIN_BLOQUEADO" %}selected{% endif %}>
-                        Inicio de sesión bloqueado
-                    </option>
-                </select>
-            </div>
-
-            <div class="col-md-2">
-                <label class="form-label">
-                    Desde
-                </label>
-
-                <input
-                    type="date"
-                    name="desde"
-                    value="{{ desde }}"
-                    class="form-control">
-            </div>
-
-            <div class="col-md-2">
-                <label class="form-label">
-                    Hasta
-                </label>
-
-                <input
-                    type="date"
-                    name="hasta"
-                    value="{{ hasta }}"
-                    class="form-control">
-            </div>
-
-            <div class="col-md-2 d-flex align-items-end">
-                <button
-                    class="btn btn-primary w-100"
-                    type="submit">
-                    Filtrar
-                </button>
-            </div>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <div>
+            <h3 class="fw-bold m-0"><i class="bi bi-clock-history text-danger me-2"></i>Auditoría de Registros</h3>
+            <p class="text-muted small m-0">Bitácora de solo lectura: creaciones, modificaciones, eliminaciones y accesos denegados.</p>
         </div>
-    </form>
+        <span class="badge bg-muni-b5">Trazabilidad Total</span>
+    </div>
+
+    <!-- Filtros: mismo diseño que el Tubo de Trabajo (etiquetas en negrita, controles pequeños, Limpiar y Filtrar a la derecha) -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body py-3">
+            <form method="get" class="row g-2 align-items-end" style="font-size: 0.9rem;">
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold mb-1" for="f_usuario">Usuario</label>
+                    <select name="usuario" id="f_usuario" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        {% for u in usuarios %}
+                        <option value="{{ u.id }}" {% if usuario_actual == u.id|stringformat:"s" %}selected{% endif %}>{{ u }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold mb-1" for="f_evento">Evento</label>
+                    <select name="evento" id="f_evento" class="form-select form-select-sm">
+                        <option value="">Todos</option>
+                        <option value="CREACION" {% if evento_actual == "CREACION" %}selected{% endif %}>Creación</option>
+                        <option value="MODIFICACION" {% if evento_actual == "MODIFICACION" %}selected{% endif %}>Modificación</option>
+                        <option value="ELIMINACION" {% if evento_actual == "ELIMINACION" %}selected{% endif %}>Eliminación</option>
+                        <option value="ACCESO_DENEGADO" {% if evento_actual == "ACCESO_DENEGADO" %}selected{% endif %}>Acceso denegado</option>
+                        <option value="LOGIN_FALLIDO" {% if evento_actual == "LOGIN_FALLIDO" %}selected{% endif %}>Inicio de sesión fallido</option>
+                        <option value="LOGIN_BLOQUEADO" {% if evento_actual == "LOGIN_BLOQUEADO" %}selected{% endif %}>Inicio de sesión bloqueado</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label fw-semibold mb-1" for="f_desde">Desde</label>
+                    <input type="date" name="desde" id="f_desde" value="{{ desde }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label fw-semibold mb-1" for="f_hasta">Hasta</label>
+                    <input type="date" name="hasta" id="f_hasta" value="{{ hasta }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-md d-flex gap-2 justify-content-end">
+                    <a href="{% url 'auditoria:logs' %}" class="btn btn-sm btn-outline-secondary">Limpiar</a>
+                    <button type="submit" class="btn btn-sm btn-muni"><i class="bi bi-funnel me-1"></i>Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     {% include 'auditoria/components/tabla_logs.html' %}
 
     {% if is_paginated %}
     <nav class="mt-3" aria-label="Paginación de auditoría">
-        <ul class="pagination justify-content-center">
+        <ul class="pagination pagination-sm justify-content-center sgr-paginacion">
             {% if page_obj.has_previous %}
             <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}&usuario={{ usuario_actual }}&evento={{ evento_actual }}&desde={{ desde }}&hasta={{ hasta }}">Anterior</a></li>
             {% else %}

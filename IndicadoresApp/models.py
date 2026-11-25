@@ -286,11 +286,16 @@ class Ausencia(models.Model):
         ordering = ["-desde"]
 
 
-def dias_ausencia(usuario, periodo):
-    """Días distintos de ausencia del usuario dentro del periodo (si dos ausencias se cruzan, no se cuentan dos veces)."""
+def dias_ausencia(usuario, periodo, registradas_antes=None):
+    """Días distintos de ausencia del usuario dentro del periodo (si dos ausencias se cruzan, no se cuentan dos veces).
+    registradas_antes (fecha y hora): solo las ausencias ya registradas en ese momento. La tendencia semanal lo usa
+    para medir cada semana con lo que el sistema sabía ese día, igual que lo mostró el semáforo."""
     from datetime import timedelta
     dias = set()
-    for ausencia in Ausencia.objects.filter(usuario=usuario, desde__lte=periodo.fecha_termino, hasta__gte=periodo.fecha_inicio):
+    ausencias = Ausencia.objects.filter(usuario=usuario, desde__lte=periodo.fecha_termino, hasta__gte=periodo.fecha_inicio)
+    if registradas_antes is not None:
+        ausencias = ausencias.filter(fecha_registro__lt=registradas_antes)
+    for ausencia in ausencias:
         dia = max(ausencia.desde, periodo.fecha_inicio)
         fin = min(ausencia.hasta, periodo.fecha_termino)
         while dia <= fin:
