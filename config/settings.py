@@ -249,7 +249,7 @@ CHATBOT_MAX_MENSAJES_POR_USUARIO = int(os.getenv('CHATBOT_MAX_MENSAJES_POR_USUAR
 
 # ----- Fase 2: RAG, caché por usuario y observabilidad -----
 # Versión del prompt de sistema: se incrementa al cambiarlo y queda en cada EventoChatbot y en la clave de caché.
-CHATBOT_PROMPT_VERSION = os.getenv('CHATBOT_PROMPT_VERSION', '2.1')
+CHATBOT_PROMPT_VERSION = os.getenv('CHATBOT_PROMPT_VERSION', '2.2')
 # Guardrail de entrada: 'completo' (multicapa) o 'basico' (los 9 patrones históricos, rollback).
 CHATBOT_GUARDRAIL_MODO = os.getenv('CHATBOT_GUARDRAIL_MODO', 'completo').strip().lower()
 CHATBOT_CACHE_TTL = int(os.getenv('CHATBOT_CACHE_TTL') or '600')          # segundos de vida de una respuesta cacheada

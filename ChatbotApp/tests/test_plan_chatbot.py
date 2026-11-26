@@ -300,7 +300,7 @@ class PlanChatbotClienteIATest(TestCase):
         cuerpo = json.loads(peticion.data.decode('utf-8'))
         self.assertEqual(cuerpo['model'], 'modelo-de-prueba')
         self.assertEqual(cuerpo['temperature'], 0.3)
-        self.assertEqual(cuerpo['max_tokens'], 600)
+        self.assertEqual(cuerpo['max_tokens'], 2500)
         self.assertEqual(cuerpo['messages'][0], {'role': 'system', 'content': PROMPT_SISTEMA})
         self.assertEqual([m['role'] for m in cuerpo['messages'][1:]], ['user', 'assistant', 'user'])
         self.assertIn('Municipalidad de La Serena', cuerpo['messages'][0]['content'])

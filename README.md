@@ -131,7 +131,7 @@ EXIT;
 
 > El host `%` permite que el contenedor `web` se conecte a la base. Reemplace `municipalidad`, `admin_muni` y `tu_clave` por los valores reales de `DB_NAME`, `DB_USER` y `DB_PASSWORD`.
 
-El `docker-compose.yml` no ejecuta migraciones, carga de datos ni `collectstatic` automáticamente. Ejecute estos comandos en orden, la primera vez:
+El `docker-compose.yml` no ejecuta migraciones, carga de datos, carga del conocimiento del chatbot ni `collectstatic` automáticamente. Ejecute estos comandos en orden, la primera vez:
 
 ```
 docker compose exec web python manage.py migrate
@@ -140,12 +140,18 @@ docker compose exec -T db sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_D
 
 docker compose exec web python manage.py crear_grupos
 
+docker compose exec web python manage.py cargar_conocimiento_chatbot
+
+docker compose exec -u root web chown -R django_user:django_user /app/staticfiles /app/media
+
 docker compose exec web python manage.py collectstatic --noinput
 ```
 
 - `datos_iniciales.sql` se importa **una sola vez**, después de `migrate` y sobre una base vacía. Si se importa dos veces fallará por llaves duplicadas.
+- El `chown` corrige los permisos de los volúmenes nuevos, que Docker crea como `root`; sin él, `collectstatic` falla con `PermissionError` sobre `/app/staticfiles`. Solo es necesario la primera vez o si se recrean los volúmenes.
 - `collectstatic` llena el volumen `static_volume` que Nginx sirve en `/static/`.
 - `crear_grupos` crea los cuatro grupos de Django, les asigna sus permisos y deja a cada usuario en el grupo de su rol. Se puede repetir después de cada `migrate` que agregue permisos.
+- `cargar_conocimiento_chatbot` carga o actualiza los 12 documentos de conocimiento que alimentan el RAG del asistente. Es idempotente y requiere que las migraciones estén aplicadas.
 
 ### 6. Acceder al sistema
 
@@ -181,8 +187,10 @@ Para actualizar un despliegue existente:
 git pull
 docker compose up -d --build
 docker compose exec web python manage.py migrate
-docker compose exec web python manage.py collectstatic --noinput
 docker compose exec web python manage.py crear_grupos
+docker compose exec web python manage.py cargar_conocimiento_chatbot
+docker compose exec -u root web chown -R django_user:django_user /app/staticfiles /app/media
+docker compose exec web python manage.py collectstatic --noinput
 ```
 
 ## Instalación local sin Docker (opcional)
@@ -311,7 +319,7 @@ Un funcionario registra la solicitud de una persona natural (fecha y funcionario
 
 El sistema incluye un asistente de chat con IA en un widget flotante (abajo a la derecha), disponible para los roles **Admin, Coordinador y Delegado** y para el superusuario. El rol **Funcionario** no ve el widget y, si invoca los endpoints directamente, recibe `403` con el intento registrado en la auditoría (`ACCESO_DENEGADO`). Sin sesión, el usuario es enviado al login. El código vive en `ChatbotApp` y el historial se guarda por usuario en la tabla `mensaje_chat`; el botón **Nueva** del widget borra la conversación propia.
 
-El asistente responde con **contexto real del SGR** (Fase 2): documentación interna y FAQ cargadas en la base (`DocumentoConocimiento`) más datos agregados de actividades, metas, atenciones, usuarios y ausencias, filtrados por el alcance del rol. Cada usuario tiene su **propia caché** y cada interacción queda registrada en `EventoChatbot` (prompt, contexto, mensajes, respuesta, modelo, origen, latencia, tokens, guardrails y documentos usados). El detalle técnico está en [`docs/chatbot.md`](docs/chatbot.md).
+El asistente responde con **contexto real del SGR** (Fase 2): documentación interna y FAQ cargadas en la base (`DocumentoConocimiento`) más datos agregados de actividades, metas, atenciones, usuarios y ausencias, filtrados por el alcance del rol. Cada usuario tiene su **propia caché** y cada interacción queda registrada en `EventoChatbot` (prompt, contexto, mensajes, respuesta, modelo, origen, latencia, tokens, guardrails y documentos usados). El detalle técnico está en el código de `ChatbotApp` (`views.py`, `rag.py`, `guardrails.py` y `cliente_ia.py`).
 
 La conversación se envía al proveedor **desde el servidor**: la ApiKey se lee del `.env`, nunca se incluye en plantillas, JavaScript ni respuestas, y los errores del proveedor se muestran con un mensaje genérico. El cliente HTTP usa solo la biblioteca estándar (`urllib.request`), por lo que no se agregaron dependencias.
 
@@ -327,14 +335,25 @@ CHATBOT_TIMEOUT=30
 CHATBOT_LOCAL_API_URL='http://127.0.0.1:11434/v1/chat/completions'
 CHATBOT_LOCAL_MODEL=''
 CHATBOT_LOCAL_TIMEOUT=120
+CHATBOT_LOCAL_REASONING_EFFORT='none'
 
 # Fase 2: RAG, caché por usuario y observabilidad
-CHATBOT_PROMPT_VERSION=2.0
-CHATBOT_CACHE_TTL=600         # segundos de vida de una respuesta cacheada
-CHATBOT_RATE_LIMIT=30         # consultas por usuario y ventana
-CHATBOT_RATE_VENTANA=3600     # segundos de la ventana
+CHATBOT_PROMPT_VERSION=2.2
+CHATBOT_GUARDRAIL_MODO=completo
+CHATBOT_CACHE_TTL=600
+CHATBOT_CACHE_HISTORIAL_MENSAJES=4
+CHATBOT_RATE_LIMIT=30
+CHATBOT_RATE_VENTANA=3600
+CHATBOT_RATE_BACKEND=db
 CHATBOT_RAG_MAX_CARACTERES=4000
 CHATBOT_MAX_RESPUESTA=4000
+CHATBOT_CANARIOS=''
+CHATBOT_MAX_HISTORIAL_MENSAJE=1000
+CHATBOT_MAX_HISTORIAL_CARACTERES=4000
+CHATBOT_MAX_PROMPT_CARACTERES=20000
+CHATBOT_RETENCION_MENSAJES_DIAS=90
+CHATBOT_RETENCION_EVENTOS_DIAS=365
+CHATBOT_MAX_MENSAJES_POR_USUARIO=200
 CHATBOT_LOG_LEVEL=INFO
 ```
 
@@ -351,6 +370,8 @@ El cliente elige el proveedor en este orden:
 1. **API remota**: si `CHATBOT_API_KEY` y `CHATBOT_MODEL` tienen valor, se usa `CHATBOT_API_URL` con esa clave.
 2. **Modelo local (Ollama)**: si `CHATBOT_MODEL` queda vacío y `CHATBOT_LOCAL_MODEL` tiene valor, se usa `CHATBOT_LOCAL_API_URL`, sin clave ni internet.
 3. Si no hay ninguna de las dos configuraciones, el chatbot queda **desactivado** y el endpoint responde `503`.
+
+En Docker, `127.0.0.1` dentro del contenedor `web` apunta al propio contenedor, no al host. Si Ollama corre en la máquina anfitriona, use una URL accesible desde el contenedor (por ejemplo, la IP del host o `host.docker.internal` si está configurado); para un despliegue con Docker se recomienda un proveedor remoto.
 
 Para usar un **modelo local con Ollama** basta con tener Ollama corriendo (`ollama serve`, por defecto en `http://127.0.0.1:11434`) y el modelo descargado (`ollama pull qwen3.5_progra_128k:latest` o el que se prefiera). El nombre debe ser el ID exacto que muestra `ollama list`. Si el modelo es de **razonamiento** (por ejemplo las familias Qwen), `CHATBOT_LOCAL_REASONING_EFFORT='none'` hace que la respuesta llegue en `content` en lugar de quedarse en `reasoning`; dejar esa variable vacía si el servidor local no acepta el parámetro. Cambiar de proveedor solo requiere editar el `.env` y reiniciar el servidor; no hay que tocar código. Cada mensaje se limita a 2000 caracteres y al proveedor se le envían como contexto los últimos 12 mensajes del usuario.
 
@@ -374,8 +395,9 @@ Endpoints (JSON, solo usuarios autenticados con acceso):
   entre usuarios. TTL configurable (`CHATBOT_CACHE_TTL`, 600 s por defecto).
 - **Observabilidad**: cada interacción (incluidos bloqueos y errores) queda en `EventoChatbot` y en
   `logs/chatbot.log`. El evento es de solo lectura en Django Admin.
-- **Limitación**: la caché es `LocMemCache`, por proceso. Con varios workers cada uno tiene su
-  propia caché y su propio contador de rate limit.
+- **Limitación**: la caché de respuestas es `LocMemCache`, por proceso. Con varios workers cada uno
+  tiene su propia caché; el rate limit usa la base de datos por defecto (`CHATBOT_RATE_BACKEND=db`),
+  por lo que se comparte entre procesos.
 
 ## Pruebas automatizadas
 
